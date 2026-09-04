@@ -65,8 +65,11 @@ namespace SeoYuGi.Art
         };
 
         BattleRunner runner;
+        CombatSystem combatRef; // 라운드마다 재조립 — 인스턴스 바뀌면 재구독
         readonly Dictionary<string, GameObject> cache = new();
         readonly HashSet<UnitView> attempted = new();
+        readonly Dictionary<int, MoveSwapSkin> machines = new();
+        readonly Dictionary<int, BombHop> bombHops = new();
 
         void Awake()
         {
@@ -77,6 +80,14 @@ namespace SeoYuGi.Art
         {
             if (runner == null || runner.Battle == null) return;
 
+            // 공격 모션 트리거 — 캐스팅 순간 원샷 재생 (라운드 전환 시 재구독)
+            if (runner.Combat != null && runner.Combat != combatRef)
+            {
+                combatRef = runner.Combat;
+                combatRef.OnTelegraph += strike => PlayAttackMotion(strike.attackerId, SkillKind.Smash);
+                combatRef.OnSkillCast += PlayAttackMotion;
+            }
+
             foreach (var view in FindObjectsByType<UnitView>(FindObjectsSortMode.None))
             {
                 if (attempted.Contains(view)) continue;
@@ -86,6 +97,14 @@ namespace SeoYuGi.Art
 
             // 파괴된 뷰 참조 정리 (라운드 전환)
             attempted.RemoveWhere(v => v == null);
+        }
+
+        void PlayAttackMotion(int unitId, SkillKind kind)
+        {
+            if (machines.TryGetValue(unitId, out var m) && m != null)
+                m.PlayAttack();
+            if (kind == SkillKind.BombDeliver && bombHops.TryGetValue(unitId, out var hop) && hop != null)
+                hop.Play(1f); // 폭탄 배달 비행 아크 (텔레그래프 1초와 동기)
         }
 
         void Apply(UnitView view)
@@ -125,19 +144,15 @@ namespace SeoYuGi.Art
             idleGo.transform.localRotation = Quaternion.identity;
             FitToUnit(idleGo, view.transform, height);
 
-            // 이동 = A포즈 달리기 애니 모델 (<resource>_anim, 있으면)
-            var animPrefab = Resources.Load<GameObject>(resource + "_anim");
-            if (animPrefab != null)
-            {
-                var runGo = Instantiate(animPrefab, skin.transform);
-                runGo.transform.localPosition = Vector3.zero;
-                runGo.transform.localRotation = Quaternion.identity;
-                FitToUnit(runGo, view.transform, height);
+            // 이동 = A포즈 달리기 애니 모델 (<resource>_anim), 공격 = <resource>_atk (있으면)
+            GameObject runGo = LoadVariant(resource + "_anim", skin, view, height, unit.unitClass, out _);
+            GameObject atkGo = LoadVariant(resource + "_atk", skin, view, height, unit.unitClass, out var atkAnim);
 
-                var clips = Resources.LoadAll<AnimationClip>(resource + "_anim");
-                if (clips.Length > 0)
-                    runGo.AddComponent<SkinLoopAnimator>().Init(clips[0], AnimSpeed[unit.unitClass]);
-                skin.AddComponent<MoveSwapSkin>().Init(view, idleGo, runGo);
+            if (runGo != null || atkGo != null)
+            {
+                var swap = skin.AddComponent<MoveSwapSkin>();
+                swap.Init(view, idleGo, runGo, atkGo, atkAnim);
+                machines[unit.id] = swap;
             }
             else if (unit.team == 0)
             {
@@ -145,12 +160,38 @@ namespace SeoYuGi.Art
                 skin.AddComponent<WaddleBounce>().Init(view, idleGo);
             }
 
+            // 비둘기 폭탄 배달 비행 아크 (코드 연출 — 리깅 불필요)
+            if (unit.unitClass == UnitClass.Grenadier)
+                bombHops[unit.id] = skin.AddComponent<BombHop>();
+
             // 드론류 기계는 부유 연출
             if (unit.team == 1 && unit.unitClass != UnitClass.Tank && unit.unitClass != UnitClass.Balance)
                 skin.AddComponent<HoverBob>();
 
             var cube = view.GetComponent<MeshRenderer>();
             if (cube != null) cube.enabled = false;
+        }
+
+        /// <summary>모델 변형(<이름>_anim/_atk) 로드 + 배치 + 클립 재생. 없으면 null.</summary>
+        GameObject LoadVariant(string path, GameObject skin, UnitView view, float height,
+            UnitClass cls, out SkinLoopAnimator anim)
+        {
+            anim = null;
+            var prefab = Resources.Load<GameObject>(path);
+            if (prefab == null) return null;
+
+            var go = Instantiate(prefab, skin.transform);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            FitToUnit(go, view.transform, height);
+
+            var clips = Resources.LoadAll<AnimationClip>(path);
+            if (clips.Length > 0)
+            {
+                anim = go.AddComponent<SkinLoopAnimator>();
+                anim.Init(clips[0], AnimSpeed[cls]);
+            }
+            return go;
         }
 
         GameObject LoadModel(string resource)

@@ -10,7 +10,6 @@ namespace SeoYuGi.Integration
     /// Core(BattleState/CombatSystem/RoundSystem/VisionSystem) → IWorldView 어댑터. AiBrain이 읽는 스냅샷.
     /// 매 프레임 Refresh() 호출 후 브레인들에 넘길 것. 라운드마다 새로 만든다(matchRound 고정 주입).
     ///
-    /// 스텁 상태: HasDecoy = false (디코이 장비 구현 전).
     /// </summary>
     public class CoreWorldView : IWorldView
     {
@@ -20,6 +19,8 @@ namespace SeoYuGi.Integration
         readonly VisionSystem vision;
         readonly int humanUnitId;
         readonly int matchRound;
+        readonly HackSystem hack;
+        readonly int animalTeam; // 해킹 장비는 길동물 팀 전용
 
         readonly List<ActorState> actors = new List<ActorState>();
         readonly List<ZoneState> zones = new List<ZoneState>();
@@ -27,7 +28,7 @@ namespace SeoYuGi.Integration
         AiCell[][] zoneCellCache; // 거점 칸은 라운드 내 불변 — 1회 변환
 
         public CoreWorldView(BattleState state, CombatSystem combat, RoundSystem round,
-            VisionSystem vision, int humanUnitId, int matchRound)
+            VisionSystem vision, int humanUnitId, int matchRound, HackSystem hack = null)
         {
             this.state = state;
             this.combat = combat;
@@ -35,6 +36,8 @@ namespace SeoYuGi.Integration
             this.vision = vision;
             this.humanUnitId = humanUnitId;
             this.matchRound = matchRound;
+            this.hack = hack;
+            animalTeam = state.GetUnit(humanUnitId)?.team ?? 0;
         }
 
         /// <summary>브레인 틱 전에 매 프레임 1회 호출 — 액터/예고 스냅샷 갱신.</summary>
@@ -98,6 +101,11 @@ namespace SeoYuGi.Integration
         public bool IsVisibleTo(TeamId team, AiCell cell) =>
             vision.IsVisibleTo((int)team, new Coord(cell.X, cell.Y));
 
-        public bool HasDecoy(int actorId) => false;
+        public bool HasDecoy(int actorId)
+        {
+            if (hack == null) return false;
+            var u = state.GetUnit(actorId);
+            return u != null && u.team == animalTeam && hack.Has(actorId);
+        }
     }
 }

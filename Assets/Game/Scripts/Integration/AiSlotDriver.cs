@@ -11,15 +11,20 @@ namespace SeoYuGi.Integration
     public class AiSlotDriver
     {
         readonly int unitId;
+        readonly int team;
         readonly AiBrain brain;
         readonly MoveSystem move;
         readonly CombatSystem combat;
+        readonly HackSystem hack;
 
-        public AiSlotDriver(int unitId, UnitClass cls, MoveSystem move, CombatSystem combat, Predictor predictor = null)
+        public AiSlotDriver(int unitId, int team, UnitClass cls, MoveSystem move, CombatSystem combat,
+            Predictor predictor = null, HackSystem hack = null)
         {
             this.unitId = unitId;
+            this.team = team;
             this.move = move;
             this.combat = combat;
+            this.hack = hack;
             brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor);
         }
 
@@ -41,7 +46,8 @@ namespace SeoYuGi.Integration
                     combat.TryGuard(unitId);
                     break;
                 case CommandType.Decoy:
-                    break; // 디코이 시스템 전 — 무시
+                    hack?.TryHack(unitId, (TeamId)team); // 해킹 — 5초간 적 예측 교란
+                    break;
             }
         }
 

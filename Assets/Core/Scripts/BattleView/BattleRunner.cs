@@ -36,6 +36,7 @@ namespace SeoYuGi.BattleView
         [SerializeField] MoveConfig moveConfig = new MoveConfig();
         [SerializeField] CombatConfig combatConfig = new CombatConfig();
         [SerializeField] RoundConfig roundConfig = new RoundConfig();
+        [SerializeField] PickupConfig pickupConfig = new PickupConfig();
 
         [Header("Map — BattleMaps 고정 5장 중 선택")]
         [SerializeField] int mapIndex = 0;
@@ -63,7 +64,10 @@ namespace SeoYuGi.BattleView
         public RoundSystem Round { get; private set; }
         public BattleState Battle { get; private set; }
         public MatchSystem Match { get; private set; }
+        public PickupSystem Pickup { get; private set; }
         public int PlayerUnitId => playerUnitId;
+        /// <summary>현재 매치의 파싱된 맵 — 맵 꾸미기(MapDresser) 등 외부 연출용.</summary>
+        public ParsedMap CurrentMap => map;
 
         CoreWorldView worldView;
         BattleHud hud;
@@ -71,6 +75,7 @@ namespace SeoYuGi.BattleView
         VisionSystem vision;
         readonly HashSet<int> audioVisibleEnemies = new HashSet<int>(); // 발견/소실 SFX용
         Predictor predictor;
+        HackSystem hackSystem; // 해킹 장비 — 매치당 1개, 라운드 넘겨 유지 (기획서 '해킹', 구 디코이)
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
 
         Phase phase = Phase.Playing;
@@ -88,6 +93,7 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
         readonly HashSet<int> blinkSnapIds = new HashSet<int>(); // 점멸 직후 — 슬라이드 대신 번쩍+스냅
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
+        readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
 
         void Awake()
         {
@@ -135,6 +141,7 @@ namespace SeoYuGi.BattleView
                 map = BattleMaps.Get(mapIndex);
                 gridConfig = new GridConfig { width = map.Width, height = map.Height };
                 predictor = NewPredictor();
+                hackSystem = new HackSystem(predictor);
                 Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
                 ShowClassSelect();
             };
@@ -231,6 +238,23 @@ namespace SeoYuGi.BattleView
             Combat = new CombatSystem(Battle, combatConfig);
             Round = new RoundSystem(Battle, roundConfig, map.Zones);
             vision = new VisionSystem(Battle);
+            Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
+
+            foreach (var pack in Pickup.Packs)
+            {
+                var packView = HealPackView.Create(transform, gridView.CoordToWorld(pack.pos));
+                healPackViews.Add(packView);
+                roundObjects.Add(packView.gameObject);
+            }
+            Pickup.OnPickup += (unitId, pos, healed) =>
+            {
+                var healedView = viewRegistry.Get(unitId);
+                if (healedView != null && healedView.gameObject.activeInHierarchy)
+                    FloatingText.Spawn(healedView.transform.position, $"+{healed}", new Color(0.35f, 1f, 0.5f), 1.1f);
+                if (playerVisibleFn(pos))
+                    CellFlash.Spawn(gridView.CoordToWorld(pos), new Color(0.4f, 1f, 0.55f));
+                battleAudio.PlaySfx("S5_ApRefund", 0.7f); // 전용 SFX 나오기 전까지 회복음 재사용
+            };
 
             if (!gridViewBuilt)
             {
@@ -305,12 +329,12 @@ namespace SeoYuGi.BattleView
             };
 
             // 슬롯: 나 빼고 전부 AI. 적팀 뇌에만 Predictor 주입 — "AI군은 인간을 노린다"(기획서 §05).
-            worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound);
+            worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound, hackSystem);
             aiDrivers.Clear();
             foreach (var r in roster)
                 if (r.id != playerUnitId)
-                    aiDrivers.Add(new AiSlotDriver(r.id, r.cls, Move, Combat,
-                        r.team != playerTeam ? predictor : null));
+                    aiDrivers.Add(new AiSlotDriver(r.id, r.team, r.cls, Move, Combat,
+                        r.team != playerTeam ? predictor : null, hackSystem));
 
             Move.OnUnitMoved += (unitId, path, yellow) =>
             {
@@ -450,6 +474,7 @@ namespace SeoYuGi.BattleView
             roundObjects.Clear();
             hpBars.Clear();
             zoneDiscs.Clear();
+            healPackViews.Clear();
             blinkSnapIds.Clear();
             viewRegistry.Clear();
         }
@@ -580,6 +605,7 @@ namespace SeoYuGi.BattleView
         {
             Match = new MatchSystem();
             predictor = NewPredictor(); // 새 매치 = 학습 백지
+            hackSystem = new HackSystem(predictor); // 해킹 충전도 새 매치에 리셋
             ShowClassSelect();          // 재시작 때도 다시 픽 + 적팀 재롤
         }
 
@@ -636,10 +662,16 @@ namespace SeoYuGi.BattleView
                 return;
             }
 
+            // 해킹 (H) — 매치 1회, 5초간 적 예측 AI 교란 (기획서 '해킹', 구 디코이)
+            if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame &&
+                hackSystem.TryHack(playerUnitId, (SeoYuGi.Prediction.TeamId)playerTeam))
+                Debug.Log("해킹 성공! 5초간 적 AI의 예측이 마비됩니다");
+
             Move.Tick(Time.deltaTime);
-            Combat.Tick(Time.deltaTime);
+            Combat.Tick(Time.deltaTime); // State.time 전진 — Pickup 리스폰 타이머가 이 시계를 쓴다
             Round.Tick(Time.deltaTime);
             vision.Tick();
+            Pickup.Tick();
 
             if (Round.Winner != -1)
             {
@@ -671,6 +703,10 @@ namespace SeoYuGi.BattleView
                 if (z.capturingTeam >= 0 && z.progress > 0f) anyCapturing = true;
             }
             battleAudio.SetCaptureLoop(anyCapturing);
+
+            // 힐팩 — 소모되면 숨김, 리스폰되면 다시 표시
+            for (int i = 0; i < healPackViews.Count; i++)
+                healPackViews[i].SetAvailable(Pickup.Packs[i].active);
 
             foreach (var unit in Battle.Units)
             {

@@ -58,6 +58,12 @@ namespace SeoYuGi.Prediction
         public void InjectDecoy(int actorId, float durationSec)
         {
             if (!_teams.TryGetValue(actorId, out var team)) return;
+            InjectDecoy(team, durationSec);
+        }
+
+        /// <summary>관찰 이력이 없는 유닛(아군 AI 등)도 팀 단위로 교란을 걸 수 있게.</summary>
+        public void InjectDecoy(TeamId team, float durationSec)
+        {
             _decoyUntil[team] = _clock + durationSec;
         }
 

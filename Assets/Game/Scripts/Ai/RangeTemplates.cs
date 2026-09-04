@@ -37,7 +37,9 @@ namespace SeoYuGi.Ai
         /// <summary>십자 5칸(중심+4방) — 파열탄·폭탄 배달의 투하(피해) 모양. 지정 칸 기준 오프셋.</summary>
         public static readonly Cell[] BlastCross = { new Cell(0, 0), new Cell(0, 1), new Cell(0, -1), new Cell(1, 0), new Cell(-1, 0) };
 
-        // TODO(기획 확인 대기): 비둘기 폭탄 배달 지정 범위(맨해튼 4 다이아 + 연장?)
+        /// <summary>맨해튼 4 다이아몬드 — 비둘기 폭탄 배달 지정(비행 착지) 범위. 투하 모양은 BlastCross.</summary>
+        public static readonly Cell[] BombDeliveryRange = BuildRect(4, (dx, dy) =>
+            (dx != 0 || dy != 0) && Abs(dx) + Abs(dy) <= 4);
 
         /// <summary>클래스별 기본공격 범위.</summary>
         public static Cell[] BasicAttack(ClassId cls)

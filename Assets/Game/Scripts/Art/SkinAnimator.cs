@@ -31,6 +31,14 @@ namespace SeoYuGi.Art
             graph.Play();
         }
 
+        /// <summary>처음부터 재생 (공격 원샷용).</summary>
+        public void Restart()
+        {
+            if (graph.IsValid()) playable.SetTime(0);
+        }
+
+        public float ClipLength => length;
+
         void Update()
         {
             // 임포트 클립의 랩 모드에 기대지 않고 수동 루프
@@ -45,31 +53,149 @@ namespace SeoYuGi.Art
     }
 
     /// <summary>
-    /// 대기(정적 모델) ↔ 이동(달리기 애니 모델) 스왑.
-    /// 대기 애니 없이도 살아 보이게 — 이동 시작 순간에 바꿔서 전환이 안 튄다.
+    /// 대기 ↔ 이동 ↔ 공격 모델 스왑 상태기.
+    /// 공격은 PlayAttack() 트리거로 클립 길이만큼 노출 후 복귀 (원샷).
+    /// 이동·공격 모델이 없으면 각각 대기 모델로 폴백.
     /// </summary>
     public class MoveSwapSkin : MonoBehaviour
     {
         UnitView view;
         GameObject idleGo;
         GameObject runGo;
-        bool moving;
+        GameObject atkGo;
+        SkinLoopAnimator atkAnim;
+        float attackUntil = -1f;
+        GameObject shown;
 
-        public void Init(UnitView view, GameObject idleGo, GameObject runGo)
+        public void Init(UnitView view, GameObject idleGo, GameObject runGo,
+            GameObject atkGo = null, SkinLoopAnimator atkAnim = null)
         {
             this.view = view;
             this.idleGo = idleGo;
             this.runGo = runGo;
-            runGo.SetActive(false);
+            this.atkGo = atkGo;
+            this.atkAnim = atkAnim;
+            if (runGo != null) runGo.SetActive(false);
+            if (atkGo != null) atkGo.SetActive(false);
+            shown = idleGo;
+        }
+
+        /// <summary>공격·스킬 캐스팅 순간 호출 — 공격 모션 원샷.</summary>
+        /// <param name="maxSeconds">노출 상한 — 긴 클립은 앞부분만 (까치 사격은 뽑는 동작까지 길게)</param>
+        public void PlayAttack(float maxSeconds = 1.2f)
+        {
+            if (atkGo == null) return;
+            attackUntil = Time.time + (atkAnim != null ? Mathf.Min(atkAnim.ClipLength, maxSeconds) : 0.8f);
+            atkAnim?.Restart();
         }
 
         void Update()
         {
-            bool now = view != null && view.IsMoving;
-            if (now == moving) return;
-            moving = now;
-            idleGo.SetActive(!moving);
-            runGo.SetActive(moving);
+            GameObject want;
+            if (atkGo != null && Time.time < attackUntil) want = atkGo;
+            else if (runGo != null && view != null && view.IsMoving) want = runGo;
+            else want = idleGo;
+
+            if (want == shown) return;
+            if (shown != null) shown.SetActive(false);
+            shown = want;
+            if (shown != null) shown.SetActive(true);
+        }
+    }
+
+    /// <summary>
+    /// 손 본에 절차 생성 라이플 부착 — 까치 사격 모션이 맨손이라(총이 등 메시에 박힘) 소품으로 보정.
+    /// 쿼터뷰 줌 기준의 실루엣용 프리미티브 — 근사치면 충분하다.
+    /// </summary>
+    public static class HandRifle
+    {
+        public static void Attach(GameObject model, float worldLength)
+        {
+            var hand = FindDeep(model.transform, "RightHand");
+            if (hand == null) return;
+
+            var root = new GameObject("HandRifle");
+            root.transform.SetParent(hand, false);
+
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.Destroy(body.GetComponent<Collider>());
+            body.transform.SetParent(root.transform, false);
+            body.transform.localScale = new Vector3(0.16f, 0.22f, 1f);
+
+            var barrel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.Destroy(barrel.GetComponent<Collider>());
+            barrel.transform.SetParent(root.transform, false);
+            barrel.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            barrel.transform.localPosition = new Vector3(0f, 0.06f, 0.62f);
+            barrel.transform.localScale = new Vector3(0.07f, 0.35f, 0.07f);
+
+            var dark = new Color(0.14f, 0.15f, 0.18f);
+            var teal = new Color(0.12f, 0.48f, 0.55f);
+            Tint(body, dark);
+            Tint(barrel, teal);
+
+            // 손 본 로컬 공간은 모델 스케일을 승계 — 월드 길이 기준으로 정규화
+            float current = root.transform.lossyScale.z;
+            if (current > 0.0001f)
+                root.transform.localScale = Vector3.one * (worldLength / current);
+            root.transform.localPosition = Vector3.zero;
+            root.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+        }
+
+        static void Tint(GameObject go, Color c)
+        {
+            var r = go.GetComponent<Renderer>();
+            var mpb = new MaterialPropertyBlock();
+            mpb.SetColor("_BaseColor", c);
+            r.SetPropertyBlock(mpb);
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var f = FindDeep(t.GetChild(i), name);
+                if (f != null) return f;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 비둘기 폭탄 배달 비행 연출 — 리깅 불가라 코드로:
+    /// 캐스팅 1초 동안 포물선 상승·하강 + 빠른 회전. 스킨 로컬 공간이라 위치 동기화와 안 싸운다.
+    /// </summary>
+    public class BombHop : MonoBehaviour
+    {
+        const float Height = 1.6f;
+        Vector3 basePos;
+        Quaternion baseRot;
+        float t = -1f, duration;
+
+        public void Play(float seconds)
+        {
+            basePos = transform.localPosition;
+            baseRot = transform.localRotation;
+            duration = Mathf.Max(0.2f, seconds);
+            t = 0f;
+        }
+
+        void Update()
+        {
+            if (t < 0f) return;
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / duration);
+            var p = basePos;
+            p.y += Height * 4f * k * (1f - k); // 포물선
+            transform.localPosition = p;
+            transform.localRotation = baseRot * Quaternion.Euler(0f, k * 720f, Mathf.Sin(k * Mathf.PI) * 20f);
+            if (k >= 1f)
+            {
+                transform.localPosition = basePos;
+                transform.localRotation = baseRot;
+                t = -1f;
+            }
         }
     }
 

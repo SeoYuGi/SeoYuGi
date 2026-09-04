@@ -9,7 +9,6 @@ namespace SeoYuGi.Battle
         Move,
         Attack,
         Skill,
-        Guard,
         Hack
     }
 
@@ -21,16 +20,15 @@ namespace SeoYuGi.Battle
     {
         public IntentKind kind;
         public int unitId;
-        public Coord target; // Guard/Hack은 무시
+        public Coord target;    // Hack은 무시
+        public byte skillIndex; // Skill 전용: 0=스킬1, 1=스킬2
 
         public static BattleIntent Move(int unitId, Coord target) =>
             new BattleIntent { kind = IntentKind.Move, unitId = unitId, target = target };
         public static BattleIntent Attack(int unitId, Coord target) =>
             new BattleIntent { kind = IntentKind.Attack, unitId = unitId, target = target };
-        public static BattleIntent Skill(int unitId, Coord target) =>
-            new BattleIntent { kind = IntentKind.Skill, unitId = unitId, target = target };
-        public static BattleIntent Guard(int unitId) =>
-            new BattleIntent { kind = IntentKind.Guard, unitId = unitId };
+        public static BattleIntent Skill(int unitId, Coord target, int skillIndex = 0) =>
+            new BattleIntent { kind = IntentKind.Skill, unitId = unitId, target = target, skillIndex = (byte)skillIndex };
         public static BattleIntent Hack(int unitId) =>
             new BattleIntent { kind = IntentKind.Hack, unitId = unitId };
     }
@@ -44,7 +42,7 @@ namespace SeoYuGi.Battle
         public bool accepted;
         public bool pending;          // 네트워크 제출 — 결과는 나중에 온다
         public MoveDenied moveDenied; // kind == Move일 때만 유효
-        public ActDenied actDenied;   // Attack/Skill/Guard일 때만 유효
+        public ActDenied actDenied;   // Attack/Skill일 때만 유효
 
         public static readonly IntentResult Accepted = new IntentResult { accepted = true };
         public static readonly IntentResult Pending = new IntentResult { pending = true };

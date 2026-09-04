@@ -106,9 +106,9 @@ namespace SeoYuGi.Ai
                     return skill;
                 }
 
-                // 일반공격 — 예측 칸이 내 십자 인접이면 깐다.
+                // 일반공격 — 예측 칸이 내 클래스 공격 모양 안이면 깐다.
                 // 예비 AP는 스킬용 — 일반공격까지 막지 않는다 (근접 대치에서 수동적이 되는 문제)
-                if (ap >= _cfg.CostAttack && IsOrthoAdjacent(me.Pos, aim))
+                if (ap >= _cfg.CostAttack && RangeTemplates.Contains(RangeTemplates.BasicAttack(me.Class), me.Pos, aim))
                 {
                     _nextAttackTime = world.Time + EffectiveAttackInterval(world);
                     return AiCommand.Of(CommandType.Attack, aim, predicted);
@@ -121,6 +121,14 @@ namespace SeoYuGi.Ai
                 if (counterStep.HasValue && ap >= _cfg.CostMove)
                     return AiCommand.Of(CommandType.Move, counterStep.Value);
                 if (!counterStep.HasValue) return AiCommand.None; // 자리 사수 — 공격은 상위 우선순위가
+            }
+
+            // 3.7) 힐팩 — HP가 상했고 근처에 있을 때만. 거점 플레이보다 앞서지만 회피·공격보다는 뒤.
+            // "전술적으로 안 먹기"는 두 문턱으로: 손상(HealSeekMissingHp) + 거리(HealSeekRadius).
+            if (ap >= _cfg.CostMove)
+            {
+                var healStep = StepTowardHealPack(world, me);
+                if (healStep.HasValue) return AiCommand.Of(CommandType.Move, healStep.Value);
             }
 
             // 4) 거점 이동
@@ -239,46 +247,74 @@ namespace SeoYuGi.Ai
         {
             if (ap < _cfg.CostHeavy) return AiCommand.None;
 
+            // 스킬 2개 체제 — 코어가 쿨타임·AP를 검증하므로 뇌는 각(角)만 잡는다.
+            // 거부되면 다음 틱에 다른 각을 시도 (스킬2 → 스킬1 순으로 위력 우선).
             switch (me.Class)
             {
                 case ClassId.Tank:
-                    // 강타: 예측 칸이 인접이면 후려친다 (밀침은 코어가 처리)
-                    if (IsOrthoAdjacent(me.Pos, aim))
-                        return AiCommand.Of(CommandType.Heavy, aim);
+                    if (Chebyshev(me.Pos, aim) == 1) // 인접8
+                    {
+                        // 강타(스킬2, 피해2)를 우선, 쿨이면 다음 틱에 방패밀기(스킬1)
+                        if (ap >= 3f && _lastSkillDenied != 1)
+                            return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
+                        return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 0);
+                    }
                     break;
 
                 case ClassId.Balance:
-                    // 돌파: 타겟이 같은 행/열 2칸 이내면 대시로 접촉
+                    // 비명 교란(스킬2): 인접8에 적이 2기 이상이면 광역 스턴
+                    if (CountAdjacentEnemies(world, me) >= 2 && ap >= 3f)
+                        return AiCommand.Of(CommandType.Heavy, me.Pos, skillIndex: 1);
+                    // 돌파(스킬1): 타겟이 같은 행/열 2칸 이내면 대시로 접촉
                     if ((target.Pos.X == me.Pos.X || target.Pos.Y == me.Pos.Y) &&
                         Chebyshev(me.Pos, target.Pos) <= 2)
-                        return AiCommand.Of(CommandType.Heavy, target.Pos);
+                        return AiCommand.Of(CommandType.Heavy, target.Pos, skillIndex: 0);
                     break;
 
                 case ClassId.Assassin:
-                    // 그림자 도약: 적 시야 밖일 때만 — 고스트를 남기지 않고 파고든다
+                    // 발톱(스킬2): 이미 인접8이면 최고 딜
+                    if (Chebyshev(me.Pos, aim) == 1 && ap >= 3f)
+                        return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
+                    // 그림자 도약(스킬1): 적 시야 밖일 때만 — 고스트를 남기지 않고 파고든다
                     if (Chebyshev(me.Pos, target.Pos) <= 3 &&
                         !world.IsVisibleTo(EnemyOf(me.Team), me.Pos))
                     {
                         var dest = BlinkCellToward(world, me.Pos, target.Pos);
                         if (dest.HasValue)
-                            return AiCommand.Of(CommandType.Heavy, dest.Value);
+                            return AiCommand.Of(CommandType.Heavy, dest.Value, skillIndex: 0);
                     }
                     break;
 
                 case ClassId.Grenadier:
-                    // 파열탄: 예측 칸이 사거리 안이면 십자 폭격
-                    if (Manhattan(me.Pos, aim) <= _cfg.GrenadeRange && !aim.Equals(me.Pos))
-                        return AiCommand.Of(CommandType.Heavy, aim);
+                    // 폭탄 배달(스킬2): 멀리 있는 예측 칸으로 비행 폭격 (진입 겸용)
+                    if (Manhattan(me.Pos, aim) is > 2 and <= 4 && ap >= 3f)
+                        return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
+                    // 파열탄(스킬1): 5×5 내 십자 폭격
+                    if (Chebyshev(me.Pos, aim) <= 2 && !aim.Equals(me.Pos))
+                        return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 0);
                     break;
 
                 case ClassId.Sniper:
-                    // 조준 사격: 예측 칸과 행/열이 정렬됐을 때만 — 맞히는 것 자체가 예측
+                    // 넉백샷(스킬1): 붙으면 때리고 물러난다 — 카이팅
+                    if (Chebyshev(me.Pos, target.Pos) == 1)
+                        return AiCommand.Of(CommandType.Heavy, target.Pos, skillIndex: 0);
+                    // 조준 사격(스킬2): 예측 칸과 행/열 정렬 + 사거리 5
                     if ((aim.X == me.Pos.X || aim.Y == me.Pos.Y) &&
-                        Chebyshev(me.Pos, aim) <= _cfg.SnipeRange && !aim.Equals(me.Pos))
-                        return AiCommand.Of(CommandType.Heavy, aim);
+                        Chebyshev(me.Pos, aim) <= 5 && !aim.Equals(me.Pos) && ap >= 3f)
+                        return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     break;
             }
             return AiCommand.None;
+        }
+
+        int _lastSkillDenied = -1; // (예약) 코어 거부 피드백 훅 — 현재 미사용
+
+        static int CountAdjacentEnemies(IWorldView world, ActorState me)
+        {
+            int n = 0;
+            foreach (var a in world.Actors)
+                if (a.Alive && a.Team != me.Team && Chebyshev(me.Pos, a.Pos) == 1) n++;
+            return n;
         }
 
         private ActorState? PickTarget(IWorldView world, ActorState me)
@@ -390,6 +426,28 @@ namespace SeoYuGi.Ai
                     sidestep = n;
             }
             return best ?? sidestep;
+        }
+
+        /// 힐팩 추구: HP 손상이 문턱 이상이고 반경 안에 활성 힐팩이 있으면 가장 가까운 쪽으로 한 걸음.
+        /// 조건 불충족(비활성 성향·풀피 근처·팩 멀거나 없음)이면 null → 상위가 거점 플레이로 넘어간다.
+        private Cell? StepTowardHealPack(IWorldView world, ActorState me)
+        {
+            if (_cfg.HealSeekMissingHp <= 0) return null;
+            if (me.MaxHp - me.Hp < _cfg.HealSeekMissingHp) return null; // 아직 멀쩡 — 안 먹는다
+            if (world.HealPacks.Count == 0) return null;
+
+            Cell? nearest = null;
+            int bestD = int.MaxValue;
+            foreach (var pack in world.HealPacks)
+            {
+                int d = Manhattan(me.Pos, pack);
+                if (d > _cfg.HealSeekRadius) continue; // 너무 멀다 — 거점 플레이 우선
+                if (d < bestD) { bestD = d; nearest = pack; }
+            }
+            if (!nearest.HasValue) return null;
+            if (me.Pos.Equals(nearest.Value)) return null; // 이미 팩 위 — 코어가 회복 처리
+
+            return GreedyStep(world, me, nearest.Value); // 위협 칸 회피 포함 한 걸음
         }
 
         private Cell? FindDodgeCell(IWorldView world, ActorState me)

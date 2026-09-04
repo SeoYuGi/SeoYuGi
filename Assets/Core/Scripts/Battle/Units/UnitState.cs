@@ -24,10 +24,14 @@ namespace SeoYuGi.Battle
 
         // AP (0..CombatConfig.apMax). CombatSystem이 초기화·회복.
         public float ap;
-        // 방어 종료 시각 (BattleState.time 기준). >= 현재 시각이면 피해 무효 + 이동 불가.
-        public float guardUntil = -1f;
         // 그림자 도약 버프 종료 시각. 지속 중 일반공격 +1.
         public float attackBuffUntil = -1f;
+        // 스턴 종료 시각 (비명 교란). >= 현재 시각이면 이동·행동 불가.
+        public float stunnedUntil = -1f;
+        // 비행 종료 시각 (폭탄 배달). >= 현재 시각이면 무적 + 이동·행동 불가.
+        public float flyingUntil = -1f;
+        // 스킬별 재사용 가능 시각 [스킬1, 스킬2].
+        public readonly float[] skillReadyAt = { -1f, -1f };
 
         public UnitState(int id, int team, Coord pos, UnitClass unitClass = UnitClass.Balance)
         {

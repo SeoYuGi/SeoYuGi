@@ -354,11 +354,16 @@ namespace SeoYuGi.BattleView
             }
             else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Skill)
             {
-                msg = $"◎ {SkillName(u.unitClass)} 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
+                msg = $"◎ {SkillName(u.unitClass, 0)} 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
                 bannerColor = new Color(1f, 0.3f, 0.2f, 0.9f);
             }
-            else if (u.moveCooldown > 0f) msg = $"이동 쿨타임 {u.moveCooldown:0.0}s — 공격/방어는 가능합니다.";
-            else msg = "타일 클릭 = 이동  ·  A 공격 조준 / S 스킬 조준 / D 방어";
+            else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Skill2)
+            {
+                msg = $"◎ {SkillName(u.unitClass, 1)} 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
+                bannerColor = new Color(1f, 0.3f, 0.2f, 0.9f);
+            }
+            else if (u.moveCooldown > 0f) msg = $"이동 쿨타임 {u.moveCooldown:0.0}s — 공격/스킬은 가능합니다.";
+            else msg = "타일 클릭 = 이동  ·  A 공격 / S 스킬1 / D 스킬2 / H 해킹";
 
             // 프레임 사선 컷 여백만큼 텍스트를 안쪽에 — 텍스트가 프레임을 뚫지 않게
             var box = new Rect(W / 2f - 240, 118, 480, 34);
@@ -414,15 +419,19 @@ namespace SeoYuGi.BattleView
                 $"AP {combatConfig.costAttack:0}", u.ap >= combatConfig.costAttack, 0f, 0f,
                 aim == UnitMoveInput.AimMode.Attack, iconAttack);
 
-            DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass),
-                $"AP {combatConfig.costSkill:0}", u.ap >= combatConfig.costSkill, 0f, 0f,
+            var s1 = ClassCatalog.Get(u.unitClass).skills[0];
+            float s1Cool = Mathf.Max(0f, u.skillReadyAt[0] - battle.time);
+            DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass, 0),
+                $"AP {s1.apCost:0}", u.ap >= s1.apCost && s1Cool <= 0f,
+                s1Cool, s1.cooldownSeconds > 0f ? s1Cool / s1.cooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Skill, iconSkill);
 
-            float guardRemain = Mathf.Max(0f, u.guardUntil - battle.time);
-            float guardFrac = combatConfig.guardDurationSeconds > 0f
-                ? guardRemain / combatConfig.guardDurationSeconds : 0f;
-            DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", "방어",
-                $"AP {combatConfig.costGuard:0}", u.ap >= combatConfig.costGuard, guardRemain, guardFrac, false, iconGuard);
+            var s2 = ClassCatalog.Get(u.unitClass).skills[1];
+            float s2Cool = Mathf.Max(0f, u.skillReadyAt[1] - battle.time);
+            DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", SkillName(u.unitClass, 1),
+                $"AP {s2.apCost:0}", u.ap >= s2.apCost && s2Cool <= 0f,
+                s2Cool, s2.cooldownSeconds > 0f ? s2Cool / s2.cooldownSeconds : 0f,
+                aim == UnitMoveInput.AimMode.Skill2, iconSkill);
 
             // AP 세그먼트 (탱고파이브 탄약 카운터 자리 — 95/최대95 식)
             var apSeg = new Rect(x0 + totalW - segW, y, segW, slotH);
@@ -462,15 +471,20 @@ namespace SeoYuGi.BattleView
             }
         }
 
-        static string SkillName(UnitClass cls)
+        static string SkillName(UnitClass cls, int idx)
         {
-            switch (cls)
+            switch (ClassCatalog.Get(cls).skills[idx].kind)
             {
-                case UnitClass.Tank: return "강타";
-                case UnitClass.Balance: return "돌파";
-                case UnitClass.Assassin: return "그림자 도약";
-                case UnitClass.Grenadier: return "파열탄";
-                case UnitClass.Sniper: return "조준 사격";
+                case SkillKind.ShieldPush: return "방패 밀어붙이기";
+                case SkillKind.Smash: return "강타";
+                case SkillKind.Dash: return "돌파";
+                case SkillKind.Scream: return "비명 교란";
+                case SkillKind.Blink: return "그림자 도약";
+                case SkillKind.Claw: return "발톱 쥐어짜기";
+                case SkillKind.Burst: return "파열탄";
+                case SkillKind.BombDeliver: return "폭탄 배달";
+                case SkillKind.KnockShot: return "넉백샷";
+                case SkillKind.Snipe: return "조준 사격";
                 default: return "스킬";
             }
         }

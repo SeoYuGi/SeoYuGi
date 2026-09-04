@@ -38,11 +38,9 @@ namespace SeoYuGi.Integration
                         OnPredictedShot?.Invoke(unitId, cmd.Target);
                     break;
                 case CommandType.Heavy:
-                    if (sink.Submit(BattleIntent.Skill(unitId, ToCoord(cmd.Target))).accepted && cmd.Predicted)
+                    if (sink.Submit(BattleIntent.Skill(unitId, ToCoord(cmd.Target), cmd.SkillIndex)).accepted
+                        && cmd.Predicted)
                         OnPredictedShot?.Invoke(unitId, cmd.Target);
-                    break;
-                case CommandType.Guard:
-                    sink.Submit(BattleIntent.Guard(unitId));
                     break;
                 case CommandType.Decoy:
                     sink.Submit(BattleIntent.Hack(unitId)); // 해킹 — 5초간 적 예측 교란

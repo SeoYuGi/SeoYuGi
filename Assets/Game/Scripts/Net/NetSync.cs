@@ -83,8 +83,11 @@ namespace SeoYuGi.Net
                 w.WriteValueSafe(u.moveGauge);
                 w.WriteValueSafe(u.moveCooldown);
                 w.WriteValueSafe(u.regenDelay);
-                w.WriteValueSafe(u.guardUntil);
                 w.WriteValueSafe(u.attackBuffUntil);
+                w.WriteValueSafe(u.stunnedUntil);
+                w.WriteValueSafe(u.flyingUntil);
+                w.WriteValueSafe(u.skillReadyAt[0]);
+                w.WriteValueSafe(u.skillReadyAt[1]);
             }
 
             w.WriteValueSafe((byte)r.Zones.Count);
@@ -167,8 +170,11 @@ namespace SeoYuGi.Net
                 r.ReadValueSafe(out float gauge);
                 r.ReadValueSafe(out float cooldown);
                 r.ReadValueSafe(out float regen);
-                r.ReadValueSafe(out float guardUntil);
                 r.ReadValueSafe(out float buffUntil);
+                r.ReadValueSafe(out float stunnedUntil);
+                r.ReadValueSafe(out float flyingUntil);
+                r.ReadValueSafe(out float skill0At);
+                r.ReadValueSafe(out float skill1At);
 
                 var u = battle.GetUnit(id);
                 if (u == null) continue;
@@ -190,8 +196,11 @@ namespace SeoYuGi.Net
                 u.moveGauge = gauge;
                 u.moveCooldown = cooldown;
                 u.regenDelay = regen;
-                u.guardUntil = guardUntil;
                 u.attackBuffUntil = buffUntil;
+                u.stunnedUntil = stunnedUntil;
+                u.flyingUntil = flyingUntil;
+                u.skillReadyAt[0] = skill0At;
+                u.skillReadyAt[1] = skill1At;
             }
 
             r.ReadValueSafe(out byte zoneCount);

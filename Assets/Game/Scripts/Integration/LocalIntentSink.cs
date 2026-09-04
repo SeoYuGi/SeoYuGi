@@ -34,10 +34,7 @@ namespace SeoYuGi.Integration
                     return FromAct(combat.TryAttack(intent.unitId, intent.target));
 
                 case IntentKind.Skill:
-                    return FromAct(combat.TrySkill(intent.unitId, intent.target));
-
-                case IntentKind.Guard:
-                    return FromAct(combat.TryGuard(intent.unitId));
+                    return FromAct(combat.TrySkill(intent.unitId, intent.skillIndex, intent.target));
 
                 case IntentKind.Hack:
                     var u = state.GetUnit(intent.unitId);

@@ -3,14 +3,14 @@ using NUnit.Framework;
 
 namespace SeoYuGi.Battle.Tests
 {
-    /// <summary>클래스 5종 스탯 (세부기획 C: HP 6/4/3/3/2, 시야 3/4/4/4/5).</summary>
+    /// <summary>클래스 5종 스탯 (캐릭터 기획 v1.7: HP 15/10/8/8/5, 시야 3/4/4/4/5).</summary>
     public class UnitClassTests
     {
-        [TestCase(UnitClass.Tank, 6, 3)]
-        [TestCase(UnitClass.Balance, 4, 4)]
-        [TestCase(UnitClass.Assassin, 3, 4)]
-        [TestCase(UnitClass.Grenadier, 3, 4)]
-        [TestCase(UnitClass.Sniper, 2, 5)]
+        [TestCase(UnitClass.Tank, 15, 3)]
+        [TestCase(UnitClass.Balance, 10, 4)]
+        [TestCase(UnitClass.Assassin, 8, 4)]
+        [TestCase(UnitClass.Grenadier, 8, 4)]
+        [TestCase(UnitClass.Sniper, 5, 5)]
         public void Catalog_MatchesSpec(UnitClass cls, int hp, int sight)
         {
             var def = ClassCatalog.Get(cls);
@@ -25,8 +25,8 @@ namespace SeoYuGi.Battle.Tests
             var unit = new UnitState(1, 0, new Coord(0, 0), UnitClass.Tank);
 
             Assert.AreEqual(UnitClass.Tank, unit.unitClass);
-            Assert.AreEqual(6, unit.hp);
-            Assert.AreEqual(6, unit.maxHp);
+            Assert.AreEqual(15, unit.hp);
+            Assert.AreEqual(15, unit.maxHp);
             Assert.AreEqual(3, unit.sightRange);
             Assert.AreSame(ClassCatalog.Get(UnitClass.Tank).move, unit.profile);
         }

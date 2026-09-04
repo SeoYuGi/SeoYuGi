@@ -21,15 +21,18 @@ namespace SeoYuGi.Integration
         readonly HashSet<int> hackTeams;      // 인간이 있는 팀 — 해킹 장비 사용 가능 팀
         readonly int matchRound;
         readonly HackSystem hack;
+        readonly PickupSystem pickup;
 
         readonly List<ActorState> actors = new List<ActorState>();
         readonly List<ZoneState> zones = new List<ZoneState>();
         readonly List<Telegraph> telegraphs = new List<Telegraph>();
         readonly List<AiCell> highlands = new List<AiCell>(); // 라운드 내 불변 — 생성 시 1회 스캔
+        readonly List<AiCell> healPacks = new List<AiCell>(); // 활성 팩만 — 매 프레임 갱신
         AiCell[][] zoneCellCache; // 거점 칸은 라운드 내 불변 — 1회 변환
 
         public CoreWorldView(BattleState state, CombatSystem combat, RoundSystem round,
-            VisionSystem vision, HashSet<int> humanUnitIds, int matchRound, HackSystem hack = null)
+            VisionSystem vision, HashSet<int> humanUnitIds, int matchRound, HackSystem hack = null,
+            PickupSystem pickup = null)
         {
             this.state = state;
             this.combat = combat;
@@ -38,6 +41,7 @@ namespace SeoYuGi.Integration
             this.humanUnitIds = humanUnitIds;
             this.matchRound = matchRound;
             this.hack = hack;
+            this.pickup = pickup;
 
             // 해킹 장비는 인간이 있는 팀만 사용 (구 animalTeam 규칙의 다중 인간 확장)
             hackTeams = new HashSet<int>();
@@ -67,9 +71,15 @@ namespace SeoYuGi.Integration
                     Class = (ClassId)(int)u.unitClass, // enum 순서 동일 계약
                     Pos = new AiCell(u.pos.x, u.pos.y),
                     Hp = u.hp,
+                    MaxHp = u.maxHp,
                     Alive = u.alive,
                     IsHuman = humanUnitIds.Contains(u.id)
                 });
+
+            healPacks.Clear();
+            if (pickup != null)
+                foreach (var pack in pickup.Packs)
+                    if (pack.active) healPacks.Add(new AiCell(pack.pos.x, pack.pos.y));
 
             zones.Clear();
             for (int i = 0; i < round.Zones.Count; i++)
@@ -109,6 +119,7 @@ namespace SeoYuGi.Integration
         public IReadOnlyList<ZoneState> Zones => zones;
         public IReadOnlyList<Telegraph> Telegraphs => telegraphs;
         public IReadOnlyList<AiCell> Highlands => highlands;
+        public IReadOnlyList<AiCell> HealPacks => healPacks;
 
         public float GetAp(int actorId) => state.GetUnit(actorId)?.ap ?? 0f;
 

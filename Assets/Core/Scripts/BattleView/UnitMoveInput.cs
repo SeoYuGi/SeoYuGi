@@ -28,7 +28,7 @@ namespace SeoYuGi.BattleView
         GridView gridView;
         UnitViewRegistry views;
 
-        public enum AimMode { None, Attack, Skill }
+        public enum AimMode { None, Attack, Skill, Skill2 }
 
         int selectedUnitId = -1;
         AimMode aim;
@@ -88,7 +88,7 @@ namespace SeoYuGi.BattleView
                 else Deselect();
             }
 
-            // 전투 입력: A=공격 조준 토글, S=스킬 조준 토글, D=방어 즉발, ESC=조준 취소
+            // 전투 입력: A=공격 조준, S=스킬1 조준, D=스킬2 조준 (토글), ESC=취소. 방어는 기획 삭제.
             if (Keyboard.current != null && selectedUnitId != -1)
             {
                 if (Keyboard.current.aKey.wasPressedThisFrame)
@@ -96,7 +96,7 @@ namespace SeoYuGi.BattleView
                 if (Keyboard.current.sKey.wasPressedThisFrame)
                     aim = aim == AimMode.Skill ? AimMode.None : AimMode.Skill;
                 if (Keyboard.current.dKey.wasPressedThisFrame)
-                    Log(combat.TryGuard(selectedUnitId), "방어");
+                    aim = aim == AimMode.Skill2 ? AimMode.None : AimMode.Skill2;
                 if (Keyboard.current.escapeKey.wasPressedThisFrame)
                     aim = AimMode.None;
             }
@@ -131,14 +131,15 @@ namespace SeoYuGi.BattleView
             {
                 if (TryHoverCell(out var target))
                 {
+                    int skillIdx = aim == AimMode.Skill2 ? 1 : 0;
                     bool validTarget = aim == AimMode.Attack
                         ? combat.GetAttackImpact(selectedUnitId, target, aimImpact)
-                        : combat.GetSkillImpact(selectedUnitId, target, aimImpact);
+                        : combat.GetSkillImpact(selectedUnitId, skillIdx, target, aimImpact);
                     if (validTarget)
                     {
                         var result = aim == AimMode.Attack
                             ? combat.TryAttack(selectedUnitId, target)
-                            : combat.TrySkill(selectedUnitId, target);
+                            : combat.TrySkill(selectedUnitId, skillIdx, target);
                         Log(result, aim == AimMode.Attack ? "공격" : "스킬");
                         if (result == ActDenied.None) aim = AimMode.None;
                     }
@@ -201,15 +202,16 @@ namespace SeoYuGi.BattleView
             if (selectedUnitId != -1 && aim != AimMode.None)
             {
                 // 조준 모드: 이동 범위 대신 조준 가능 칸(주황) + 발사 시 맞는 칸(진빨강)
+                int skillIdx = aim == AimMode.Skill2 ? 1 : 0;
                 if (aim == AimMode.Attack) combat.GetAttackRange(selectedUnitId, aimRange);
-                else combat.GetSkillRange(selectedUnitId, aimRange);
+                else combat.GetSkillRange(selectedUnitId, skillIdx, aimRange);
                 foreach (var c in aimRange) { cells.Add(c); colors.Add(aimRangeColor); }
 
                 if (TryHoverCell(out var hover))
                 {
                     bool valid = aim == AimMode.Attack
                         ? combat.GetAttackImpact(selectedUnitId, hover, aimImpact)
-                        : combat.GetSkillImpact(selectedUnitId, hover, aimImpact);
+                        : combat.GetSkillImpact(selectedUnitId, skillIdx, hover, aimImpact);
                     if (valid)
                     {
                         foreach (var c in aimImpact) { cells.Add(c); colors.Add(aimImpactColor); }

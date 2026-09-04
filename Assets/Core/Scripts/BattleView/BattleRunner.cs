@@ -408,7 +408,7 @@ namespace SeoYuGi.BattleView
                     hud.ShowSubtitle("패턴 적중 — 예측 사격", 2.2f);
                 }
             };
-            Combat.OnGuard += _ => battleAudio.PlaySfx("S8_Guard", 0.8f);
+            Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S8_Guard", 0.8f); // 스턴 SFX (가드 사운드 재활용)
             Combat.OnSkillCast += (unitId, kind) =>
             {
                 battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
@@ -489,13 +489,13 @@ namespace SeoYuGi.BattleView
                 }
             };
 
-            Combat.OnGuard += unitId =>
+            Combat.OnStunned += (unitId, _) =>
             {
                 var u = Battle.GetUnit(unitId);
                 if (u.team == playerTeam || playerVisibleFn(u.pos))
                 {
-                    CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(0.3f, 0.7f, 1f));
-                    FloatingText.Spawn(gridView.CoordToWorld(u.pos), "방어", new Color(0.45f, 0.75f, 1f), 0.9f, 0.6f);
+                    CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(1f, 0.85f, 0.3f));
+                    FloatingText.Spawn(gridView.CoordToWorld(u.pos), "스턴!", new Color(1f, 0.85f, 0.3f), 0.9f, 0.7f);
                 }
             };
 
@@ -590,10 +590,15 @@ namespace SeoYuGi.BattleView
         {
             switch (kind)
             {
+                case SkillKind.ShieldPush: return "S16_Smash"; // 전용 SFX 나오기 전 재활용
                 case SkillKind.Smash: return "S16_Smash";
                 case SkillKind.Dash: return "S17_Dash";
+                case SkillKind.Scream: return "S8_Guard";
                 case SkillKind.Blink: return "S18_Blink";
+                case SkillKind.Claw: return "S16_Smash";
                 case SkillKind.Burst: return "S19_Burst";
+                case SkillKind.BombDeliver: return "S19_Burst";
+                case SkillKind.KnockShot: return "S20_Snipe";
                 case SkillKind.Snipe: return "S20_Snipe";
                 default: return "S3_Hit";
             }
@@ -666,10 +671,15 @@ namespace SeoYuGi.BattleView
         {
             switch (kind)
             {
+                case SkillKind.ShieldPush: return "방패 밀어붙이기!";
                 case SkillKind.Smash: return "강타!";
                 case SkillKind.Dash: return "돌파!";
+                case SkillKind.Scream: return "비명 교란!";
                 case SkillKind.Blink: return "그림자 도약!";
+                case SkillKind.Claw: return "발톱 쥐어짜기!";
                 case SkillKind.Burst: return "파열탄!";
+                case SkillKind.BombDeliver: return "폭탄 배달!";
+                case SkillKind.KnockShot: return "넉백샷!";
                 case SkillKind.Snipe: return "조준 사격!";
                 default: return "스킬!";
             }
@@ -791,8 +801,8 @@ namespace SeoYuGi.BattleView
 
                 if (!visible) continue; // 시야 밖 적 — 흔적 없이 완전 비표시 (고스트 마커 폐지)
 
-                // 쿨타임/방어 시각화: 잠긴 유닛은 어둡게
-                view.SetDimmed(unit.moveCooldown > 0f || unit.guardUntil > Battle.time);
+                // 쿨타임/스턴 시각화: 잠긴 유닛은 어둡게
+                view.SetDimmed(unit.moveCooldown > 0f || unit.stunnedUntil > Battle.time);
 
                 // 밀침·대시·점멸 등 연출 없는 위치 변경 동기화
                 if (!view.IsMoving && !view.IsAt(unit.pos))

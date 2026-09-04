@@ -14,11 +14,12 @@ namespace SeoYuGi.Ai
     {
         public CommandType Type;
         public Cell Target;
-        public bool Predicted; // 학습 기반 예측 사격 — 연출(적중/실패 자막)용 표식
+        public bool Predicted;  // 학습 기반 예측 사격 — 연출(적중/실패 자막)용 표식
+        public int SkillIndex;  // Heavy 전용: 0=스킬1, 1=스킬2
 
         public static AiCommand None => new AiCommand { Type = CommandType.None };
-        public static AiCommand Of(CommandType type, Cell target, bool predicted = false) =>
-            new AiCommand { Type = type, Target = target, Predicted = predicted };
+        public static AiCommand Of(CommandType type, Cell target, bool predicted = false, int skillIndex = 0) =>
+            new AiCommand { Type = type, Target = target, Predicted = predicted, SkillIndex = skillIndex };
     }
 
     public struct ActorState

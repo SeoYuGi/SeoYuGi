@@ -44,11 +44,8 @@ namespace SeoYuGi.Integration
                         OnPredictedShot?.Invoke(unitId, cmd.Target);
                     break;
                 case CommandType.Heavy:
-                    if (combat.TrySkill(unitId, ToCoord(cmd.Target)) == ActDenied.None && cmd.Predicted)
+                    if (combat.TrySkill(unitId, cmd.SkillIndex, ToCoord(cmd.Target)) == ActDenied.None && cmd.Predicted)
                         OnPredictedShot?.Invoke(unitId, cmd.Target);
-                    break;
-                case CommandType.Guard:
-                    combat.TryGuard(unitId);
                     break;
                 case CommandType.Decoy:
                     hack?.TryHack(unitId, (TeamId)team); // 해킹 — 5초간 적 예측 교란

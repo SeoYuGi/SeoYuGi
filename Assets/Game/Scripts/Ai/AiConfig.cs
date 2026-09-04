@@ -6,8 +6,7 @@ namespace SeoYuGi.Ai
         // AP 비용 — 코어 규칙과 반드시 일치시킬 것 (기획서 §03)
         public float CostMove = 1f;
         public float CostAttack = 2f;
-        public float CostHeavy = 3f;
-        public float CostGuard = 1f; // 디코이는 장비(AP 무관)라 비용 없음
+        public float CostHeavy = 3f; // 스킬2 기준 보수 추정 (실제 비용은 SkillDef — 부족하면 코어가 거부). 방어·디코이 비용 없음
 
         public float MinDecisionInterval = 0.25f; // 초당 최대 4회 판단 — 인간다운 템포
         public float DodgeWindow = 0.6f;          // 예고 판정까지 이 시간 안이면 회피 시도

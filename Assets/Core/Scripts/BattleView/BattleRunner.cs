@@ -754,6 +754,7 @@ namespace SeoYuGi.BattleView
 
             hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindSlot(playerUnitId).callsign,
                 () => hackSystem.Charge(playerUnitId));
+            hud.ShowChatCheatsheet = true; // 빠른채팅 치트시트 켠 채로 진입 (Tab으로 토글)
             // input.Init은 아래에서 intentSink 생성 직후 호출
 
             Round.OnZoneCaptured += zone =>
@@ -1469,11 +1470,12 @@ namespace SeoYuGi.BattleView
             if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
                 intentSink.Submit(BattleIntent.Hack(playerUnitId));
 
-            // 빠른채팅 — 숫자키 1~8 즉시 전송. Tab 홀드는 읽기 전용 치트시트(조작 안 뺏음).
+            // 빠른채팅 — 숫자키 1~8 즉시 전송. Tab = 치트시트 토글(기본 켜짐, 읽기 전용).
             // 쿨다운·팀 배달은 호스트 권위 — 클라는 요청만 쏜다.
             if (Keyboard.current != null)
             {
-                hud.ShowChatCheatsheet = Keyboard.current.tabKey.isPressed;
+                if (Keyboard.current.tabKey.wasPressedThisFrame)
+                    hud.ShowChatCheatsheet = !hud.ShowChatCheatsheet;
                 for (int i = 0; i < ChatKeys.Length; i++)
                     if (Keyboard.current[ChatKeys[i]].wasPressedThisFrame)
                     {

@@ -244,6 +244,13 @@ namespace SeoYuGi.BattleView
             }
             gridView.ClearBaseTints(); // 이전 라운드 거점 소유 틴트 제거
 
+            // 거점 기본(미소유) = 흰색 — 탈환되면 OnZoneCaptured가 팀 색으로 덮는다.
+            // 텍스처 위 곱연산이라 1.7배 부스트로 하얗게 띄움.
+            var neutralZoneTint = Color.white * 1.7f;
+            foreach (var zone in map.Zones)
+                foreach (var c in zone)
+                    gridView.SetBaseTint(c, neutralZoneTint);
+
             foreach (var z in Round.Zones)
             {
                 var disc = ZoneCaptureDisc.Create(transform, gridView.CoordToWorld(z.Center));

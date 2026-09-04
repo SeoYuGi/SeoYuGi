@@ -271,7 +271,7 @@ namespace SeoYuGi.BattleView
             GUI.Label(new Rect(r.x, r.y, r.width, 20), rightAlign ? $"{dots}  {(team == playerTeam ? "아군" : "적군")}" : $"{(team == playerTeam ? "아군" : "적군")}  {dots}", style);
             GUI.color = Color.white;
 
-            string winsText = $"승 {match.GetWins(team)} / {MatchSystem.MaxRounds}판"; // 3판 다수승
+            string winsText = $"승리 {match.GetWins(team)}/{MatchSystem.WinsNeeded}"; // 3판 2선승
             GUI.Label(new Rect(r.x, r.y + 20, r.width, 16),
                 winsText, new GUIStyle(roundStyle) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft });
         }

@@ -69,6 +69,7 @@ namespace SeoYuGi.BattleView
         public RoundSystem Round { get; private set; }
         public BattleState Battle { get; private set; }
         public MatchSystem Match { get; private set; }
+        public int PlayerUnitId => playerUnitId;
 
         CoreWorldView worldView;
         BattleHud hud;

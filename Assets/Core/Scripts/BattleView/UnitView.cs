@@ -106,6 +106,55 @@ namespace SeoYuGi.BattleView
         /// <summary>즉시 위치 동기화 (점멸·시야 재등장 등 순간이동이 맞는 경우).</summary>
         public void SnapTo(Coord c) => transform.position = WorldOf(c);
 
+        /// <summary>진행 중인 이동 연출 중단 — 점멸 등 순간이동이 걷기를 덮어써야 할 때.</summary>
+        public void CancelMove()
+        {
+            if (moving != null) StopCoroutine(moving);
+            moving = null;
+        }
+
+        /// <summary>폭탄 배달 왕복 비행 — 떠올라 목표까지 날아가 폭탄을 놓고 원위치로 복귀.
+        /// 시뮬 위치는 출발 칸 그대로 — 연출 내내 moving으로 잠가 SyncPresentation 간섭 차단.</summary>
+        public void PlayBombFlight(Vector3 targetWorld, float outDuration, float backDuration)
+        {
+            if (moving != null) StopCoroutine(moving);
+            moving = StartCoroutine(BombFlightRoutine(targetWorld + Vector3.up * yOffset, outDuration, backDuration));
+        }
+
+        IEnumerator BombFlightRoutine(Vector3 target, float outDuration, float backDuration)
+        {
+            Vector3 home = transform.position;
+            const float height = 1.5f;
+            float nextPuff = 0f;
+
+            for (float t = 0f; t < outDuration; t += Time.deltaTime)
+            {
+                float k = t / outDuration;
+                var p = Vector3.Lerp(home, target, Mathf.SmoothStep(0f, 1f, k));
+                p.y += height * Mathf.SmoothStep(0f, 1f, Mathf.Min(k * 2.5f, 1f)); // 초반 급상승 후 순항
+                transform.position = p;
+                if (t >= nextPuff) // 슝슝 — 바람 줄기 궤적
+                {
+                    nextPuff = t + 0.12f;
+                    FxQuad.One(VfxTextures.Wind, p + Vector3.up * 0.1f, new Color(0.8f, 0.9f, 1f),
+                        0.9f, 0.4f, 0.3f, velocity: (home - target).normalized * 2.5f);
+                }
+                yield return null;
+            }
+
+            for (float t = 0f; t < backDuration; t += Time.deltaTime)
+            {
+                float k = t / backDuration;
+                var p = Vector3.Lerp(target, home, Mathf.SmoothStep(0f, 1f, k));
+                p.y += height * Mathf.SmoothStep(0f, 1f, Mathf.Min((1f - k) * 2.5f, 1f)); // 막판 하강
+                transform.position = p;
+                yield return null;
+            }
+
+            transform.position = home;
+            moving = null;
+        }
+
         /// <summary>빠른 미끄러짐 (대시·밀침) — 순간이동처럼 안 보이게.</summary>
         public void PlaySlide(Coord dest, float duration = 0.12f)
         {

@@ -19,7 +19,9 @@ namespace SeoYuGi.BattleView
         [SerializeField] float tileFill = 0.96f;  // 타일이 칸을 채우는 비율. 나머지가 틈 = 그리드 라인
         [SerializeField] float wallHeight = 0.6f; // 장애물 벽 블록 높이
         [SerializeField] float highlandHeight = 0.35f; // 고지대 단상 높이 (벽보다 낮아 올라선 유닛이 보임)
-        [SerializeField] Color fogColor = new Color(0.22f, 0.24f, 0.3f); // 시야 밖 타일 (세부기획 B)
+        [SerializeField] Color fogColor = new Color(0.16f, 0.17f, 0.22f); // 시야 밖 타일 — 어둡게 죽여 색 정보 제거
+        [SerializeField] Color fogOverlayColor = new Color(0.34f, 0.38f, 0.5f, 0.5f); // 시야 밖 안개 구름 레이어
+        [SerializeField] float fogOverlayHeight = 1.0f; // 안개 레이어가 뜨는 높이 (타일·낮은 프롭 위)
 
         [Header("Textures")]
         [SerializeField] Texture2D floorTextureA;
@@ -36,6 +38,8 @@ namespace SeoYuGi.BattleView
         // 하이라이트가 걷힌 뒤에도 유지되는 기본 틴트 (거점 소유 표시 등)
         readonly Dictionary<Coord, Color> baseTints = new Dictionary<Coord, Color>();
         readonly HashSet<Coord> fogged = new HashSet<Coord>();
+        readonly Dictionary<Coord, GameObject> fogOverlays = new Dictionary<Coord, GameObject>(); // 시야 밖 안개 쿼드 풀
+        Material fogOverlayMat; // 안개 레이어 공유 머티리얼 (반투명 언릿)
         MaterialPropertyBlock mpb;
         Material matFloorA, matFloorB, matObstacle, matZone, matHighland;
 
@@ -53,6 +57,9 @@ namespace SeoYuGi.BattleView
             highlighted.Clear();
             baseTints.Clear();
             fogged.Clear();
+            foreach (var kv in fogOverlays)
+                if (kv.Value != null) Destroy(kv.Value);
+            fogOverlays.Clear();
 
             this.grid = grid;
             mpb = new MaterialPropertyBlock();
@@ -294,6 +301,76 @@ namespace SeoYuGi.BattleView
                 if (!visible(c)) fogged.Add(c);
             }
             RepaintAll();
+            UpdateFogOverlays();
+        }
+
+        /// <summary>시야 밖 칸 위에 반투명 안개 레이어를 켜고, 시야 안은 끈다. 살짝 일렁여 "안개" 느낌.</summary>
+        void UpdateFogOverlays()
+        {
+            EnsureFogMat();
+            // 은은한 맥동 — 색만 갱신하면 공유 머티리얼이라 1회로 전체 반영
+            float pulse = 0.85f + 0.15f * Mathf.Sin(Time.time * 1.3f);
+            var col = fogOverlayColor;
+            col.a *= pulse;
+            fogOverlayMat.color = col;
+
+            for (int y = 0; y < grid.Height; y++)
+            for (int x = 0; x < grid.Width; x++)
+            {
+                var c = new Coord(x, y);
+                if (tiles[x, y] == null) continue; // Void 칸 — 맵 밖, 안개 없음
+                bool on = fogged.Contains(c);
+                if (!fogOverlays.TryGetValue(c, out var ov))
+                {
+                    if (!on) continue;       // 아직 안개도 아니면 생성 미룸
+                    ov = CreateFogOverlay(c);
+                    fogOverlays[c] = ov;
+                }
+                if (ov.activeSelf != on) ov.SetActive(on);
+            }
+        }
+
+        void EnsureFogMat()
+        {
+            if (fogOverlayMat != null) return;
+            fogOverlayMat = new Material(Shader.Find("Sprites/Default")) { color = fogOverlayColor };
+            fogOverlayMat.mainTexture = SoftBlobTexture(); // 부드러운 방사형 — 칸이 겹치며 구름처럼 뭉갬
+        }
+
+        static Texture2D softBlob;
+        /// <summary>중앙 불투명 → 가장자리 투명한 부드러운 원. 칸마다 얹어 겹치면 각 없는 안개가 된다.</summary>
+        static Texture2D SoftBlobTexture()
+        {
+            if (softBlob != null) return softBlob;
+            const int n = 64;
+            softBlob = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            float c = (n - 1) * 0.5f;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c; // 0(중앙)~1(가장자리)
+                float a = Mathf.Clamp01(1f - d);
+                a = a * a * (3f - 2f * a); // smoothstep — 가장자리 부드럽게
+                softBlob.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+            softBlob.Apply();
+            return softBlob;
+        }
+
+        GameObject CreateFogOverlay(Coord c)
+        {
+            var ov = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            ov.name = $"Fog_{c.x}_{c.y}";
+            ov.transform.SetParent(transform, false);
+            Destroy(ov.GetComponent<Collider>());
+            ov.transform.position = transform.position + new Vector3(c.x * tileSize, fogOverlayHeight, c.y * tileSize);
+            ov.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥과 평행 (위에서 내려다봄)
+            ov.transform.localScale = new Vector3(tileSize * 1.7f, tileSize * 1.7f, 1f); // 이웃과 겹쳐 경계 무마
+            var r = ov.GetComponent<Renderer>();
+            r.sharedMaterial = fogOverlayMat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            return ov;
         }
 
         void RepaintAll()

@@ -276,17 +276,17 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void BombDeliver_MovesFlies_ThenBlasts()
+        public void BombDeliver_FliesDeliversAndReturns()
         {
             var caster = Add(1, 0, new Coord(0, 0), UnitClass.Grenadier);
             var enemy = Add(2, 1, new Coord(3, 1));
             var combat = NewCombat();
 
             Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 1, new Coord(3, 0))); // 맨해튼 3 ≤ 4
-            Assert.AreEqual(new Coord(3, 0), caster.pos); // 착지 칸 선점
+            Assert.AreEqual(new Coord(0, 0), caster.pos); // 원위치 유지 — 배달 후 복귀 (왕복은 뷰 연출)
             Assert.IsTrue(caster.flyingUntil > battle.time); // 비행 중 무적
 
-            combat.Tick(1f); // 착지 + 폭발
+            combat.Tick(1f); // 폭탄 착탄 + 폭발
 
             Assert.AreEqual(10 - 2, enemy.hp); // 십자 팔에 명중
             Assert.IsFalse(caster.flyingUntil > battle.time);

@@ -61,6 +61,7 @@ namespace SeoYuGi.Art
             var (trash, bush, density) = ThemeOf(map.Name);
 
             CreateGroundPlane(map);
+            CreateMapBorder(map);
 
             // 벽 위 잡동사니 — 장애물 실루엣은 유지하고 위에만 얹는다
             foreach (var w in map.Walls)
@@ -92,6 +93,37 @@ namespace SeoYuGi.Art
             }
         }
 
+        /// <summary>맵 실루엣 테두리 — 발광 라인으로 "여기까지가 판"을 명확히 (배경과 분리).</summary>
+        void CreateMapBorder(ParsedMap map)
+        {
+            float tile = (gridView.CoordToWorld(new Coord(1, 0)) - gridView.CoordToWorld(new Coord(0, 0))).x;
+            var o0 = gridView.CoordToWorld(new Coord(0, 0));
+            var o1 = gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1));
+            float half = tile * 0.5f, y = 0.02f; // 배경(-0.06) 위, 타일 윗면 아래
+            float minX = o0.x - half, maxX = o1.x + half;
+            float minZ = o0.z - half, maxZ = o1.z + half;
+
+            var go = new GameObject("MapBorder");
+            go.transform.SetParent(transform, false);
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = true;
+            lr.loop = true;
+            lr.positionCount = 4;
+            lr.SetPositions(new[]
+            {
+                new Vector3(minX, y, minZ), new Vector3(maxX, y, minZ),
+                new Vector3(maxX, y, maxZ), new Vector3(minX, y, maxZ),
+            });
+            lr.widthMultiplier = tile * 0.12f;
+            lr.numCornerVertices = 2;
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.receiveShadows = false;
+            var mat = new Material(Shader.Find("Sprites/Default"));
+            var edge = new Color(0.55f, 0.85f, 1f); // 차가운 시안 발광 — 판 경계
+            lr.material = mat;
+            lr.startColor = lr.endColor = edge;
+        }
+
         /// <summary>맵 아래 골목 아스팔트 배경판 — 이미지 없으면 어두운 무광 판.</summary>
         void CreateGroundPlane(ParsedMap map)
         {
@@ -112,11 +144,13 @@ namespace SeoYuGi.Art
             var mat = new Material(rend.sharedMaterial);
             if (tex != null)
             {
-                // URP Lit은 _BaseMap, 빌트인은 _MainTex — 셰이더 불문 물리게 둘 다 세팅
+                // URP Lit은 _BaseMap, 빌트인은 _MainTex — 셰이더 불문 물리게 둘 다 세팅.
+                // 배경은 곱연산으로 확 눌러서(≈0.45) 밝은 맵 타일이 위로 떠 보이게 — 맵 경계 가독성.
+                var dim = new Color(0.45f, 0.45f, 0.5f);
                 mat.mainTexture = tex;
                 if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
-                mat.color = Color.white;
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", dim);
+                mat.color = dim;
             }
             else
             {

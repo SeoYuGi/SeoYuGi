@@ -166,7 +166,7 @@ public static class UINetPopupBuilders
 
         // 캐릭터 선택 그리드 — 철권식: 중앙 카드 5장 상시 표시, 클릭 = 선택.
         // 아트·이름·선택 하이라이트는 UILobbyPopup이 런타임 주입.
-        string[] pickNames = { "너구리", "치즈태비", "검은 고양이", "비둘기", "까치" };
+        string[] pickNames = { "너구리", "고라니", "검은 고양이", "비둘기", "까치" };
         for (int i = 0; i < 5; i++)
         {
             var pick = NewRect($"Pick{i + 1}", root);

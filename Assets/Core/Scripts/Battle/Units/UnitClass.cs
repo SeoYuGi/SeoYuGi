@@ -58,6 +58,7 @@ namespace SeoYuGi.Battle
     /// <summary>
     /// 클래스 데이터 테이블 (캐릭터 기획 v1.7: HP 15/10/8/8/5 — 원킬 콤보 방지 ×2.5 상향).
     /// 이동 프로필은 역할 해석: 탱커·스나이퍼 둔중, 어쌔신 기동, 나머지 표준.
+    /// 2026-09-05: 이동 템포 상향 — 노랑 쿨 ~40% 감소, 게이지 회복 ~35% 증가 (전반적으로 답답하다는 피드백).
     /// </summary>
     public static class ClassCatalog
     {
@@ -66,7 +67,7 @@ namespace SeoYuGi.Battle
             new ClassDef
             {
                 id = UnitClass.Tank, maxHp = 15, sightRange = 3, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.6f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3.5f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.85f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.2f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 0.6f, damage = 1, range = 1, cooldownSeconds = 6f },
@@ -76,7 +77,7 @@ namespace SeoYuGi.Battle
             new ClassDef
             {
                 id = UnitClass.Balance, maxHp = 10, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.8f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.8f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 2, cooldownSeconds = 6f },
@@ -86,7 +87,7 @@ namespace SeoYuGi.Battle
             new ClassDef
             {
                 id = UnitClass.Assassin, maxHp = 8, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.5f },
+                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.5f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.5f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Blink, telegraphSeconds = 0f, damage = 0, range = 2, cooldownSeconds = 6f },
@@ -96,7 +97,7 @@ namespace SeoYuGi.Battle
             new ClassDef
             {
                 id = UnitClass.Grenadier, maxHp = 8, sightRange = 4, attackShape = AttackShape.Circle2,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.8f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.8f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 0.8f, damage = 1, range = 2, cooldownSeconds = 6f },
@@ -106,7 +107,7 @@ namespace SeoYuGi.Battle
             new ClassDef
             {
                 id = UnitClass.Sniper, maxHp = 5, sightRange = 5, attackShape = AttackShape.Square2,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.6f, regenDelaySeconds = 0f, yellowCooldownSeconds = 4f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.85f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.6f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 1, cooldownSeconds = 7f },

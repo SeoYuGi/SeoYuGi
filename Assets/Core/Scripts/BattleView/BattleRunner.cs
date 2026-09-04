@@ -11,7 +11,7 @@ namespace SeoYuGi.BattleView
 {
     /// <summary>
     /// 전투 진입점 + 매치 오케스트레이션 (기획서 §05: 3라운드 2선승).
-    /// 맵은 BattleMaps 고정 5장 중 mapIndex — 시드 무작위 없음(유저·AI 모두 지형 학습).
+    /// 맵은 BattleMaps 고정 5장 중 매치 시작 팝업에서 선택 — 시드 무작위 없음(유저·AI 모두 지형 학습).
     /// 라운드마다 Core(BattleState/시스템들)를 통째로 새로 조립하고,
     /// Predictor만 매치 내내 살아남아 라운드를 거치며 인간을 학습한다.
     /// 흐름: Playing → (라운드 종료) → Briefing(SPACE) → 다음 라운드 → ... → MatchOver(R).
@@ -97,15 +97,29 @@ namespace SeoYuGi.BattleView
 
         void Start()
         {
-            map = BattleMaps.Get(mapIndex);
-            gridConfig = new GridConfig { width = map.Width, height = map.Height };
             playerTeam = FindRoster(playerUnitId).team;
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c);
-
             Match = new MatchSystem();
-            predictor = NewPredictor();
-            Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
-            ShowClassSelect();
+            ShowMapSelect();
+        }
+
+        /// <summary>맵 선택 팝업 → mapIndex 확정 + 맵 종속 상태 조립 → 클래스 선택으로.</summary>
+        void ShowMapSelect()
+        {
+            phase = Phase.ClassSelect; // 픽 단계(맵+클래스) 동안 시뮬레이션 정지
+            if (UIManager.Instance == null)
+                new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
+
+            var popup = UIManager.Instance.ShowPopupUI<UIMapSelectPopup>();
+            popup.OnPicked = idx =>
+            {
+                mapIndex = idx;
+                map = BattleMaps.Get(mapIndex);
+                gridConfig = new GridConfig { width = map.Width, height = map.Height };
+                predictor = NewPredictor();
+                Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
+                ShowClassSelect();
+            };
         }
 
         /// <summary>클래스 선택 팝업 → 픽 적용 + 적팀 랜덤 롤 → 매치 시작.</summary>

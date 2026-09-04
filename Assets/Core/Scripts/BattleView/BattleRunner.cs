@@ -700,6 +700,17 @@ namespace SeoYuGi.BattleView
             foreach (var s in matchSetup.slots) hackUnitIds.Add(s.unitId);
             hackSystem.BeginRound(hackUnitIds);
             Combat.OnDamageDealt += hackSystem.NotifyDamage;
+            Combat.OnDamageDealt += (attackerId, dealt) =>
+            {
+                // 내 공격 "적중" 타격감 — 가독성 다이어트의 예외. 내가 한 일의 결과는 몸으로 느껴야 한다 (2026-09-05 유저 요청).
+                // 돌리 펀치(살짝 클로즈업) + 짧은 셰이크 + 아주 짧은 히트스톱 + 비네트 펀치 + 묵직한 썸프.
+                if (attackerId != playerUnitId || IsNetClient) return;
+                CameraShaker.PunchIn(1.1f);
+                CameraShaker.Shake(0.4f);
+                HitStop.Do(0.08f);
+                ImpactFx.Punch(0.7f);
+                battleAudio.PlayThump(big: true);
+            };
             vision = new VisionSystem(Battle);
             Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
             Move.OnUnitMoved += (id, path, _) => Pickup.OnUnitPath(id, path); // 경로 통과 픽업 — 멈추지 않아도 먹는다
@@ -1067,8 +1078,10 @@ namespace SeoYuGi.BattleView
                     // 가독성 다이어트: 셰이크·히트스톱·비네트는 격파 전용. 일반 피격은 칸 안 연출 + 숫자 + 소리만.
                     // 내가 맞았을 때만 아주 짧은 셰이크 — "내 문제"는 몸으로 알아야 하니까.
                     if (unitId == playerUnitId) CameraShaker.Shake(0.12f);
-                    ImpactVfx.Sparks(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
-                    StrikeVfx.HitReaction(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
+                    var hitPos = gridView.CoordToWorld(victim.pos);
+                    ImpactVfx.Sparks(hitPos, machine: victim.team == 1, scale: 1.4f);
+                    StrikeVfx.HitReaction(hitPos, machine: victim.team == 1);
+                    CellFlash.Spawn(hitPos, victim.team == playerTeam ? new Color(1f, 0.45f, 0.35f) : Color.white, 0.22f, 1f); // 피격 칸 번쩍 — 어디가 맞았는지
                     battleAudio.PlayThump(big: false);
                 }
             };

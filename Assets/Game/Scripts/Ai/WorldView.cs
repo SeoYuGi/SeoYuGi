@@ -61,6 +61,7 @@ namespace SeoYuGi.Ai
         IReadOnlyList<Cell> Highlands { get; } // 고지대 칸 — 카운터 전술 포지셔닝용
         IReadOnlyList<Cell> HealPacks { get; } // 지금 주울 수 있는(활성) 힐팩 칸만
         bool CanAttack(int actorId);             // 일반공격 쿨다운 준비됨 (AP 삭제 — 쿨다운제)
+        bool CanSkill(int actorId, int skillIndex); // 스킬 쿨다운 준비됨 — 쿨 중인 스킬을 시도해 공격 간격을 날리지 않게
         bool IsWalkable(Cell cell);              // 맵 안 && 벽 아님 && 점유 안 됨
         bool IsVisibleTo(TeamId team, Cell cell); // 해당 팀의 공유 시야 안인가 (벽 LOS 반영)
         bool HasDecoy(int actorId);               // 해킹 게이지 만충 여부 (집행은 코어)

@@ -160,11 +160,12 @@ namespace SeoYuGi.BattleView
         {
             if (machine)
             {
-                if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, pos + Vector3.up * 0.3f, 1.4f, 0.22f, hierarchyScale: true) == null)
+                // 타격 반응 상향 (2026-09-05 "전반적으로 약하다") — 스파크 0.22→0.3, 카툰 임팩트 0.35→0.5. 칸 크기 안에서 최대치.
+                if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, pos + Vector3.up * 0.3f, 1.4f, 0.3f, hierarchyScale: true) == null)
                     ImpactVfx.Sparks(pos, machine: true);
             }
-            else if (VfxLibrary.Spawn(VfxLibrary.WallToonImpact, pos + Vector3.up * 0.35f, 1.3f, 0.35f, hierarchyScale: true) == null)
-                VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, pos + Vector3.up * 0.45f, 1.3f, 0.42f); // 카툰 타격팩 없으면 ToonFX
+            else if (VfxLibrary.Spawn(VfxLibrary.WallToonImpact, pos + Vector3.up * 0.4f, 1.3f, 0.5f, hierarchyScale: true) == null)
+                VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, pos + Vector3.up * 0.45f, 1.3f, 0.55f); // 카툰 타격팩 없으면 ToonFX
         }
 
         /// <summary>격파 — 전쟁 톤 폭발+바닥 연기를 칸 크기로 (큰 연출은 격파에만). 기계는 전기 폭발을 얹는다.</summary>

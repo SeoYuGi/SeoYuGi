@@ -177,7 +177,7 @@ namespace SeoYuGi.Ai
 
         /// 공격 간격 ±30% 지터 — 고정 박자면 쿨이 같은 슬롯끼리 다시 동기화된다.
         private float EffectiveAttackInterval(IWorldView world) =>
-            _cfg.AttackInterval * (world.Round <= 1 ? 1.35f : 1f) * (0.7f + (float)_rng.NextDouble() * 0.6f);
+            _cfg.AttackInterval * (world.Round <= 1 ? 1.15f : 1f) * (0.7f + (float)_rng.NextDouble() * 0.6f);
 
         /// 습성 카운터: 러시형 유저 → 원거리가 고지대 선점해 점사.
         /// 고지형 유저 → 기동형이 유저 선호 고지대를 먼저 접수.
@@ -276,36 +276,35 @@ namespace SeoYuGi.Ai
 
         private AiCommand TrySkill(IWorldView world, ActorState me, ActorState target, Cell aim)
         {
-            // 스킬 2개 체제 — 코어가 쿨타임을 검증하므로 뇌는 각(角)만 잡는다.
-            // 거부되면 다음 틱에 다른 각을 시도 (스킬2 → 스킬1 순으로 위력 우선).
+            // 스킬 2개 체제 — 각(角)은 뇌가, 쿨은 world.CanSkill로 미리 확인. 쿨 중인 스킬을 던졌다 거부당하면
+            // AttackInterval을 통째로 쉬어서 "굼뜬 AI"가 됐다 (2026-09-05). 준비된 스킬 없으면 일반공격으로 넘어간다.
+            bool s1 = world.CanSkill(_actorId, 0), s2 = world.CanSkill(_actorId, 1);
             switch (me.Class)
             {
                 case ClassId.Tank:
-                    if (Chebyshev(me.Pos, aim) == 1) // 인접8
+                    if (Chebyshev(me.Pos, aim) == 1) // 인접8 — 강타(스킬2, 피해2) 우선, 쿨이면 방패밀기(스킬1)
                     {
-                        // 강타(스킬2, 피해2)를 우선, 쿨이면 다음 틱에 방패밀기(스킬1)
-                        if (_lastSkillDenied != 1)
-                            return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
-                        return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 0);
+                        if (s2) return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
+                        if (s1) return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 0);
                     }
                     break;
 
                 case ClassId.Balance:
                     // 비명 교란(스킬2): 인접8에 적이 2기 이상이면 광역 스턴
-                    if (CountAdjacentEnemies(world, me) >= 2)
+                    if (s2 && CountAdjacentEnemies(world, me) >= 2)
                         return AiCommand.Of(CommandType.Heavy, me.Pos, skillIndex: 1);
                     // 돌파(스킬1): 타겟이 같은 행/열 2칸 이내면 대시로 접촉
-                    if ((target.Pos.X == me.Pos.X || target.Pos.Y == me.Pos.Y) &&
+                    if (s1 && (target.Pos.X == me.Pos.X || target.Pos.Y == me.Pos.Y) &&
                         Chebyshev(me.Pos, target.Pos) <= 2)
                         return AiCommand.Of(CommandType.Heavy, target.Pos, skillIndex: 0);
                     break;
 
                 case ClassId.Assassin:
                     // 발톱(스킬2): 이미 인접8이면 최고 딜
-                    if (Chebyshev(me.Pos, aim) == 1)
+                    if (s2 && Chebyshev(me.Pos, aim) == 1)
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     // 그림자 도약(스킬1): 적 시야 밖일 때만 — 고스트를 남기지 않고 파고든다
-                    if (Chebyshev(me.Pos, target.Pos) <= 3 &&
+                    if (s1 && Chebyshev(me.Pos, target.Pos) <= 3 &&
                         !world.IsVisibleTo(EnemyOf(me.Team), me.Pos))
                     {
                         var dest = BlinkCellToward(world, me.Pos, target.Pos);
@@ -316,26 +315,24 @@ namespace SeoYuGi.Ai
 
                 case ClassId.Grenadier:
                     // 폭탄 배달(스킬2): 멀리 있는 예측 칸으로 비행 폭격 (진입 겸용)
-                    if (Manhattan(me.Pos, aim) is > 2 and <= 4)
+                    if (s2 && Manhattan(me.Pos, aim) is > 2 and <= 4)
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     // 파열탄(스킬1): 5×5 내 십자 폭격
-                    if (Chebyshev(me.Pos, aim) <= 2 && !aim.Equals(me.Pos))
+                    if (s1 && Chebyshev(me.Pos, aim) <= 2 && !aim.Equals(me.Pos))
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 0);
                     break;
 
                 case ClassId.Sniper:
                     // 넉백샷(스킬1): 붙으면 때리고 물러난다 — 카이팅
-                    if (Chebyshev(me.Pos, target.Pos) == 1)
+                    if (s1 && Chebyshev(me.Pos, target.Pos) == 1)
                         return AiCommand.Of(CommandType.Heavy, target.Pos, skillIndex: 0);
                     // 조준 사격(스킬2): 예측 칸이 다이아(4)+십자 끝(5) 안이고 내 팀 시야 안이면 (벽 LOS 근사)
-                    if (RangeTemplates.Contains(RangeTemplates.SnipeRange, me.Pos, aim) && world.IsVisibleTo(me.Team, aim))
+                    if (s2 && RangeTemplates.Contains(RangeTemplates.SnipeRange, me.Pos, aim) && world.IsVisibleTo(me.Team, aim))
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     break;
             }
             return AiCommand.None;
         }
-
-        int _lastSkillDenied = -1; // (예약) 코어 거부 피드백 훅 — 현재 미사용
 
         static int CountAdjacentEnemies(IWorldView world, ActorState me)
         {

@@ -122,6 +122,7 @@ namespace SeoYuGi.Integration
         public IReadOnlyList<AiCell> HealPacks => healPacks;
 
         public bool CanAttack(int actorId) => combat.AttackCooldownRemaining(actorId) <= 0f;
+        public bool CanSkill(int actorId, int skillIndex) => combat.SkillCooldownRemaining(actorId, skillIndex) <= 0f;
 
         public bool IsWalkable(AiCell cell) => state.Grid.IsWalkable(new Coord(cell.X, cell.Y));
 

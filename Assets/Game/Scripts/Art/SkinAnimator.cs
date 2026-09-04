@@ -81,10 +81,11 @@ namespace SeoYuGi.Art
         }
 
         /// <summary>공격·스킬 캐스팅 순간 호출 — 공격 모션 원샷.</summary>
-        public void PlayAttack()
+        /// <param name="maxSeconds">노출 상한 — 긴 클립은 앞부분만 (까치 사격은 뽑는 동작까지 길게)</param>
+        public void PlayAttack(float maxSeconds = 1.2f)
         {
             if (atkGo == null) return;
-            attackUntil = Time.time + (atkAnim != null ? Mathf.Min(atkAnim.ClipLength, 1.2f) : 0.8f);
+            attackUntil = Time.time + (atkAnim != null ? Mathf.Min(atkAnim.ClipLength, maxSeconds) : 0.8f);
             atkAnim?.Restart();
         }
 
@@ -99,6 +100,65 @@ namespace SeoYuGi.Art
             if (shown != null) shown.SetActive(false);
             shown = want;
             if (shown != null) shown.SetActive(true);
+        }
+    }
+
+    /// <summary>
+    /// 손 본에 절차 생성 라이플 부착 — 까치 사격 모션이 맨손이라(총이 등 메시에 박힘) 소품으로 보정.
+    /// 쿼터뷰 줌 기준의 실루엣용 프리미티브 — 근사치면 충분하다.
+    /// </summary>
+    public static class HandRifle
+    {
+        public static void Attach(GameObject model, float worldLength)
+        {
+            var hand = FindDeep(model.transform, "RightHand");
+            if (hand == null) return;
+
+            var root = new GameObject("HandRifle");
+            root.transform.SetParent(hand, false);
+
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.Destroy(body.GetComponent<Collider>());
+            body.transform.SetParent(root.transform, false);
+            body.transform.localScale = new Vector3(0.16f, 0.22f, 1f);
+
+            var barrel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.Destroy(barrel.GetComponent<Collider>());
+            barrel.transform.SetParent(root.transform, false);
+            barrel.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            barrel.transform.localPosition = new Vector3(0f, 0.06f, 0.62f);
+            barrel.transform.localScale = new Vector3(0.07f, 0.35f, 0.07f);
+
+            var dark = new Color(0.14f, 0.15f, 0.18f);
+            var teal = new Color(0.12f, 0.48f, 0.55f);
+            Tint(body, dark);
+            Tint(barrel, teal);
+
+            // 손 본 로컬 공간은 모델 스케일을 승계 — 월드 길이 기준으로 정규화
+            float current = root.transform.lossyScale.z;
+            if (current > 0.0001f)
+                root.transform.localScale = Vector3.one * (worldLength / current);
+            root.transform.localPosition = Vector3.zero;
+            root.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+        }
+
+        static void Tint(GameObject go, Color c)
+        {
+            var r = go.GetComponent<Renderer>();
+            var mpb = new MaterialPropertyBlock();
+            mpb.SetColor("_BaseColor", c);
+            r.SetPropertyBlock(mpb);
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            if (t.name == name) return t;
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var f = FindDeep(t.GetChild(i), name);
+                if (f != null) return f;
+            }
+            return null;
         }
     }
 

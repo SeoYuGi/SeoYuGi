@@ -102,7 +102,11 @@ namespace SeoYuGi.Art
         void PlayAttackMotion(int unitId, SkillKind kind)
         {
             if (machines.TryGetValue(unitId, out var m) && m != null)
-                m.PlayAttack();
+            {
+                // 까치 사격 클립은 뽑는 동작이 길어 노출 상한을 넉넉히
+                bool snipe = kind == SkillKind.Snipe || kind == SkillKind.KnockShot;
+                m.PlayAttack(snipe ? 2.2f : 1.2f);
+            }
             if (kind == SkillKind.BombDeliver && bombHops.TryGetValue(unitId, out var hop) && hop != null)
                 hop.Play(1f); // 폭탄 배달 비행 아크 (텔레그래프 1초와 동기)
         }
@@ -147,6 +151,10 @@ namespace SeoYuGi.Art
             // 이동 = A포즈 달리기 애니 모델 (<resource>_anim), 공격 = <resource>_atk (있으면)
             GameObject runGo = LoadVariant(resource + "_anim", skin, view, height, unit.unitClass, out _);
             GameObject atkGo = LoadVariant(resource + "_atk", skin, view, height, unit.unitClass, out var atkAnim);
+
+            // 까치 사격 모션은 맨손(총이 등 메시에 박힘) — 손 본에 소품 라이플 부착
+            if (atkGo != null && unit.unitClass == UnitClass.Sniper)
+                HandRifle.Attach(atkGo, height * 0.55f);
 
             if (runGo != null || atkGo != null)
             {

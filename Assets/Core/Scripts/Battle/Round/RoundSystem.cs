@@ -7,6 +7,7 @@ namespace SeoYuGi.Battle
     public class RoundConfig
     {
         public float captureSeconds = 5f;  // 거점 점거 완료까지 시간
+        public float captureStackBonus = 0.5f; // 패치 위 아군 1기 추가마다 점거 속도 +50% (2기 1.5배, 3기 2배). 경합 동결은 그대로
         public float decaySeconds = 4f;    // 비웠을 때 풀 게이지가 전부 빠지는 시간
         public float roundSeconds = 120f;  // 라운드 제한 (초과 시 판정)
     }
@@ -101,15 +102,16 @@ namespace SeoYuGi.Battle
                 // deltaTime(프레임 전체 몫)을 건드리지 않고 거점마다 사본을 쓴다.
                 float step = deltaTime;
 
-                // 패치 위 팀별 주둔 여부
-                bool team0 = false, team1 = false;
+                // 패치 위 팀별 주둔 수 — 여럿이 밟으면 더 빨리 찬다 (뭉치기 보상)
+                int count0 = 0, count1 = 0;
                 foreach (var cell in z.cells)
                 {
                     int unitId = State.Grid.GetUnitAt(cell);
                     if (unitId == Cell.NoUnit) continue;
-                    if (State.GetUnit(unitId).team == 0) team0 = true;
-                    else team1 = true;
+                    if (State.GetUnit(unitId).team == 0) count0++;
+                    else count1++;
                 }
+                bool team0 = count0 > 0, team1 = count1 > 0;
 
                 if (team0 && team1) continue; // 경합 — 진행 동결 (탱고파이브식)
 
@@ -125,6 +127,8 @@ namespace SeoYuGi.Battle
                     Decay(z, step); // 주인이 지키면 적의 잔여 게이지가 빠진다
                     continue;
                 }
+
+                step *= 1f + (Math.Max(count0, count1) - 1) * Config.captureStackBonus; // 중화·점거 둘 다 인원 비례
 
                 // 상대 잔여 게이지가 남아 있으면 먼저 중화 — 0이 된 뒤 내 게이지가 찬다
                 if (z.capturingTeam != team && z.progress > 0f)

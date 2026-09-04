@@ -585,10 +585,21 @@ namespace SeoYuGi.BattleView
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(new Rect(box.x + 50, box.y + box.height - 60, box.width - 100, 24), Texture2D.whiteTexture);
             GUI.color = new Color(1f, 0.85f, 0.25f);
+            string footer = readyTotal > 1
+                ? $"SPACE — 다음 라운드 동의  ({readyCount}/{readyTotal})"
+                : "SPACE — 다음 라운드 (AI가 학습을 적용합니다)";
             GUI.Label(new Rect(box.x, box.y + box.height - 58, box.width, 22),
-                "SPACE — 다음 라운드 (AI가 학습을 적용합니다)",
-                new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
+                footer, new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
             GUI.color = Color.white;
+        }
+
+        // 다음 라운드 동의 현황 (멀티) — 러너가 갱신
+        int readyCount, readyTotal;
+
+        public void SetReadyCount(int ready, int total)
+        {
+            readyCount = ready;
+            readyTotal = total;
         }
 
         /// <summary>상단 중앙 큰 공지 — 거점 점령 등. 등장 팝 + 마지막 0.5초 페이드.</summary>

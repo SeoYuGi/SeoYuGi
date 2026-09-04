@@ -20,6 +20,8 @@ namespace SeoYuGi.Net
         const string MsgIntent = "sy_it";
         const string MsgChatReq = "sy_cq";
         const string MsgChatShow = "sy_cs";
+        const string MsgReadyReq = "sy_rq";   // 클라 → 호스트: 다음 라운드 동의(SPACE)
+        const string MsgReadyState = "sy_rs"; // 호스트 → 전원: 준비 인원/전체
         const string MsgMoved = "sy_mv";
         const string MsgHacked = "sy_hk";
         const string MsgTele = "sy_tg";
@@ -46,6 +48,8 @@ namespace SeoYuGi.Net
         // ── 호스트 수신 이벤트 ─────────────────
         public static event Action<ulong, BattleIntent> OnIntentRequest; // sender, intent — 소유권 검증은 러너
         public static event Action<ulong, int, int> OnChatRequest;       // sender, unitId, lineId
+        public static event Action<ulong> OnReadyRequest;                // 호스트: sender 클라가 SPACE 동의
+        public static event Action<int, int> OnReadyState;               // 클라: (준비 인원, 전체 인원)
 
         static BattleState battle;
         static RoundSystem round;
@@ -75,6 +79,8 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgIntent, OnIntentMsg);
             mm.RegisterNamedMessageHandler(MsgChatReq, OnChatReqMsg);
             mm.RegisterNamedMessageHandler(MsgChatShow, OnChatShowMsg);
+            mm.RegisterNamedMessageHandler(MsgReadyReq, OnReadyReqMsg);
+            mm.RegisterNamedMessageHandler(MsgReadyState, OnReadyStateMsg);
             mm.RegisterNamedMessageHandler(MsgMoved, OnMovedMsg);
             mm.RegisterNamedMessageHandler(MsgHacked, OnHackedMsg);
             mm.RegisterNamedMessageHandler(MsgTele, OnTeleMsg);
@@ -241,6 +247,24 @@ namespace SeoYuGi.Net
                 .SendNamedMessage(MsgChatReq, NetworkManager.ServerClientId, w);
         }
 
+        /// <summary>클라 — 다음 라운드 동의(SPACE). 집계·진행은 호스트 권위.</summary>
+        public static void ClientSendReady()
+        {
+            using var w = new FastBufferWriter(4, Allocator.Temp);
+            w.WriteValueSafe((byte)1);
+            NetworkManager.Singleton.CustomMessagingManager
+                .SendNamedMessage(MsgReadyReq, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>호스트 — 준비 현황 브로드캐스트 (HUD 표기용).</summary>
+        public static void HostSendReadyState(int ready, int total)
+        {
+            using var w = new FastBufferWriter(16, Allocator.Temp);
+            w.WriteValueSafe(ready);
+            w.WriteValueSafe(total);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgReadyState, w);
+        }
+
         /// <summary>호스트 — 검증 통과한 채팅을 같은 팀 클라에게 표시 지시.</summary>
         public static void HostSendChatShow(ulong clientId, int unitId, int lineId)
         {
@@ -281,6 +305,21 @@ namespace SeoYuGi.Net
             r.ReadValueSafe(out int unitId);
             r.ReadValueSafe(out int lineId);
             OnChatShow?.Invoke(unitId, lineId);
+        }
+
+        static void OnReadyReqMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out byte _);
+            OnReadyRequest?.Invoke(sender);
+        }
+
+        static void OnReadyStateMsg(ulong sender, FastBufferReader r)
+        {
+            if (sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int ready);
+            r.ReadValueSafe(out int total);
+            OnReadyState?.Invoke(ready, total);
         }
 
         /// <summary>클라 — BuildRound 직후 코어 참조 바인딩. 이걸 해야 스냅샷이 적용된다.</summary>

@@ -180,6 +180,8 @@ namespace SeoYuGi.BattleView
             NetSync.OnIntentRequest += HostOnRemoteIntent;
             NetSync.OnChatRequest += HostOnRemoteChat;
             NetSync.OnChatShow += ShowChatVisual;
+            NetSync.OnReadyRequest += HostOnReadyRequest;                  // 클라 SPACE 동의 집계
+            NetSync.OnReadyState += (ready, total) => hud.SetReadyCount(ready, total);
             NetSync.OnMoved += OnNetMoved;
             NetSync.OnHacked += OnNetHacked;
             NetSync.OnClientHackCharge += OnNetHackCharge;
@@ -425,6 +427,7 @@ namespace SeoYuGi.BattleView
             {
                 hud.ShowBriefing(endedRound, winner, briefing);
                 phase = Phase.Briefing;
+                ResetReadyGate(); // 클라도 SPACE 동의 상태 초기화
                 battleAudio.PlayBgm("B3_Briefing");
                 battleAudio.SetTypingLoop(true);
             }
@@ -1322,10 +1325,46 @@ namespace SeoYuGi.BattleView
                 // 라운드 간 브리핑 — AI가 학습한 내용을 보여준다 (심사 기준 ① 어필 지점)
                 hud.ShowBriefing(endedRound, winnerTeam, predictor.GetBriefing(playerUnitId));
                 phase = Phase.Briefing;
+                ResetReadyGate(); // SPACE 동의 집계 초기화
                 battleAudio.PlayBgm("B3_Briefing");
                 battleAudio.SetTypingLoop(true);
                 PlayVoiceLine("Voice_PredictionApplied", "예측 모델 적용");
             }
+        }
+
+        // ── 다음 라운드 동의 게이트 (SPACE) — 호스트 집계, 전원 준비 시 진행 ──
+
+        readonly HashSet<ulong> readyClients = new HashSet<ulong>();
+        bool localReady;
+
+        int HumanCount()
+        {
+            int n = 0;
+            if (matchSetup?.slots != null)
+                foreach (var s in matchSetup.slots)
+                    if (s.owner != SlotOwner.Bot) n++;
+            return Math.Max(1, n);
+        }
+
+        void HostOnReadyRequest(ulong sender) => MarkReady(sender);
+
+        void MarkReady(ulong clientId)
+        {
+            if (phase != Phase.Briefing) return;
+            readyClients.Add(clientId);
+            int total = HumanCount();
+            hud.SetReadyCount(readyClients.Count, total);
+            if (NetBoot.IsOnline && NetBoot.IsHost)
+                NetSync.HostSendReadyState(readyClients.Count, total);
+            if (readyClients.Count >= total)
+                StartNextRound();
+        }
+
+        void ResetReadyGate()
+        {
+            readyClients.Clear();
+            localReady = false;
+            hud.SetReadyCount(0, HumanCount());
         }
 
         void StartNextRound()
@@ -1390,9 +1429,20 @@ namespace SeoYuGi.BattleView
 
             if (phase == Phase.Briefing)
             {
-                // 다음 라운드 진행은 호스트 권한 — 클라는 BeginRound 수신으로 넘어간다
-                if (!IsNetClient && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
-                    StartNextRound();
+                // SPACE = 다음 라운드 동의. 전원(인간)이 동의하면 호스트가 진행 — 싱글은 1/1이라 즉시.
+                if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame && !localReady)
+                {
+                    localReady = true;
+                    if (IsNetClient)
+                    {
+                        NetSync.ClientSendReady();
+                        hud.SetReadyCount(1, HumanCount()); // 낙관 표시 — 곧 호스트 브로드캐스트로 보정
+                    }
+                    else
+                    {
+                        MarkReady(0UL); // 호스트 자신 (NGO ServerClientId = 0)
+                    }
+                }
                 return;
             }
             if (phase == Phase.MatchOver)

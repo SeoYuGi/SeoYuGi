@@ -87,12 +87,16 @@ namespace SeoYuGi.BattleView
                 if (u == null || !u.alive) Deselect();
             }
 
+            // 내 유닛은 살아있는 한 항상 선택 유지 — 선택이 풀려 "이동이 안 되는" 상태 자체를 없앤다
+            if (selectedUnitId == -1)
+            {
+                var mine = moveSystem.State.GetUnit(playerUnitId);
+                if (mine != null && mine.alive) Select(playerUnitId);
+            }
+
             if (Mouse.current.leftButton.wasPressedThisFrame) HandleClick();
             if (Mouse.current.rightButton.wasPressedThisFrame)
-            {
-                if (aim != AimMode.None) aim = AimMode.None; // 조준 중 우클릭 = 조준만 취소
-                else Deselect();
-            }
+                aim = AimMode.None; // 우클릭 = 조준 취소만 — 선택 해제 없음 (1유닛 게임)
 
             // 전투 입력: A=공격 조준, S=스킬1 조준, D=스킬2 조준 (토글), ESC=취소. 방어는 기획 삭제.
             if (Keyboard.current != null && selectedUnitId != -1)

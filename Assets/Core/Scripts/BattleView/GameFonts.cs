@@ -22,8 +22,9 @@ namespace SeoYuGi.BattleView
         {
             if (loaded) return;
             loaded = true;
-            title = Resources.Load<Font>("Fonts/GothicA1-Black");
-            hud = Resources.Load<Font>("Fonts/IBMPlexSansKR-Medium");
+            // 전반적으로 얇게 — 제목도 IBM Plex Regular, 본문은 Light
+            title = Resources.Load<Font>("Fonts/IBMPlexSansKR-Regular");
+            hud = Resources.Load<Font>("Fonts/IBMPlexSansKR-Light");
         }
 
         /// <summary>TextMesh에 폰트 적용 — 머티리얼까지 교체해야 글자가 보인다.</summary>

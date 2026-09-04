@@ -20,48 +20,58 @@ namespace SeoYuGi.BattleView
         }
 
         [Header("Config")]
-        [SerializeField] GridConfig gridConfig = new GridConfig();
+        [SerializeField] GridConfig gridConfig = new GridConfig { width = 9, height = 9 }; // 기획서: 9×9
         [SerializeField] MoveConfig moveConfig = new MoveConfig();
 
-        [Header("Setup")]
+        [Header("Map (자동 생성)")]
+        [SerializeField] int mapSeed = 20260904;
+        [Range(4, 8)]
+        [SerializeField] int wallTiles = 8; // 세부기획 B: 벽 4~8개
+
+        [Header("Setup — 3v3")]
         [SerializeField] List<UnitSpawn> spawns = new List<UnitSpawn>
         {
-            new UnitSpawn { id = 1, team = 0, pos = new Coord(2, 2) },
-            new UnitSpawn { id = 2, team = 0, pos = new Coord(4, 2) },
-            new UnitSpawn { id = 3, team = 1, pos = new Coord(7, 9) },
-            new UnitSpawn { id = 4, team = 1, pos = new Coord(9, 9) }
-        };
-        [SerializeField] List<Coord> obstacles = new List<Coord>
-        {
-            new Coord(5, 5), new Coord(6, 5), new Coord(5, 6), new Coord(6, 6)
+            new UnitSpawn { id = 1, team = 0, pos = new Coord(2, 1) },
+            new UnitSpawn { id = 2, team = 0, pos = new Coord(4, 1) },
+            new UnitSpawn { id = 3, team = 0, pos = new Coord(6, 1) },
+            new UnitSpawn { id = 4, team = 1, pos = new Coord(2, 7) },
+            new UnitSpawn { id = 5, team = 1, pos = new Coord(4, 7) },
+            new UnitSpawn { id = 6, team = 1, pos = new Coord(6, 7) }
         };
         [SerializeField] Color[] teamColors = { new Color(0.25f, 0.5f, 1f), new Color(1f, 0.3f, 0.25f) };
 
-        [Header("References")]
-        [SerializeField] GridView gridView;
-        [SerializeField] UnitMoveInput input;
-        [SerializeField] UnitViewRegistry viewRegistry;
+        [Tooltip("비우면 큐브 유닛 자동 생성")]
         [SerializeField] UnitView unitPrefab;
+
+        // 같은 GameObject에서 자동 연결 — 인스펙터 배선 불필요
+        GridView gridView;
+        UnitMoveInput input;
+        UnitViewRegistry viewRegistry;
 
         public MoveSystem Move { get; private set; }
         public BattleState Battle { get; private set; }
 
         void Awake()
         {
-            // 인스펙터 배선 빠뜨려도 동작하게 자동 탐색
-            if (gridView == null) gridView = GetComponent<GridView>();
-            if (input == null) input = GetComponent<UnitMoveInput>();
-            if (viewRegistry == null)
-            {
-                viewRegistry = GetComponent<UnitViewRegistry>();
-                if (viewRegistry == null) viewRegistry = gameObject.AddComponent<UnitViewRegistry>();
-            }
+            gridView = GetComponent<GridView>();
+            input = GetComponent<UnitMoveInput>();
+            viewRegistry = GetComponent<UnitViewRegistry>();
+            if (viewRegistry == null) viewRegistry = gameObject.AddComponent<UnitViewRegistry>();
         }
 
         void Start()
         {
             var grid = new GridModel(gridConfig);
-            foreach (var c in obstacles)
+
+            // 자동 맵: 스폰 칸 + 그 주변은 벽 금지
+            var reserved = new HashSet<Coord>();
+            foreach (var s in spawns)
+            {
+                reserved.Add(s.pos);
+                foreach (var dir in Coord.Directions4)
+                    reserved.Add(s.pos + dir);
+            }
+            foreach (var c in MapGenerator.GenerateWalls(gridConfig, wallTiles, mapSeed, reserved))
                 grid.SetObstacle(c);
 
             Battle = new BattleState(grid);
@@ -73,7 +83,7 @@ namespace SeoYuGi.BattleView
             gridView.Build(grid);
             foreach (var s in spawns)
             {
-                var view = Instantiate(unitPrefab, transform);
+                var view = CreateUnitView();
                 view.name = $"Unit_{s.id}";
                 view.Bind(s.id, teamColors[s.team], gridView, s.pos);
                 viewRegistry.Register(view);
@@ -82,6 +92,17 @@ namespace SeoYuGi.BattleView
 
             Move.OnUnitMoved += (unitId, path, yellow) =>
                 viewRegistry.Get(unitId)?.PlayPath(path, moveConfig.hopDuration);
+        }
+
+        UnitView CreateUnitView()
+        {
+            if (unitPrefab != null) return Instantiate(unitPrefab, transform);
+
+            // 프리팹 없으면 큐브 유닛 자동 생성 (타일과 동일한 폴백 정책)
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.transform.SetParent(transform);
+            go.transform.localScale = new Vector3(0.7f, 0.7f, 0.7f);
+            return go.AddComponent<UnitView>();
         }
 
         void Update()

@@ -8,10 +8,14 @@ namespace SeoYuGi.Battle
         public Coord pos;
         public bool alive = true;
 
-        // 이동 게이지 (0..MoveConfig.freeRange). 파랑 이동으로 소모, 초당 회복.
+        // 캐릭터별 이동 특성. null이면 MoveSystem이 MoveConfig.defaultProfile을 꽂는다.
+        public MoveProfile profile;
+        // 이동 게이지 (0..profile.freeRange). 파랑 이동으로 소모, 초당 회복.
         public float moveGauge;
         // 노랑 이동 후 남은 쿨타임(초). > 0이면 이동 불가.
         public float moveCooldown;
+        // 이동 직후 게이지 회복 정지 타이머(초).
+        public float regenDelay;
 
         public UnitState(int id, int team, Coord pos)
         {

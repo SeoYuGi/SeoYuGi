@@ -41,7 +41,10 @@ namespace SeoYuGi.Battle
             State = state;
             Config = config;
             foreach (var unit in state.Units)
-                unit.moveGauge = config.freeRange;
+            {
+                if (unit.profile == null) unit.profile = config.defaultProfile;
+                unit.moveGauge = unit.profile.freeRange;
+            }
         }
 
         public void Tick(float deltaTime)
@@ -49,19 +52,25 @@ namespace SeoYuGi.Battle
             foreach (var unit in State.Units)
             {
                 if (!unit.alive) continue;
+                var p = unit.profile;
+
                 if (unit.moveCooldown > 0f)
                 {
                     unit.moveCooldown -= deltaTime;
                     if (unit.moveCooldown <= 0f)
                     {
                         unit.moveCooldown = 0f;
-                        unit.moveGauge = Config.freeRange; // 쿨타임 종료 → 풀 게이지 복귀
+                        unit.moveGauge = p.freeRange; // 쿨타임 종료 → 풀 게이지 복귀
                     }
+                }
+                else if (unit.regenDelay > 0f)
+                {
+                    unit.regenDelay -= deltaTime; // 이동 직후: 회복 정지 (홉 스팸 방지)
                 }
                 else
                 {
-                    unit.moveGauge = Math.Min(Config.freeRange,
-                        unit.moveGauge + Config.gaugeRegenPerSecond * deltaTime);
+                    unit.moveGauge = Math.Min(p.freeRange,
+                        unit.moveGauge + p.gaugeRegenPerSecond * deltaTime);
                 }
             }
         }
@@ -78,7 +87,7 @@ namespace SeoYuGi.Battle
             if (unit == null || !unit.alive || unit.moveCooldown > 0f) return;
 
             int blueSteps = BlueSteps(unit);
-            var reach = Pathfinding.FloodFill(State.Grid, unit.pos, Config.maxRange, OtherUnitCells(unitId));
+            var reach = Pathfinding.FloodFill(State.Grid, unit.pos, unit.profile.maxRange, OtherUnitCells(unitId));
             foreach (var r in reach)
                 (r.dist <= blueSteps ? blue : yellow).Add(r.coord);
         }
@@ -91,7 +100,8 @@ namespace SeoYuGi.Battle
             if (unit.moveCooldown > 0f)
                 return new MoveAttempt { denied = MoveDenied.Locked };
 
-            var path = Pathfinding.FindPath(State.Grid, unit.pos, dest, Config.maxRange, OtherUnitCells(unitId));
+            var p = unit.profile;
+            var path = Pathfinding.FindPath(State.Grid, unit.pos, dest, p.maxRange, OtherUnitCells(unitId));
             if (path == null)
                 return new MoveAttempt { denied = MoveDenied.Unreachable };
 
@@ -99,11 +109,12 @@ namespace SeoYuGi.Battle
 
             State.Grid.MoveOccupant(unit.pos, dest);
             unit.pos = dest;
+            unit.regenDelay = p.regenDelaySeconds; // 모든 이동 직후 회복 정지
 
             if (yellow)
             {
                 unit.moveGauge = 0f;
-                unit.moveCooldown = Config.yellowCooldownSeconds;
+                unit.moveCooldown = p.yellowCooldownSeconds;
             }
             else
             {

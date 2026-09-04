@@ -3,23 +3,26 @@ using NUnit.Framework;
 
 namespace SeoYuGi.Battle.Tests
 {
-    /// <summary>탱고파이브식 실시간 이동: 파랑=게이지 이내, 노랑=초과(쿨타임), 회복.</summary>
+    /// <summary>탱고파이브식 실시간 이동: 파랑=게이지 이내, 노랑=초과(쿨타임), 회복 지연.</summary>
     public class MoveSystemTests
     {
         MoveConfig config;
+        MoveProfile profile;
         BattleState battle;
         MoveSystem move;
 
         [SetUp]
         public void SetUp()
         {
-            config = new MoveConfig
+            profile = new MoveProfile
             {
                 freeRange = 2,
                 maxRange = 4,
                 gaugeRegenPerSecond = 1f,
+                regenDelaySeconds = 1f,
                 yellowCooldownSeconds = 2.5f
             };
+            config = new MoveConfig { defaultProfile = profile };
             battle = new BattleState(new GridModel(new GridConfig()));
             battle.AddUnit(new UnitState(1, team: 0, new Coord(5, 5)));
             battle.AddUnit(new UnitState(2, team: 1, new Coord(0, 0)));
@@ -71,6 +74,29 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
+        public void RegenPaused_RightAfterMove()
+        {
+            move.TryMove(1, new Coord(5, 6)); // 파랑 1칸 → 게이지 1, 회복 지연 1초
+
+            move.Tick(1f); // 지연 소화 — 회복 없음
+
+            Assert.AreEqual(1f, battle.GetUnit(1).moveGauge, 0.001f);
+        }
+
+        [Test]
+        public void Gauge_RegensAfterDelay()
+        {
+            move.TryMove(1, new Coord(5, 7)); // 게이지 0, 지연 1초
+
+            move.Tick(1f); // 지연 소화
+            move.Tick(1f); // +1
+
+            Assert.AreEqual(1f, battle.GetUnit(1).moveGauge, 0.001f);
+            var (blue, _) = Ranges(1);
+            Assert.AreEqual(4, blue.Count); // 1칸 거리만 파랑
+        }
+
+        [Test]
         public void YellowMove_SetsCooldown_AndLocksMovement()
         {
             var result = move.TryMove(1, new Coord(5, 8)); // 3칸 > 게이지 2 → 노랑
@@ -78,7 +104,7 @@ namespace SeoYuGi.Battle.Tests
             Assert.IsTrue(result.success);
             Assert.IsTrue(result.isYellow);
             var unit = battle.GetUnit(1);
-            Assert.AreEqual(config.yellowCooldownSeconds, unit.moveCooldown, 0.001f);
+            Assert.AreEqual(profile.yellowCooldownSeconds, unit.moveCooldown, 0.001f);
 
             // 쿨타임 중: 범위 없음 + 이동 거부
             var (blue, yellow) = Ranges(1);
@@ -95,28 +121,37 @@ namespace SeoYuGi.Battle.Tests
 
             var unit = battle.GetUnit(1);
             Assert.AreEqual(0f, unit.moveCooldown);
-            Assert.AreEqual(config.freeRange, unit.moveGauge, 0.001f);
+            Assert.AreEqual(profile.freeRange, unit.moveGauge, 0.001f);
             var (blue, yellow) = Ranges(1);
             Assert.Greater(blue.Count, 0);   // 파랑+노랑 다 복귀
             Assert.Greater(yellow.Count, 0);
         }
 
         [Test]
-        public void Gauge_RegensOverTime()
-        {
-            move.TryMove(1, new Coord(5, 7)); // 게이지 0
-            move.Tick(1f);                    // +1
-
-            Assert.AreEqual(1f, battle.GetUnit(1).moveGauge, 0.001f);
-            var (blue, _) = Ranges(1);
-            Assert.AreEqual(4, blue.Count); // 1칸 거리만 파랑
-        }
-
-        [Test]
         public void Gauge_ClampedAtFreeRange()
         {
             move.Tick(100f);
-            Assert.AreEqual(config.freeRange, battle.GetUnit(1).moveGauge, 0.001f);
+            Assert.AreEqual(profile.freeRange, battle.GetUnit(1).moveGauge, 0.001f);
+        }
+
+        [Test]
+        public void PerUnitProfile_Overrides()
+        {
+            // 러너형: 파랑 3칸 / 최대 5칸
+            var runner = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1f };
+            battle.AddUnit(new UnitState(7, team: 0, new Coord(9, 9)) { profile = runner });
+            var sys = new MoveSystem(battle, config);
+
+            var blue = new List<Coord>();
+            var yellow = new List<Coord>();
+            sys.GetRanges(7, blue, yellow);
+
+            foreach (var c in blue) Assert.LessOrEqual(Coord.Manhattan(new Coord(9, 9), c), 3);
+            foreach (var c in yellow)
+            {
+                Assert.Greater(Coord.Manhattan(new Coord(9, 9), c), 3);
+                Assert.LessOrEqual(Coord.Manhattan(new Coord(9, 9), c), 5);
+            }
         }
 
         [Test]

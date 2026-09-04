@@ -13,9 +13,10 @@ namespace SeoYuGi.BattleView
     /// </summary>
     public class UnitMoveInput : MonoBehaviour
     {
-        [SerializeField] Camera rayCamera; // 비우면 Camera.main
         [SerializeField] Color blueRangeColor = new Color(0.3f, 0.6f, 1f);
         [SerializeField] Color yellowRangeColor = new Color(1f, 0.85f, 0.2f);
+
+        Camera rayCamera; // Camera.main 자동 연결
 
         MoveSystem moveSystem;
         GridView gridView;
@@ -32,7 +33,7 @@ namespace SeoYuGi.BattleView
             this.moveSystem = moveSystem;
             this.gridView = gridView;
             this.views = views;
-            if (rayCamera == null) rayCamera = Camera.main;
+            rayCamera = Camera.main;
         }
 
         void Update()

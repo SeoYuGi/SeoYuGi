@@ -5,19 +5,22 @@ using UnityEngine;
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 타일 렌더 + 좌표↔월드 변환 + 하이라이트(기획서 §6.1).
+    /// 타일 렌더 + 좌표↔월드 변환 + 하이라이트.
     /// XZ 평면, 이 오브젝트 위치가 (0,0) 타일 중심.
-    /// 체커보드 틴트 + 타일 간격으로 그리드 라인이 보이게 한다.
+    /// 바닥: 텍스처 A 위주 + B를 드문드문 섞은 무늬(체커보드 아님).
+    /// 장애물: 벽 블록으로 입체화 — 골목 구조(세부기획 B).
     /// </summary>
     public class GridView : MonoBehaviour
     {
-        [SerializeField] GameObject tilePrefab;   // Renderer + Collider 필수. 비우면 큐브 자동 생성
         [SerializeField] float tileSize = 1f;
         [Range(0.5f, 1f)]
-        [SerializeField] float tileFill = 0.92f;  // 타일이 칸을 채우는 비율. 나머지가 틈 = 그리드 라인
-        [SerializeField] Color tileColorA = new Color(0.55f, 0.58f, 0.55f);
-        [SerializeField] Color tileColorB = new Color(0.45f, 0.48f, 0.45f);
-        [SerializeField] Color obstacleColor = new Color(0.2f, 0.16f, 0.16f);
+        [SerializeField] float tileFill = 0.96f;  // 타일이 칸을 채우는 비율. 나머지가 틈 = 그리드 라인
+        [SerializeField] float wallHeight = 0.6f; // 장애물 벽 블록 높이
+
+        [Header("Textures")]
+        [SerializeField] Texture2D floorTextureA;
+        [SerializeField] Texture2D floorTextureB;   // 바닥에 드문드문 섞이는 변형 (~20%)
+        [SerializeField] Texture2D obstacleTexture;
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP
 
@@ -25,8 +28,7 @@ namespace SeoYuGi.BattleView
         Renderer[,] tiles;
         readonly List<Coord> highlighted = new List<Coord>();
         MaterialPropertyBlock mpb;
-
-        public float TileSize => tileSize;
+        Material matFloorA, matFloorB, matObstacle;
 
         public void Build(GridModel grid)
         {
@@ -38,39 +40,53 @@ namespace SeoYuGi.BattleView
             for (int x = 0; x < grid.Width; x++)
             {
                 var coord = new Coord(x, y);
-                var go = CreateTile(CoordToWorld(coord));
-                go.name = $"Tile_{x}_{y}";
+                bool isWall = grid.GetCell(coord).type == CellType.Obstacle;
+                var go = CreateTile(CoordToWorld(coord), isWall);
+                go.name = isWall ? $"Wall_{x}_{y}" : $"Tile_{x}_{y}";
                 tiles[x, y] = go.GetComponentInChildren<Renderer>();
 
-                SetTileColor(coord, BaseColorOf(coord));
+                if (floorTextureA != null)
+                    tiles[x, y].sharedMaterial = MaterialOf(coord, isWall);
             }
         }
 
-        GameObject CreateTile(Vector3 pos)
+        GameObject CreateTile(Vector3 pos, bool isWall)
         {
-            GameObject go;
-            if (tilePrefab != null)
-                go = Instantiate(tilePrefab, pos, tilePrefab.transform.rotation, transform);
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.transform.SetParent(transform);
+            float side = tileSize * tileFill;
+
+            if (isWall)
+            {
+                // 벽 블록: 바닥 윗면(y=0.05)에서 시작해 wallHeight만큼
+                go.transform.localScale = new Vector3(side, wallHeight, side);
+                go.transform.position = pos + Vector3.up * (wallHeight * 0.5f - 0.05f);
+            }
             else
             {
-                go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                go.transform.SetParent(transform);
+                go.transform.localScale = new Vector3(side, 0.1f, side);
                 go.transform.position = pos;
-                go.transform.localScale = new Vector3(1f, 0.1f, 1f);
-            }
-
-            // 프리팹 크기와 무관하게 바닥 면적을 칸 크기에 맞춤 (Plane=10×10 같은 사고 방지)
-            var renderer = go.GetComponentInChildren<Renderer>();
-            var size = renderer.bounds.size;
-            float footprint = Mathf.Max(size.x, size.z);
-            if (footprint > 0.0001f)
-            {
-                float k = tileSize * tileFill / footprint;
-                var s = go.transform.localScale;
-                go.transform.localScale = new Vector3(s.x * k, s.y, s.z * k);
             }
             return go;
         }
+
+        /// <summary>텍스처 머티리얼 3종을 타일 원본 머티리얼 기반으로 1회 생성.</summary>
+        Material MaterialOf(Coord c, bool isWall)
+        {
+            if (matFloorA == null)
+            {
+                var template = tiles[c.x, c.y].sharedMaterial;
+                matFloorA = new Material(template) { mainTexture = floorTextureA };
+                matFloorB = new Material(template) { mainTexture = floorTextureB != null ? floorTextureB : floorTextureA };
+                matObstacle = new Material(template) { mainTexture = obstacleTexture != null ? obstacleTexture : floorTextureA };
+            }
+            if (isWall) return matObstacle;
+            return FloorVariant(c) ? matFloorB : matFloorA;
+        }
+
+        /// <summary>좌표 해시로 ~20% 칸에 변형 바닥. 결정론 — 같은 좌표는 항상 같은 무늬.</summary>
+        static bool FloorVariant(Coord c) =>
+            (((c.x * 73856093) ^ (c.y * 19349663)) & 0x7fffffff) % 5 == 0;
 
         public Vector3 CoordToWorld(Coord c) =>
             transform.position + new Vector3(c.x * tileSize, 0f, c.y * tileSize);
@@ -83,7 +99,7 @@ namespace SeoYuGi.BattleView
                 Mathf.RoundToInt(local.z / tileSize));
         }
 
-        /// <summary>계획 미리보기용. 셀마다 색 지정(파랑=무료, 노랑=쿨타임). 이전 하이라이트는 초기화.</summary>
+        /// <summary>이동 범위 표시. 셀마다 색 지정(파랑/노랑). 이전 하이라이트는 초기화.</summary>
         public void SetHighlights(IReadOnlyList<Coord> coords, IReadOnlyList<Color> colors)
         {
             ClearHighlights();
@@ -91,7 +107,8 @@ namespace SeoYuGi.BattleView
             {
                 var c = coords[i];
                 if (!grid.InBounds(c)) continue;
-                SetTileColor(c, colors[i]);
+                mpb.SetColor(BaseColorId, colors[i]);
+                tiles[c.x, c.y].SetPropertyBlock(mpb);
                 highlighted.Add(c);
             }
         }
@@ -99,20 +116,8 @@ namespace SeoYuGi.BattleView
         public void ClearHighlights()
         {
             foreach (var c in highlighted)
-                SetTileColor(c, BaseColorOf(c));
+                tiles[c.x, c.y].SetPropertyBlock(null); // 틴트 제거 → 원본 텍스처 색
             highlighted.Clear();
-        }
-
-        Color BaseColorOf(Coord c)
-        {
-            if (grid.GetCell(c).type == CellType.Obstacle) return obstacleColor;
-            return (c.x + c.y) % 2 == 0 ? tileColorA : tileColorB;
-        }
-
-        void SetTileColor(Coord c, Color color)
-        {
-            mpb.SetColor(BaseColorId, color);
-            tiles[c.x, c.y].SetPropertyBlock(mpb);
         }
     }
 }

@@ -394,8 +394,7 @@ GameObject:
   - component: {fileID: 682819976}
   - component: {fileID: 682819980}
   - component: {fileID: 682819979}
-  - component: {fileID: 682819978}
-  - component: {fileID: 682819977}
+  - component: {fileID: 682819981}
   m_Layer: 0
   m_Name: Battle
   m_TagString: Untagged
@@ -418,32 +417,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &682819977
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 682819975}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: debf05dd7e8b13748ad26988dd29afa5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.PlanInputHandler
-  rayCamera: {fileID: 330585545}
---- !u!114 &682819978
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 682819975}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6b007a93b4dca244bb46361708ae514f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.TickPlayback
-  animPortion: 0.8
 --- !u!114 &682819979
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -456,10 +429,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5a9dd0a67192e547a2b066e3bc37cc9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.GridView
-  tilePrefab: {fileID: 2354191841429550795, guid: 6b1d10073b1e75044b7dfcfc5643ac4c, type: 3}
+  tilePrefab: {fileID: 0}
   tileSize: 1
-  obstacleColor: {r: 0.25, g: 0.2, b: 0.2, a: 1}
-  highlightColor: {r: 1, g: 0.9, b: 0.3, a: 1}
+  tileFill: 0.92
+  wallHeight: 0.6
+  floorTextureA: {fileID: 2800000, guid: aaf62b519764d8248a66d43d8efd2436, type: 3}
+  floorTextureB: {fileID: 2800000, guid: 969d882d524bb304fb5a7e07a6b7c785, type: 3}
+  obstacleTexture: {fileID: 2800000, guid: 8d9736e16b34e2a4fb013daf88d005c4, type: 3}
 --- !u!114 &682819980
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -473,51 +449,67 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.BattleRunner
   gridConfig:
-    width: 12
-    height: 12
-  turnConfig:
-    planTimeSeconds: 15
-    ticksPerTurn: 4
-    tickDuration: 0.6
-    lockDuration: 0.5
-    maxTurns: 30
+    width: 9
+    height: 9
+  moveConfig:
+    defaultProfile:
+      freeRange: 2
+      maxRange: 4
+      gaugeRegenPerSecond: 0.5
+      regenDelaySeconds: 1
+      yellowCooldownSeconds: 3
+    hopDuration: 0.15
+  mapSeed: 20260904
+  wallTiles: 8
   spawns:
   - id: 1
     team: 0
     pos:
       x: 2
-      y: 2
+      y: 1
   - id: 2
     team: 0
     pos:
       x: 4
-      y: 2
+      y: 1
   - id: 3
-    team: 1
+    team: 0
     pos:
-      x: 7
-      y: 9
+      x: 6
+      y: 1
   - id: 4
     team: 1
     pos:
-      x: 9
-      y: 9
-  obstacles:
-  - x: 5
-    y: 5
-  - x: 6
-    y: 5
-  - x: 5
-    y: 6
-  - x: 6
-    y: 6
+      x: 2
+      y: 7
+  - id: 5
+    team: 1
+    pos:
+      x: 4
+      y: 7
+  - id: 6
+    team: 1
+    pos:
+      x: 6
+      y: 7
   teamColors:
   - {r: 0.25, g: 0.5, b: 1, a: 1}
   - {r: 1, g: 0.3, b: 0.25, a: 1}
-  gridView: {fileID: 682819979}
-  playback: {fileID: 682819978}
-  input: {fileID: 682819977}
   unitPrefab: {fileID: 1940053697605542028, guid: 49830bab96d87954aaf74cb9b214acf0, type: 3}
+--- !u!114 &682819981
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 682819975}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0be19e94b3ba25b4bab65402bd55fb7e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.UnitMoveInput
+  blueRangeColor: {r: 0.3, g: 0.6, b: 1, a: 1}
+  yellowRangeColor: {r: 1, g: 0.85, b: 0.2, a: 1}
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0

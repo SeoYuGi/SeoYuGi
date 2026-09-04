@@ -63,6 +63,8 @@ namespace SeoYuGi.BattleView
 
                 if (floorTextureA != null)
                     tiles[x, y].sharedMaterial = MaterialOf(coord, type);
+                else if (type == CellType.Highland) // 텍스처 미사용 모드에서도 고지대는 구분돼야 함
+                    tiles[x, y].sharedMaterial = HighlandMaterial(tiles[x, y].sharedMaterial);
             }
         }
 
@@ -102,11 +104,43 @@ namespace SeoYuGi.BattleView
                 matFloorB = new Material(template) { mainTexture = floorTextureB != null ? floorTextureB : floorTextureA };
                 matObstacle = new Material(template) { mainTexture = obstacleTexture != null ? obstacleTexture : floorTextureA };
                 matZone = new Material(template) { mainTexture = zoneTexture != null ? zoneTexture : floorTextureA };
-                matHighland = new Material(template) { mainTexture = highlandTexture != null ? highlandTexture : (obstacleTexture != null ? obstacleTexture : floorTextureA) };
+                matHighland = HighlandMaterial(template);
             }
             if (type == CellType.Obstacle) return matObstacle;
             if (type == CellType.Highland) return matHighland;
             return FloorVariant(c) ? matFloorB : matFloorA;
+        }
+
+        /// <summary>고지대 전용 머티리얼 — 벽(크레이트)과 절대 헷갈리지 않게, 에셋 없으면 절차 생성 줄무늬.</summary>
+        Material HighlandMaterial(Material template)
+        {
+            if (matHighland != null) return matHighland;
+            matHighland = new Material(template)
+            {
+                mainTexture = highlandTexture != null ? highlandTexture : BuildHighlandStripes()
+            };
+            return matHighland;
+        }
+
+        /// <summary>주황 발판 + 모서리 사선 해저드 줄무늬 — "올라설 수 있는 단상"이 한눈에 읽히게.</summary>
+        static Texture2D BuildHighlandStripes()
+        {
+            const int S = 64;
+            var tex = new Texture2D(S, S, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            var deck   = new Color(0.93f, 0.66f, 0.32f); // 발판 면
+            var deckB  = new Color(0.88f, 0.60f, 0.27f); // 미세 체크
+            var hazard = new Color(0.16f, 0.14f, 0.12f); // 사선 줄무늬 (검정)
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                int edge = Math.Min(Math.Min(x, S - 1 - x), Math.Min(y, S - 1 - y));
+                if (edge < 9) // 테두리 — 검/주황 사선 해저드
+                    tex.SetPixel(x, y, ((x + y) / 6) % 2 == 0 ? hazard : deck);
+                else
+                    tex.SetPixel(x, y, ((x / 8) + (y / 8)) % 2 == 0 ? deck : deckB);
+            }
+            tex.Apply();
+            return tex;
         }
 
         /// <summary>좌표 해시로 ~20% 칸에 변형 바닥. 결정론 — 같은 좌표는 항상 같은 무늬.</summary>

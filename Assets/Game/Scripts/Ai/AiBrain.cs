@@ -7,14 +7,14 @@ namespace SeoYuGi.Ai
     /// 슬롯 하나를 조종하는 뇌. 적팀 3기 + 아군 백필 팀원이 전부 이 클래스를 쓴다.
     /// 차이는 predictor 유무뿐 — 적팀 뇌에만 Predictor를 주면 "나를 학습하는 AI"가 되고,
     /// 아군 팀원 뇌는 null을 받아 순수 역할 스크립트로 돈다.
-    /// 우선순위: 회피 > 클래스 스킬 > 일반공격 > 거점 이동 > AP 비축.
+    /// 우선순위: 회피 > 클래스 스킬 > 일반공격 > 거점 이동. (AP 삭제 — 페이싱은 쿨다운·AttackInterval)
     public class AiBrain
     {
         private readonly int _actorId;
         private readonly AiConfig _cfg;
         private readonly Predictor _predictor; // 적팀 뇌만 보유, 아군 팀원은 null
         private float _nextDecisionTime;
-        private float _nextAttackTime;         // 공격·스킬 페이싱 — AP 연타 방지
+        private float _nextAttackTime;         // 공격·스킬 페이싱 — 연타 방지
         private float _lastActiveTime;         // 마지막으로 뭔가 한 시각 — 프리징 감지
         private Cell _prevPos;                 // 직전 위치 — 옆걸음 왕복 방지
         private bool _hasPrevPos;
@@ -33,15 +33,14 @@ namespace SeoYuGi.Ai
 
             var me = FindActor(world, _actorId);
             if (!me.Alive) return AiCommand.None;
-            float ap = world.GetAp(_actorId);
 
-            var cmd = Decide(world, me, ap);
+            var cmd = Decide(world, me);
 
             // 프리징 방지: 한동안 무행동 + 거점·고지대 위도 아니면 배회 한 걸음
             // (고지대 홀드는 카운터 전술의 자리 사수 — 배회로 새면 안 됨)
             if (cmd.Type == CommandType.None &&
                 world.Time - _lastActiveTime > _cfg.IdleWanderAfter &&
-                ap >= _cfg.CostMove && !OnAnyZonePatch(world, me.Pos) && !OnHighland(world, me.Pos))
+                !OnAnyZonePatch(world, me.Pos) && !OnHighland(world, me.Pos))
             {
                 var wander = WanderStep(world, me);
                 if (wander.HasValue) cmd = AiCommand.Of(CommandType.Move, wander.Value);
@@ -61,22 +60,22 @@ namespace SeoYuGi.Ai
             return cmd;
         }
 
-        private AiCommand Decide(IWorldView world, ActorState me, float ap)
+        private AiCommand Decide(IWorldView world, ActorState me)
         {
             // 1) 회피 — 내 칸에 곧 떨어지는 적 예고. 반응 하한 + 클래스별 확률 (완벽 회피 금지)
             if (ShouldDodge(world, me))
             {
                 var dodge = FindDodgeCell(world, me);
-                if (dodge.HasValue && ap >= _cfg.CostMove)
+                if (dodge.HasValue)
                     return AiCommand.Of(CommandType.Move, dodge.Value);
                 if (world.Round >= 2 && world.HasDecoy(_actorId))
-                    return AiCommand.Of(CommandType.Decoy, me.Pos); // 장비라 AP 소모 없음
+                    return AiCommand.Of(CommandType.Decoy, me.Pos); // 해킹 — 게이지 만충 시
                 // 방어는 기획에서 삭제(2026-09-05) — 못 피하면 그냥 맞는다
             }
 
             // 1.5) 개막 카운터 (E) — 러시 습관 감지 시 시작 6초 안에 반복 진입로에 선제 설치 (R2+)
             if (_predictor != null && world.Round >= 2 && world.Time < 6f &&
-                world.Time >= _nextAttackTime && ap >= _cfg.CostHeavy)
+                world.Time >= _nextAttackTime)
             {
                 var human = FindHuman(world);
                 if (human.HasValue && _predictor.GetStyle(human.Value.Id) == PlayStyle.ZoneRusher &&
@@ -93,12 +92,12 @@ namespace SeoYuGi.Ai
 
             var target = PickTarget(world, me);
 
-            // 2~3) 공격·스킬 — AttackInterval 페이싱 (AP를 한 번에 쏟아붓는 연타 방지)
+            // 2~3) 공격·스킬 — AttackInterval 페이싱 (연타 방지, 인간적 템포)
             if (target.HasValue && world.Time >= _nextAttackTime)
             {
                 var aim = AimCell(target.Value, out bool predictedAim); // 예측 칸(학습 전이면 현재 칸)
                 bool predicted = predictedAim && !aim.Equals(target.Value.Pos); // 현재 칸과 다를 때만 "통수"
-                var skill = TrySkill(world, me, ap, target.Value, aim);
+                var skill = TrySkill(world, me, target.Value, aim);
                 if (skill.Type != CommandType.None)
                 {
                     _nextAttackTime = world.Time + EffectiveAttackInterval(world);
@@ -106,9 +105,8 @@ namespace SeoYuGi.Ai
                     return skill;
                 }
 
-                // 일반공격 — 예측 칸이 내 클래스 공격 모양 안이면 깐다.
-                // 예비 AP는 스킬용 — 일반공격까지 막지 않는다 (근접 대치에서 수동적이 되는 문제)
-                if (ap >= _cfg.CostAttack && RangeTemplates.Contains(RangeTemplates.BasicAttack(me.Class), me.Pos, aim))
+                // 일반공격 — 쿨다운 준비됐고 예측 칸이 내 클래스 공격 모양 안이면 깐다.
+                if (world.CanAttack(_actorId) && RangeTemplates.Contains(RangeTemplates.BasicAttack(me.Class), me.Pos, aim))
                 {
                     _nextAttackTime = world.Time + EffectiveAttackInterval(world);
                     return AiCommand.Of(CommandType.Attack, aim, predicted);
@@ -118,25 +116,22 @@ namespace SeoYuGi.Ai
             // 3.5) 습성 카운터 전술 (D) — 스타일 파악되면 통수 포지셔닝 (R2+)
             if (_predictor != null && world.Round >= 2 && TryCounterTactic(world, me, out var counterStep))
             {
-                if (counterStep.HasValue && ap >= _cfg.CostMove)
+                if (counterStep.HasValue)
                     return AiCommand.Of(CommandType.Move, counterStep.Value);
-                if (!counterStep.HasValue) return AiCommand.None; // 자리 사수 — 공격은 상위 우선순위가
+                return AiCommand.None; // 자리 사수 — 공격은 상위 우선순위가
             }
 
             // 3.7) 힐팩 — HP가 상했고 근처에 있을 때만. 거점 플레이보다 앞서지만 회피·공격보다는 뒤.
             // "전술적으로 안 먹기"는 두 문턱으로: 손상(HealSeekMissingHp) + 거리(HealSeekRadius).
-            if (ap >= _cfg.CostMove)
-            {
-                var healStep = StepTowardHealPack(world, me);
-                if (healStep.HasValue) return AiCommand.Of(CommandType.Move, healStep.Value);
-            }
+            var healStep = StepTowardHealPack(world, me);
+            if (healStep.HasValue) return AiCommand.Of(CommandType.Move, healStep.Value);
 
             // 4) 거점 이동
             var step = StepTowardBestZone(world, me);
-            if (step.HasValue && ap >= _cfg.CostMove + _cfg.ReserveAp)
+            if (step.HasValue)
                 return AiCommand.Of(CommandType.Move, step.Value);
 
-            // 5) 비축
+            // 5) 대기
             return AiCommand.None;
         }
 
@@ -243,11 +238,9 @@ namespace SeoYuGi.Ai
             return best ?? sidestep;
         }
 
-        private AiCommand TrySkill(IWorldView world, ActorState me, float ap, ActorState target, Cell aim)
+        private AiCommand TrySkill(IWorldView world, ActorState me, ActorState target, Cell aim)
         {
-            if (ap < _cfg.CostHeavy) return AiCommand.None;
-
-            // 스킬 2개 체제 — 코어가 쿨타임·AP를 검증하므로 뇌는 각(角)만 잡는다.
+            // 스킬 2개 체제 — 코어가 쿨타임을 검증하므로 뇌는 각(角)만 잡는다.
             // 거부되면 다음 틱에 다른 각을 시도 (스킬2 → 스킬1 순으로 위력 우선).
             switch (me.Class)
             {
@@ -255,7 +248,7 @@ namespace SeoYuGi.Ai
                     if (Chebyshev(me.Pos, aim) == 1) // 인접8
                     {
                         // 강타(스킬2, 피해2)를 우선, 쿨이면 다음 틱에 방패밀기(스킬1)
-                        if (ap >= 3f && _lastSkillDenied != 1)
+                        if (_lastSkillDenied != 1)
                             return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 0);
                     }
@@ -263,7 +256,7 @@ namespace SeoYuGi.Ai
 
                 case ClassId.Balance:
                     // 비명 교란(스킬2): 인접8에 적이 2기 이상이면 광역 스턴
-                    if (CountAdjacentEnemies(world, me) >= 2 && ap >= 3f)
+                    if (CountAdjacentEnemies(world, me) >= 2)
                         return AiCommand.Of(CommandType.Heavy, me.Pos, skillIndex: 1);
                     // 돌파(스킬1): 타겟이 같은 행/열 2칸 이내면 대시로 접촉
                     if ((target.Pos.X == me.Pos.X || target.Pos.Y == me.Pos.Y) &&
@@ -273,7 +266,7 @@ namespace SeoYuGi.Ai
 
                 case ClassId.Assassin:
                     // 발톱(스킬2): 이미 인접8이면 최고 딜
-                    if (Chebyshev(me.Pos, aim) == 1 && ap >= 3f)
+                    if (Chebyshev(me.Pos, aim) == 1)
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     // 그림자 도약(스킬1): 적 시야 밖일 때만 — 고스트를 남기지 않고 파고든다
                     if (Chebyshev(me.Pos, target.Pos) <= 3 &&
@@ -287,7 +280,7 @@ namespace SeoYuGi.Ai
 
                 case ClassId.Grenadier:
                     // 폭탄 배달(스킬2): 멀리 있는 예측 칸으로 비행 폭격 (진입 겸용)
-                    if (Manhattan(me.Pos, aim) is > 2 and <= 4 && ap >= 3f)
+                    if (Manhattan(me.Pos, aim) is > 2 and <= 4)
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     // 파열탄(스킬1): 5×5 내 십자 폭격
                     if (Chebyshev(me.Pos, aim) <= 2 && !aim.Equals(me.Pos))
@@ -300,7 +293,7 @@ namespace SeoYuGi.Ai
                         return AiCommand.Of(CommandType.Heavy, target.Pos, skillIndex: 0);
                     // 조준 사격(스킬2): 예측 칸과 행/열 정렬 + 사거리 5
                     if ((aim.X == me.Pos.X || aim.Y == me.Pos.Y) &&
-                        Chebyshev(me.Pos, aim) <= 5 && !aim.Equals(me.Pos) && ap >= 3f)
+                        Chebyshev(me.Pos, aim) <= 5 && !aim.Equals(me.Pos))
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     break;
             }

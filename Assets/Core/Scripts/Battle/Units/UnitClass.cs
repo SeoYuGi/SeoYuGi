@@ -40,7 +40,6 @@ namespace SeoYuGi.Battle
         public float telegraphSeconds; // 0 = 즉시 발동
         public int damage;
         public int range;
-        public float apCost;
         public float cooldownSeconds;
         public float stunSeconds;      // Scream 전용
     }
@@ -53,7 +52,7 @@ namespace SeoYuGi.Battle
         public int sightRange;
         public AttackShape attackShape;
         public MoveProfile move;
-        public SkillDef[] skills; // [0] = 스킬1(AP2), [1] = 스킬2(AP3)
+        public SkillDef[] skills; // [0] = 스킬1(짧은 쿨), [1] = 스킬2(긴 쿨·고위력)
     }
 
     /// <summary>
@@ -67,51 +66,51 @@ namespace SeoYuGi.Battle
             new ClassDef
             {
                 id = UnitClass.Tank, maxHp = 15, sightRange = 3, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.4f, regenDelaySeconds = 1.2f, yellowCooldownSeconds = 3.5f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.6f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3.5f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 0.6f, damage = 1, range = 1, apCost = 2f, cooldownSeconds = 2f },
-                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 0.6f, damage = 2, range = 1, apCost = 3f, cooldownSeconds = 3f }
+                    new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 0.6f, damage = 1, range = 1, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 0.6f, damage = 2, range = 1, cooldownSeconds = 8f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Balance, maxHp = 10, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.5f, regenDelaySeconds = 1f, yellowCooldownSeconds = 3f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.8f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 2, apCost = 2f, cooldownSeconds = 2f },
-                    new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 0.4f, damage = 0, range = 1, apCost = 3f, cooldownSeconds = 3f, stunSeconds = 1f }
+                    new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 2, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 0.4f, damage = 0, range = 1, cooldownSeconds = 8f, stunSeconds = 1f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Assassin, maxHp = 8, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 0.7f, regenDelaySeconds = 0.8f, yellowCooldownSeconds = 2.5f },
+                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.5f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Blink, telegraphSeconds = 0f, damage = 0, range = 2, apCost = 2f, cooldownSeconds = 2f },
-                    new SkillDef { kind = SkillKind.Claw, telegraphSeconds = 0.8f, damage = 3, range = 1, apCost = 3f, cooldownSeconds = 4f }
+                    new SkillDef { kind = SkillKind.Blink, telegraphSeconds = 0f, damage = 0, range = 2, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Claw, telegraphSeconds = 0.8f, damage = 3, range = 1, cooldownSeconds = 10f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Grenadier, maxHp = 8, sightRange = 4, attackShape = AttackShape.Circle2,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.5f, regenDelaySeconds = 1f, yellowCooldownSeconds = 3f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.8f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 0.8f, damage = 1, range = 2, apCost = 2f, cooldownSeconds = 2f },
-                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 1f, damage = 2, range = 4, apCost = 3f, cooldownSeconds = 4f }
+                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 0.8f, damage = 1, range = 2, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 1f, damage = 2, range = 4, cooldownSeconds = 10f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Sniper, maxHp = 5, sightRange = 5, attackShape = AttackShape.Square2,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.4f, regenDelaySeconds = 1.2f, yellowCooldownSeconds = 4f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.6f, regenDelaySeconds = 0f, yellowCooldownSeconds = 4f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 1, apCost = 2f, cooldownSeconds = 3f },
-                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 0.8f, damage = 3, range = 5, apCost = 3f, cooldownSeconds = 4f }
+                    new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 1, cooldownSeconds = 7f },
+                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 0.8f, damage = 3, range = 5, cooldownSeconds = 10f }
                 }
             }
         };

@@ -2,7 +2,7 @@ using NUnit.Framework;
 
 namespace SeoYuGi.Battle.Tests
 {
-    /// <summary>AP 경제 + 설치형 공격 + 스킬 2개 체제 (캐릭터 기획 v1.7). 방어는 삭제됨.</summary>
+    /// <summary>설치형 공격 + 스킬 2개 체제 (캐릭터 기획 v1.7). 방어·AP 삭제 — 평타는 쿨다운, 적중은 OnDamageDealt.</summary>
     public class CombatSystemTests
     {
         BattleState battle;
@@ -25,36 +25,38 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void ApRegen_ClampedAtMax()
+        public void Attack_Cooldown_BlocksUntilElapsed()
         {
-            var u = Add(1, 0, new Coord(5, 5));
-            var combat = NewCombat();
-
-            Assert.AreEqual(5f, u.ap, 0.001f); // 시작 = 최대
-            u.ap = 2f;
-            combat.Tick(1f);
-            Assert.AreEqual(3f, u.ap, 0.001f); // 초당 1 회복
-            combat.Tick(100f);
-            Assert.AreEqual(5f, u.ap, 0.001f); // 클램프
-        }
-
-        [Test]
-        public void Attack_TelegraphThenDamage_WithRefund()
-        {
-            var attacker = Add(1, 0, new Coord(5, 5));
-            var target = Add(2, 1, new Coord(5, 6));
+            Add(1, 0, new Coord(5, 5));
+            Add(2, 1, new Coord(5, 6));
             var combat = NewCombat();
 
             Assert.AreEqual(ActDenied.None, combat.TryAttack(1, new Coord(5, 6)));
-            Assert.AreEqual(3f, attacker.ap, 0.001f);       // 비용 2
+            Assert.AreEqual(ActDenied.Cooldown, combat.TryAttack(1, new Coord(5, 6))); // 쿨 2초
+            combat.Tick(2f); // 쿨 경과
+            Assert.AreEqual(ActDenied.None, combat.TryAttack(1, new Coord(5, 6)));
+        }
+
+        [Test]
+        public void Attack_TelegraphThenDamage_FiresDamageDealt()
+        {
+            Add(1, 0, new Coord(5, 5));
+            var target = Add(2, 1, new Coord(5, 6));
+            var combat = NewCombat();
+            int dealtBy = -1, dealtSum = 0;
+            combat.OnDamageDealt += (attackerId, dmg) => { dealtBy = attackerId; dealtSum += dmg; };
+
+            Assert.AreEqual(ActDenied.None, combat.TryAttack(1, new Coord(5, 6)));
             Assert.AreEqual(1, combat.ActiveStrikes.Count); // 예고 중 — 아직 피해 없음
             Assert.AreEqual(10, target.hp);
+            Assert.AreEqual(0, dealtSum);
 
             combat.Tick(0.5f); // 판정
 
             Assert.AreEqual(9, target.hp);
             Assert.AreEqual(0, combat.ActiveStrikes.Count);
-            Assert.AreEqual(3f + 0.5f + 1f, attacker.ap, 0.001f); // 회복 0.5 + 적중 환급 1
+            Assert.AreEqual(1, dealtBy);   // 적중 = 예측 성공 → 보상 훅 발화
+            Assert.AreEqual(1, dealtSum);  // 가한 피해 합
         }
 
         [Test]
@@ -70,27 +72,27 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void Attack_EmptyCellAtImpact_NoRefund()
+        public void Attack_EmptyCellAtImpact_NoDamageDealt()
         {
-            var attacker = Add(1, 0, new Coord(5, 5));
+            Add(1, 0, new Coord(5, 5));
             var combat = NewCombat();
+            int dealtSum = 0;
+            combat.OnDamageDealt += (_, dmg) => dealtSum += dmg;
 
             combat.TryAttack(1, new Coord(5, 6)); // 빈 칸에 설치
             combat.Tick(0.5f);
 
-            Assert.AreEqual(3f + 0.5f, attacker.ap, 0.001f); // 환급 없음
+            Assert.AreEqual(0, dealtSum); // 빗나감 — 보상 훅 없음
         }
 
         [Test]
         public void Attack_Invalid_Denied()
         {
-            var attacker = Add(1, 0, new Coord(5, 5));
+            Add(1, 0, new Coord(5, 5));
             Add(2, 1, new Coord(5, 7));
             var combat = NewCombat();
 
             Assert.AreEqual(ActDenied.BadTarget, combat.TryAttack(1, new Coord(5, 7))); // Melee8 밖 (거리 2)
-            attacker.ap = 1f;
-            Assert.AreEqual(ActDenied.NoAp, combat.TryAttack(1, new Coord(5, 6)));
         }
 
         [Test]
@@ -106,11 +108,13 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void Flying_BlocksDamage_NoRefund()
+        public void Flying_BlocksDamage_NoDamageDealt()
         {
-            var attacker = Add(1, 0, new Coord(5, 5));
+            Add(1, 0, new Coord(5, 5));
             var defender = Add(2, 1, new Coord(5, 6));
             var combat = NewCombat();
+            int dealtSum = 0;
+            combat.OnDamageDealt += (_, dmg) => dealtSum += dmg;
 
             combat.TryAttack(1, new Coord(5, 6));
             defender.flyingUntil = 999f; // 비행 중 무적 (폭탄 배달)
@@ -118,7 +122,7 @@ namespace SeoYuGi.Battle.Tests
             combat.Tick(0.5f);
 
             Assert.AreEqual(10, defender.hp); // 무효
-            Assert.AreEqual(3f + 0.5f, attacker.ap, 0.001f); // 환급 없음
+            Assert.AreEqual(0, dealtSum);     // 보상 훅 없음
         }
 
         [Test]
@@ -208,7 +212,7 @@ namespace SeoYuGi.Battle.Tests
             var combat = NewCombat();
 
             Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 0, new Coord(5, 6)));
-            Assert.AreEqual(ActDenied.Cooldown, combat.TrySkill(1, 0, new Coord(5, 6))); // 쿨 2초
+            Assert.AreEqual(ActDenied.Cooldown, combat.TrySkill(1, 0, new Coord(5, 6))); // 쿨 진행 중
         }
 
         [Test]
@@ -320,15 +324,18 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void Skill_NoAp_Denied()
+        public void KnockShot_InstantHit_FiresDamageDealt()
         {
-            var u = Add(1, 0, new Coord(5, 5), UnitClass.Tank);
+            Add(1, 0, new Coord(5, 5), UnitClass.Sniper);
             Add(2, 1, new Coord(5, 6));
             var combat = NewCombat();
+            int dealtBy = -1, dealtSum = 0;
+            combat.OnDamageDealt += (attackerId, dmg) => { dealtBy = attackerId; dealtSum += dmg; };
 
-            u.ap = 1f;
-            Assert.AreEqual(ActDenied.NoAp, combat.TrySkill(1, 0, new Coord(5, 6))); // 스킬1 = AP 2
-            Assert.AreEqual(1f, u.ap, 0.001f); // 실패 시 소모 없음
+            Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 0, new Coord(5, 6)));
+
+            Assert.AreEqual(1, dealtBy);  // 즉발 명중도 예측 성공 취급
+            Assert.AreEqual(1, dealtSum);
         }
     }
 }

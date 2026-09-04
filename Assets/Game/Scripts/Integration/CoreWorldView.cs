@@ -121,7 +121,7 @@ namespace SeoYuGi.Integration
         public IReadOnlyList<AiCell> Highlands => highlands;
         public IReadOnlyList<AiCell> HealPacks => healPacks;
 
-        public float GetAp(int actorId) => state.GetUnit(actorId)?.ap ?? 0f;
+        public bool CanAttack(int actorId) => combat.AttackCooldownRemaining(actorId) <= 0f;
 
         public bool IsWalkable(AiCell cell) => state.Grid.IsWalkable(new Coord(cell.X, cell.Y));
 
@@ -132,7 +132,7 @@ namespace SeoYuGi.Integration
         {
             if (hack == null) return false;
             var u = state.GetUnit(actorId);
-            return u != null && hackTeams.Contains(u.team) && hack.Has(actorId);
+            return u != null && hackTeams.Contains(u.team) && hack.IsReady(actorId);
         }
     }
 }

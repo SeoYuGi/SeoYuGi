@@ -36,6 +36,7 @@ namespace SeoYuGi.Net
         public static event Action<int, int> OnChatShow;                 // unitId, lineId — 호스트 검증 통과분
         public static event Action<int, Coord[], bool> OnMoved;          // unitId, path, isYellow — 홉 연출용
         public static event Action<int> OnHacked;                        // unitId — 해킹 연출 릴레이
+        public static event Action<int, float> OnClientHackCharge;       // unitId, 0..1 — 궁게이지 미러
         public static event Action<TelegraphStrike> OnTelegraph;         // 예고 주입 — 클라 미러용
         public static event Action<int, bool> OnTelegraphEnd;            // strikeId, hit — 판정 통보
         public static event Action<int, int> OnSkillCast;                // unitId, (int)SkillKind — 시전 연출
@@ -287,7 +288,8 @@ namespace SeoYuGi.Net
         /// 빠진 유닛은 클라가 마지막 값 유지 (어차피 시야 밖 = 화면에서 숨김).
         /// </summary>
         public static void HostTick(float realDt, BattleState b, RoundSystem r, PickupSystem p,
-            int matchRound, VisionSystem vision)
+            int matchRound, VisionSystem vision,
+            Func<int, float> hackCharge = null, Func<int, bool> teamRevealed = null)
         {
             sendTimer += realDt;
             if (sendTimer < SnapInterval) return;
@@ -304,19 +306,23 @@ namespace SeoYuGi.Net
                 w.WriteValueSafe(matchRound);
                 w.WriteValueSafe(b.time);
 
+                // 해킹 시야 강탈 중인 팀엔 적 전원 포함 — 시야 필터 일시 해제
+                bool reveal = teamRevealed != null && teamRevealed(team);
+
                 byte visibleCount = 0;
                 foreach (var u in b.Units)
-                    if (u.team == team || vision.IsVisibleTo(team, u.pos)) visibleCount++;
+                    if (u.team == team || reveal || vision.IsVisibleTo(team, u.pos)) visibleCount++;
                 w.WriteValueSafe(visibleCount);
                 foreach (var u in b.Units)
                 {
-                    if (u.team != team && !vision.IsVisibleTo(team, u.pos)) continue;
+                    if (u.team != team && !reveal && !vision.IsVisibleTo(team, u.pos)) continue;
                     w.WriteValueSafe((byte)u.id);
                     w.WriteValueSafe((byte)u.pos.x);
                     w.WriteValueSafe((byte)u.pos.y);
                     w.WriteValueSafe((sbyte)u.hp);
                     w.WriteValueSafe(u.alive);
-                    w.WriteValueSafe(u.ap);
+                    w.WriteValueSafe(u.attackReadyAt);
+                    w.WriteValueSafe(hackCharge != null ? hackCharge(u.id) : 0f);
                     w.WriteValueSafe(u.moveGauge);
                     w.WriteValueSafe(u.moveCooldown);
                     w.WriteValueSafe(u.regenDelay);
@@ -406,7 +412,8 @@ namespace SeoYuGi.Net
                 r.ReadValueSafe(out byte y);
                 r.ReadValueSafe(out sbyte hp);
                 r.ReadValueSafe(out bool alive);
-                r.ReadValueSafe(out float ap);
+                r.ReadValueSafe(out float attackReadyAt);
+                r.ReadValueSafe(out float hackG);
                 r.ReadValueSafe(out float gauge);
                 r.ReadValueSafe(out float cooldown);
                 r.ReadValueSafe(out float regen);
@@ -436,7 +443,8 @@ namespace SeoYuGi.Net
                 if (!alive && u.alive) battle.Grid.RemoveUnit(u.pos);
                 u.hp = hp;
                 u.alive = alive;
-                u.ap = ap;
+                u.attackReadyAt = attackReadyAt;
+                OnClientHackCharge?.Invoke(id, hackG); // 궁게이지 미러 — HUD 표시용
                 if (!predicted)
                 {
                     u.moveGauge = gauge;

@@ -22,8 +22,8 @@ namespace SeoYuGi.Battle
         // 이동 직후 게이지 회복 정지 타이머(초).
         public float regenDelay;
 
-        // AP (0..CombatConfig.apMax). CombatSystem이 초기화·회복.
-        public float ap;
+        // 일반공격 재사용 가능 시각 (CombatConfig.attackCooldownSeconds).
+        public float attackReadyAt = -1f;
         // 그림자 도약 버프 종료 시각. 지속 중 일반공격 +1.
         public float attackBuffUntil = -1f;
         // 스턴 종료 시각 (비명 교란). >= 현재 시각이면 이동·행동 불가.

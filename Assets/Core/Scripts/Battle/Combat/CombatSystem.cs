@@ -7,9 +7,8 @@ namespace SeoYuGi.Battle
     {
         None,
         Dead,      // 유닛 없음/사망
-        NoAp,      // AP 부족
         BadTarget, // 사거리 밖 / 벽 / 잘못된 지정
-        Cooldown,  // 스킬 쿨타임
+        Cooldown,  // 일반공격·스킬 쿨타임
         Locked     // 스턴·비행 중 행동 불가
     }
 
@@ -29,7 +28,8 @@ namespace SeoYuGi.Battle
     }
 
     /// <summary>
-    /// AP 경제 + 설치형 공격 + 클래스 스킬 2개 체제 (캐릭터 기획 v1.7).
+    /// 설치형 공격 + 클래스 스킬 2개 체제 (캐릭터 기획 v1.7). AP는 삭제됨(2026-09-05) —
+    /// 일반공격은 쿨다운으로 제한하고, 적중 보상은 OnDamageDealt를 구독한 해킹 게이지가 받는다.
     /// 순수 C# — 외부에서 Tick(dt) 호출. BattleState.time은 이 시스템이 단독 전진.
     /// 판정 순서 = 설치 순서 (결정론). 팀킬 없음. 방어는 기획 삭제됨.
     /// 즉발은 이동기(돌파·도약·넉백샷)만 — 타격·CC는 반드시 예고.
@@ -43,6 +43,7 @@ namespace SeoYuGi.Battle
         public event Action<TelegraphStrike> OnTelegraph;
         public event Action<TelegraphStrike, bool> OnStrikeResolved; // (strike, hitAnything)
         public event Action<int, int, Coord> OnUnitDamaged;          // (unitId, damage, hitDir — Zero면 방향 없음)
+        public event Action<int, int> OnDamageDealt;                 // (attackerId, 가한 피해 합) — 적중 = 예측 성공 보상 훅
         public event Action<int> OnUnitDied;
         public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
         public event Action<int, float> OnStunned;       // (unitId, seconds)
@@ -54,17 +55,11 @@ namespace SeoYuGi.Battle
         {
             State = state;
             Config = config;
-            foreach (var unit in state.Units)
-                unit.ap = config.apMax;
         }
 
         public void Tick(float deltaTime)
         {
             State.time += deltaTime;
-
-            foreach (var unit in State.Units)
-                if (unit.alive)
-                    unit.ap = Math.Min(Config.apMax, unit.ap + Config.apRegenPerSecond * deltaTime);
 
             // 판정 시각 도달한 예고를 설치 순서대로 해석
             for (int i = 0; i < strikes.Count;)
@@ -94,6 +89,13 @@ namespace SeoYuGi.Battle
             return Math.Max(0f, unit.skillReadyAt[skillIndex] - State.time);
         }
 
+        public float AttackCooldownRemaining(int unitId)
+        {
+            var unit = State.GetUnit(unitId);
+            if (unit == null) return 0f;
+            return Math.Max(0f, unit.attackReadyAt - State.time);
+        }
+
         /// <summary>기본공격 사거리 판정 — 클래스별 모양 (범위 다이어그램 원본).</summary>
         public static bool InAttackShape(AttackShape shape, Coord from, Coord to)
         {
@@ -117,12 +119,12 @@ namespace SeoYuGi.Battle
             var unit = State.GetUnit(unitId);
             if (unit == null || !unit.alive) return ActDenied.Dead;
             if (IsLocked(unit)) return ActDenied.Locked;
-            if (unit.ap < Config.costAttack) return ActDenied.NoAp;
+            if (unit.attackReadyAt > State.time) return ActDenied.Cooldown;
             var def = ClassCatalog.Get(unit.unitClass);
             if (!InAttackShape(def.attackShape, unit.pos, target)) return ActDenied.BadTarget;
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
-            unit.ap -= Config.costAttack;
+            unit.attackReadyAt = State.time + Config.attackCooldownSeconds;
             int damage = Config.attackDamage
                 + (unit.attackBuffUntil > State.time ? Config.blinkBuffBonus : 0);
             Place(new TelegraphStrike
@@ -136,7 +138,7 @@ namespace SeoYuGi.Battle
             return ActDenied.None;
         }
 
-        // ── 스킬 (2개 체제: 인덱스 0/1, AP + 쿨타임 병행) ─────────
+        // ── 스킬 (2개 체제: 인덱스 0/1, 쿨타임 제한) ──────────────
 
         /// <summary>구 API 호환 — 스킬1.</summary>
         public ActDenied TrySkill(int unitId, Coord target) => TrySkill(unitId, 0, target);
@@ -149,7 +151,6 @@ namespace SeoYuGi.Battle
 
             var skill = ClassCatalog.Get(unit.unitClass).skills[skillIndex];
             if (unit.skillReadyAt[skillIndex] > State.time) return ActDenied.Cooldown;
-            if (unit.ap < skill.apCost) return ActDenied.NoAp;
 
             ActDenied result;
             switch (skill.kind)
@@ -168,7 +169,6 @@ namespace SeoYuGi.Battle
             }
             if (result == ActDenied.None)
             {
-                unit.ap -= skill.apCost;
                 unit.skillReadyAt[skillIndex] = State.time + skill.cooldownSeconds;
                 OnSkillCast?.Invoke(unitId, skill.kind);
             }
@@ -206,6 +206,7 @@ namespace SeoYuGi.Battle
             // 즉발 대시: 벽만 못 뚫고 유닛은 통과. 경로의 적은 피해 + 1칸 밀침(유닛당 1회).
             // 착지는 통과한 칸 중 가장 먼 빈 칸.
             var hitIds = new HashSet<int>();
+            int dealt = 0;
             var landing = unit.pos;
             var probe = unit.pos;
             for (int step = 0; step < skill.range; step++)
@@ -221,6 +222,7 @@ namespace SeoYuGi.Battle
                     {
                         hitIds.Add(occupantId);
                         Damage(occupant, skill.damage, dir);
+                        dealt += skill.damage;
                         if (occupant.alive) Push(occupant, dir, 1, 0);
                     }
                     probe = next;
@@ -237,6 +239,7 @@ namespace SeoYuGi.Battle
                 State.Grid.MoveOccupant(unit.pos, landing);
                 unit.pos = landing;
             }
+            if (dealt > 0) OnDamageDealt?.Invoke(unit.id, dealt);
             return ActDenied.None;
         }
 
@@ -339,7 +342,7 @@ namespace SeoYuGi.Battle
             var d = target - unit.pos;
             var dir = new Coord(Math.Sign(d.x), Math.Sign(d.y));
             Damage(victim, skill.damage, dir);
-            unit.ap = Math.Min(Config.apMax, unit.ap + Config.hitRefund); // 즉발 명중도 예측 성공 취급
+            OnDamageDealt?.Invoke(unit.id, skill.damage); // 즉발 명중도 예측 성공 취급
             Push(unit, new Coord(-dir.x, -dir.y), 2, 0); // 셀프 넉백 — Push가 낙하·막힘 처리
             return ActDenied.None;
         }
@@ -364,7 +367,7 @@ namespace SeoYuGi.Battle
             return ActDenied.None;
         }
 
-        // ── 조준 미리보기 (상태 변경 없음 — 뷰 전용 쿼리, AP 검사 안 함) ──
+        // ── 조준 미리보기 (상태 변경 없음 — 뷰 전용 쿼리, 쿨타임 검사 안 함) ──
 
         /// <summary>일반공격 조준 가능 칸 — 클래스별 모양.</summary>
         public void GetAttackRange(int unitId, List<Coord> cells)
@@ -604,6 +607,7 @@ namespace SeoYuGi.Battle
         {
             var attacker = State.GetUnit(strike.attackerId);
             bool hit = false;
+            int dealt = 0;
 
             foreach (var cell in strike.cells)
             {
@@ -618,6 +622,7 @@ namespace SeoYuGi.Battle
                     : Coord.Zero;
                 Damage(unit, strike.damage, hitDir);
                 hit = true;
+                dealt += strike.damage;
                 if (strike.stunSeconds > 0f && unit.alive)
                 {
                     unit.stunnedUntil = State.time + strike.stunSeconds;
@@ -627,9 +632,9 @@ namespace SeoYuGi.Battle
                     Push(unit, strike.pushDir, strike.pushCells, strike.wallBonusDamage);
             }
 
-            // 적중 = 예측 성공 → AP 환급
-            if (hit && attacker != null && attacker.alive)
-                attacker.ap = Math.Min(Config.apMax, attacker.ap + Config.hitRefund);
+            // 적중 = 예측 성공 → 보상 훅 (해킹 게이지 충전 등은 구독자 소관)
+            if (dealt > 0 && attacker != null && attacker.alive)
+                OnDamageDealt?.Invoke(attacker.id, dealt);
 
             OnStrikeResolved?.Invoke(strike, hit);
         }

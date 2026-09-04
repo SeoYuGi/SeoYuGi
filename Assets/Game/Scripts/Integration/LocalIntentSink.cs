@@ -5,7 +5,7 @@ namespace SeoYuGi.Integration
 {
     /// <summary>
     /// 인텐트 → 코어 시스템 즉시 실행 (싱글 + 멀티 호스트 공용).
-    /// 검증은 전부 기존 TryX가 담당 — AP·쿨타임·사거리·지형 검사가 이미 코어에 있다.
+    /// 검증은 전부 기존 TryX가 담당 — 쿨타임·사거리·지형 검사가 이미 코어에 있다.
     /// </summary>
     public class LocalIntentSink : IIntentSink
     {
@@ -38,7 +38,7 @@ namespace SeoYuGi.Integration
 
                 case IntentKind.Hack:
                     var u = state.GetUnit(intent.unitId);
-                    bool ok = u != null && hack != null && hack.TryHack(intent.unitId, (TeamId)u.team);
+                    bool ok = u != null && hack != null && hack.TryHack(intent.unitId, (TeamId)u.team, state.time);
                     return ok ? IntentResult.Accepted : default;
 
                 default:

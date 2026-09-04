@@ -13,7 +13,7 @@ namespace SeoYuGi.BattleView
 {
     /// <summary>
     /// 전투 진입점 + 매치 오케스트레이션 (기획서 §05: 3라운드 2선승).
-    /// 맵은 BattleMaps 고정 5장 중 매치 시작 팝업에서 선택 — 시드 무작위 없음(유저·AI 모두 지형 학습).
+    /// 맵은 BattleMaps 고정 6장 중 매치 시작 팝업에서 선택 — 시드 무작위 없음(유저·AI 모두 지형 학습).
     /// 라운드마다 Core(BattleState/시스템들)를 통째로 새로 조립하고,
     /// Predictor만 매치 내내 살아남아 라운드를 거치며 인간을 학습한다.
     /// 흐름: Playing → (라운드 종료) → Briefing(SPACE) → 다음 라운드 → ... → MatchOver(R).
@@ -40,7 +40,7 @@ namespace SeoYuGi.BattleView
         [SerializeField] RoundConfig roundConfig = new RoundConfig();
         [SerializeField] PickupConfig pickupConfig = new PickupConfig();
 
-        [Header("Map — BattleMaps 고정 5장 중 선택")]
+        [Header("Map — BattleMaps 고정 6장 중 선택")]
         [SerializeField] int mapIndex = 0;
 
         [Header("Camera (자동 프레이밍)")]
@@ -77,7 +77,7 @@ namespace SeoYuGi.BattleView
         VisionSystem vision;
         readonly HashSet<int> audioVisibleEnemies = new HashSet<int>(); // 발견/소실 SFX용
         Predictor predictor;
-        HackSystem hackSystem; // 해킹 장비 — 매치당 1개, 라운드 넘겨 유지 (기획서 '해킹', 구 디코이)
+        HackSystem hackSystem; // 해킹 궁게이지 — 매치당 1개, 라운드 넘겨 유지 (기획서 '해킹', 구 디코이)
         QuickChat quickChat;   // 빠른채팅 — 숫자키 1~8. 멀티에서 팀원에게 전달될 예정
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
 
@@ -93,6 +93,8 @@ namespace SeoYuGi.BattleView
         GridConfig gridConfig;
         int playerTeam;
         bool gridViewBuilt;
+        const int RoundsPerMap = 2; // 2라운드마다 맵 로테이션 — 지형 습관이 굳기 전에 판을 갈아엎는다
+        readonly List<GameObject> zoneLabels = new List<GameObject>(); // 맵 교체 시 파괴 대상
         MatchSetup matchSetup;       // 슬롯 구성 — 싱글은 [LocalHuman 1 + Bot 5], 멀티 로비가 덮어씀
         HashSet<int> humanUnitIds;   // 인간 조종 슬롯 — Predictor 학습 대상 전체
         IIntentSink intentSink;      // 행동 제출 단일 통로 (싱글=즉시 실행)
@@ -177,6 +179,7 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatShow += ShowChatVisual;
             NetSync.OnMoved += OnNetMoved;
             NetSync.OnHacked += OnNetHacked;
+            NetSync.OnClientHackCharge += OnNetHackCharge;
             NetSync.OnTelegraph += OnNetTelegraph;
             NetSync.OnTelegraphEnd += OnNetTelegraphEnd;
             NetSync.OnSkillCast += OnNetSkillCast;
@@ -220,11 +223,18 @@ namespace SeoYuGi.BattleView
                 view.PlayPath(path, moveConfig.hopDuration);
         }
 
+        /// <summary>클라 — 스냅샷의 궁게이지를 로컬 미러에 덮어쓴다 (HUD 표시용, 검증은 호스트).</summary>
+        void OnNetHackCharge(int unitId, float charge)
+        {
+            if (IsNetClient) hackSystem?.SetCharge(unitId, charge);
+        }
+
         /// <summary>클라 — 해킹 발동 릴레이. 글리치·자막을 호스트와 동일하게.</summary>
         void OnNetHacked(int unitId)
         {
             if (!IsNetClient || Battle == null) return;
             var u = Battle.GetUnit(unitId);
+            if (u != null) hackSystem?.MarkReveal(u.team, Battle.time); // 시야 강탈 창 복제 — 내 팀이면 적 표시
             var origin = u != null ? gridView.CoordToWorld(u.pos) : Vector3.zero;
             HackVfx.Play(this, origin, HackSystem.Duration);
             battleAudio.PlaySfx("S18_Blink", 1.3f);
@@ -245,6 +255,7 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatShow -= ShowChatVisual;
             NetSync.OnMoved -= OnNetMoved;
             NetSync.OnHacked -= OnNetHacked;
+            NetSync.OnClientHackCharge -= OnNetHackCharge;
             NetSync.OnTelegraph -= OnNetTelegraph;
             NetSync.OnTelegraphEnd -= OnNetTelegraphEnd;
             NetSync.OnSkillCast -= OnNetSkillCast;
@@ -621,6 +632,20 @@ namespace SeoYuGi.BattleView
             ClearRoundObjects();
             if (pickBg != null) { Destroy(pickBg); pickBg = null; } // 픽 배경 제거
 
+            // 맵 로테이션 — 픽한 맵에서 시작해 2라운드마다 다음 맵으로.
+            // Match.CurrentRound는 호스트·클라 모두 RecordRoundResult로 결정론 전진 — 같은 맵이 나온다.
+            var nextMap = BattleMaps.Get(mapIndex + (Match.CurrentRound - 1) / RoundsPerMap);
+            if (map == null || nextMap.Name != map.Name)
+            {
+                map = nextMap;
+                gridConfig = new GridConfig { width = map.Width, height = map.Height };
+                gridViewBuilt = false; // 타일·거점 라벨 전부 재생성
+                foreach (var go in zoneLabels)
+                    if (go != null) Destroy(go);
+                zoneLabels.Clear();
+                Debug.Log($"맵 로테이션 → [{map.Name}] ({map.Width}×{map.Height})");
+            }
+
             var grid = new GridModel(gridConfig);
             foreach (var c in map.Walls)
                 grid.SetObstacle(c);
@@ -636,6 +661,13 @@ namespace SeoYuGi.BattleView
             Move = new MoveSystem(Battle, moveConfig);
             Combat = new CombatSystem(Battle, combatConfig);
             Round = new RoundSystem(Battle, roundConfig, map.Zones);
+
+            // 해킹 궁게이지 — 슬롯 확보(충전은 라운드 넘겨 유지) + 적중 데미지 충전 배선.
+            // Combat은 라운드마다 새로 나므로 매번 재구독 (이전 Combat은 통째로 버려짐).
+            var hackUnitIds = new List<int>();
+            foreach (var s in matchSetup.slots) hackUnitIds.Add(s.unitId);
+            hackSystem.BeginRound(hackUnitIds);
+            Combat.OnDamageDealt += hackSystem.NotifyDamage;
             vision = new VisionSystem(Battle);
             Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
 
@@ -664,6 +696,7 @@ namespace SeoYuGi.BattleView
                     allZoneCells.AddRange(zone);
                 gridView.MarkZones(allZoneCells);
                 CreateZoneLabels();
+                SetupCamera(); // 맵 크기가 라운드 중간에 바뀔 수 있어 재프레이밍
             }
             gridView.ClearBaseTints(); // 이전 라운드 거점 소유 틴트 제거
 
@@ -676,7 +709,16 @@ namespace SeoYuGi.BattleView
 
             foreach (var z in Round.Zones)
             {
-                var disc = ZoneCaptureDisc.Create(transform, gridView.CoordToWorld(z.Center));
+                // 거점 셀 범위 → 사각형 게이지 폭·깊이 (셀 수 × 타일 간격)
+                int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+                foreach (var c in z.cells)
+                {
+                    if (c.x < minX) minX = c.x; if (c.x > maxX) maxX = c.x;
+                    if (c.y < minY) minY = c.y; if (c.y > maxY) maxY = c.y;
+                }
+                float w = (maxX - minX + 1) * gridView.TileSize;
+                float d = (maxY - minY + 1) * gridView.TileSize;
+                var disc = ZoneCaptureDisc.Create(transform, gridView.CoordToWorld(z.Center), w, d);
                 zoneDiscs.Add(disc);
                 roundObjects.Add(disc.gameObject);
             }
@@ -705,7 +747,8 @@ namespace SeoYuGi.BattleView
 
             }
 
-            hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindSlot(playerUnitId).callsign);
+            hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindSlot(playerUnitId).callsign,
+                () => hackSystem.Charge(playerUnitId));
             // input.Init은 아래에서 intentSink 생성 직후 호출
 
             Round.OnZoneCaptured += zone =>
@@ -1037,6 +1080,7 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < Round.Zones.Count && i < ZoneLetters.Length; i++)
             {
                 var go = new GameObject($"ZoneLabel_{ZoneLetters[i]}");
+                zoneLabels.Add(go);
                 go.transform.SetParent(transform);
                 go.transform.position = gridView.CoordToWorld(Round.Zones[i].Center) + Vector3.up * 0.06f;
                 go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥에 눕힘
@@ -1076,7 +1120,8 @@ namespace SeoYuGi.BattleView
         {
             var u = Battle.GetUnit(unitId);
             if (u == null) return false;
-            return u.team == playerTeam || vision.IsVisibleTo(playerTeam, u.pos);
+            return u.team == playerTeam || vision.IsVisibleTo(playerTeam, u.pos)
+                || (hackSystem != null && hackSystem.RevealActive(playerTeam, Battle.time));
         }
 
         /// <summary>판정 칸에 플레이어가 있었나 — 사후 귀속 자막의 대상 확인 (근사치).</summary>
@@ -1244,7 +1289,7 @@ namespace SeoYuGi.BattleView
                 return;
             }
 
-            // 해킹 (H) — 매치 1회, 5초간 적 예측 AI 교란. 클라는 Pending — 성공 통보는 호스트 채팅 에코로.
+            // 해킹 (H) — 궁게이지 만충 시, 5초간 적 예측 AI 교란 + 적 전원 위치 표시. 클라는 Pending.
             if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
                 intentSink.Submit(BattleIntent.Hack(playerUnitId));
 
@@ -1275,9 +1320,11 @@ namespace SeoYuGi.BattleView
             Round.Tick(Time.deltaTime);
             vision.Tick();
             Pickup.Tick();
+            hackSystem.Tick(Time.deltaTime); // 궁게이지 기본 충전 (초당 1%)
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
-                NetSync.HostTick(Time.unscaledDeltaTime, Battle, Round, Pickup, Match.CurrentRound, vision); // 12Hz 팀별 스냅샷
+                NetSync.HostTick(Time.unscaledDeltaTime, Battle, Round, Pickup, Match.CurrentRound, vision, // 12Hz 팀별 스냅샷
+                    id => hackSystem.Charge(id), team => hackSystem.RevealActive(team, Battle.time));
 
             if (Round.Winner != -1)
             {
@@ -1322,13 +1369,16 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < healPackViews.Count; i++)
                 healPackViews[i].SetAvailable(Pickup.Packs[i].active);
 
+            // 해킹 시야 강탈 — 지속 중엔 안개는 그대로, 적 유닛 위치만 전부 드러난다
+            bool hackReveal = hackSystem != null && hackSystem.RevealActive(playerTeam, Battle.time);
+
             foreach (var unit in Battle.Units)
             {
                 var view = viewRegistry.Get(unit.id);
                 if (view == null) continue;
 
                 bool isEnemy = unit.team != playerTeam;
-                bool visible = unit.alive && (!isEnemy || vision.IsVisibleTo(playerTeam, unit.pos));
+                bool visible = unit.alive && (!isEnemy || hackReveal || vision.IsVisibleTo(playerTeam, unit.pos));
 
                 if (view.gameObject.activeSelf != visible)
                     view.gameObject.SetActive(visible);

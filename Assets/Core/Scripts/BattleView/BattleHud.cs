@@ -8,7 +8,7 @@ namespace SeoYuGi.BattleView
     /// 임시 HUD (OnGUI) — 탱고파이브 리로디드 배치 파쿠리. 아트 UI 프리팹이 붙으면 통째로 교체.
     /// 상단: 생존 ● + 매치 스코어 | 남은시간 | A/B/C 거점 칩.
     /// 중앙 상단: 상황 안내 배너 ("공격할 대상을 선택하세요" 식).
-    /// 하단: 통합 바 — 콜사인·HP | 이동/공격/스킬/방어 슬롯(키·AP·쿨타임) | AP 탄약식 표시.
+    /// 하단: 통합 바 — 콜사인·HP | 이동/공격/스킬 슬롯(키·쿨타임) | 해킹 궁게이지.
     /// 오버레이: 라운드 간 AI 분석 브리핑(기획서 §05 — 심사 핵심 어필) · 매치 종료.
     /// hudScale로 전체 크기 조절 (GUI.matrix).
     /// </summary>
@@ -63,8 +63,10 @@ namespace SeoYuGi.BattleView
         float W => Screen.width / UiScale;
         float H => Screen.height / UiScale;
 
+        System.Func<float> hackCharge; // 내 유닛 해킹 게이지 0..1 — 러너가 주입 (HUD는 코어 비의존)
+
         public void Init(BattleState battle, RoundSystem round, CombatConfig combatConfig, MatchSystem match,
-            int playerUnitId, Color[] teamColors, string playerName = null)
+            int playerUnitId, Color[] teamColors, string playerName = null, System.Func<float> hackCharge = null)
         {
             this.battle = battle;
             this.round = round;
@@ -72,6 +74,7 @@ namespace SeoYuGi.BattleView
             this.match = match;
             this.playerUnitId = playerUnitId;
             this.playerName = playerName;
+            this.hackCharge = hackCharge;
             playerTeam = battle.GetUnit(playerUnitId).team;
             allyColor = teamColors[playerTeam];
             enemyColor = teamColors[1 - playerTeam];
@@ -389,7 +392,7 @@ namespace SeoYuGi.BattleView
         string DisplayName() => string.IsNullOrEmpty(playerName)
             ? battle.GetUnit(playerUnitId).unitClass.ToString() : playerName;
 
-        // ── 하단 통합 바: HP | 슬롯 4개 | AP ─────────────────────────
+        // ── 하단 통합 바: HP | 슬롯 4개 | 해킹 궁게이지 ──────────────
 
         void DrawBottomBar()
         {
@@ -419,31 +422,37 @@ namespace SeoYuGi.BattleView
                 $"게이지 {(int)u.moveGauge}", u.moveCooldown <= 0f, u.moveCooldown, moveCoolFrac, false, iconMove);
 
             var aim = moveInput != null ? moveInput.CurrentAim : UnitMoveInput.AimMode.None;
+            float atkCool = Mathf.Max(0f, u.attackReadyAt - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap), y, slotW, slotH), "A", "일반공격",
-                $"AP {combatConfig.costAttack:0}", u.ap >= combatConfig.costAttack, 0f, 0f,
+                $"쿨 {combatConfig.attackCooldownSeconds:0}s", atkCool <= 0f,
+                atkCool, combatConfig.attackCooldownSeconds > 0f ? atkCool / combatConfig.attackCooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Attack, iconAttack);
 
             var s1 = ClassCatalog.Get(u.unitClass).skills[0];
             float s1Cool = Mathf.Max(0f, u.skillReadyAt[0] - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass, 0),
-                $"AP {s1.apCost:0}", u.ap >= s1.apCost && s1Cool <= 0f,
+                $"쿨 {s1.cooldownSeconds:0}s", s1Cool <= 0f,
                 s1Cool, s1.cooldownSeconds > 0f ? s1Cool / s1.cooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Skill, iconSkill);
 
             var s2 = ClassCatalog.Get(u.unitClass).skills[1];
             float s2Cool = Mathf.Max(0f, u.skillReadyAt[1] - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", SkillName(u.unitClass, 1),
-                $"AP {s2.apCost:0}", u.ap >= s2.apCost && s2Cool <= 0f,
+                $"쿨 {s2.cooldownSeconds:0}s", s2Cool <= 0f,
                 s2Cool, s2.cooldownSeconds > 0f ? s2Cool / s2.cooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Skill2, iconSkill);
 
-            // AP 세그먼트 (탱고파이브 탄약 카운터 자리 — 95/최대95 식)
-            var apSeg = new Rect(x0 + totalW - segW, y, segW, slotH);
-            GUI.color = new Color(0.35f, 0.75f, 1f);
-            GUI.Label(new Rect(apSeg.x, apSeg.y + 2, apSeg.width, 30), $"{u.ap:0.0}", bigNumStyle);
+            // 해킹 궁게이지 세그먼트 (구 AP 탄약 카운터 자리) — 만충 시 H 발동
+            var hackSeg = new Rect(x0 + totalW - segW, y, segW, slotH);
+            float charge = hackCharge != null ? Mathf.Clamp01(hackCharge()) : 0f;
+            bool hackReady = charge >= 1f;
+            var hackColor = hackReady ? new Color(1f, 0.45f, 1f) : new Color(0.62f, 0.45f, 1f);
+            GUI.color = hackColor;
+            GUI.Label(new Rect(hackSeg.x, hackSeg.y + 2, hackSeg.width, 30), $"{charge * 100f:0}%", bigNumStyle);
             GUI.color = Color.white;
-            GUI.Label(new Rect(apSeg.x, apSeg.y + 30, apSeg.width, 14), $"AP · 최대 {combatConfig.apMax:0}", subStyle);
-            Bar(new Rect(apSeg.x + 14, apSeg.y + 48, apSeg.width - 28, 8), u.ap / combatConfig.apMax, new Color(0.35f, 0.75f, 1f));
+            GUI.Label(new Rect(hackSeg.x, hackSeg.y + 30, hackSeg.width, 14),
+                hackReady ? "해킹 준비 완료 — H" : "해킹 게이지", subStyle);
+            Bar(new Rect(hackSeg.x + 14, hackSeg.y + 48, hackSeg.width - 28, 8), charge, hackColor);
         }
 
         void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac,

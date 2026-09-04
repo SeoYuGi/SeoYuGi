@@ -4,7 +4,7 @@ using UnityEngine;
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 유닛 머리 위 HP 핍 (임시 — 아트 HUD 붙으면 교체). 코드 생성 쿼드 + 카메라 빌보드.
+    /// 유닛 머리 위 콜사인 + HP 핍 (임시 — 아트 HUD 붙으면 교체). 코드 생성 쿼드 + 카메라 빌보드.
     /// </summary>
     public class UnitHpBar : MonoBehaviour
     {
@@ -22,7 +22,8 @@ namespace SeoYuGi.BattleView
         MaterialPropertyBlock mpb;
         Camera cam;
 
-        public static UnitHpBar Create(Transform parent, UnitState unit, Transform follow)
+        public static UnitHpBar Create(Transform parent, UnitState unit, Transform follow,
+            string displayName = null, Color nameColor = default)
         {
             var go = new GameObject($"HpBar_{unit.id}");
             go.transform.SetParent(parent);
@@ -30,7 +31,23 @@ namespace SeoYuGi.BattleView
             bar.unit = unit;
             bar.follow = follow;
             bar.Build();
+            if (!string.IsNullOrEmpty(displayName))
+                bar.BuildName(displayName, nameColor == default ? Color.white : nameColor);
             return bar;
+        }
+
+        void BuildName(string displayName, Color color)
+        {
+            var go = new GameObject("Name");
+            go.transform.SetParent(transform);
+            go.transform.localPosition = new Vector3(0f, PipSize * 0.8f, 0f);
+            var tm = go.AddComponent<TextMesh>();
+            tm.text = displayName;
+            tm.fontSize = 48;              // 큰 폰트 + 작은 characterSize = 선명
+            tm.characterSize = 0.045f;
+            tm.anchor = TextAnchor.LowerCenter;
+            tm.alignment = TextAlignment.Center;
+            tm.color = Color.Lerp(color, Color.white, 0.35f);
         }
 
         void Build()

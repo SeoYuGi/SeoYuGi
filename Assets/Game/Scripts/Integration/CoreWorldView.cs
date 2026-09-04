@@ -56,7 +56,7 @@ namespace SeoYuGi.Integration
             foreach (var z in round.Zones)
                 zones.Add(new ZoneState
                 {
-                    Cell = new AiCell(z.cell.x, z.cell.y),
+                    Cell = new AiCell(z.Center.x, z.Center.y), // AI 목표는 패치 중심
                     HasOwner = z.owner >= 0,
                     Owner = z.owner >= 0 ? (TeamId)z.owner : default
                 });

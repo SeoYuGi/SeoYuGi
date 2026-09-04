@@ -175,6 +175,36 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
+        public void Patch_AnyCellCaptures()
+        {
+            var patch = new[] { new Coord(4, 4), new Coord(5, 4), new Coord(4, 5), new Coord(5, 5) };
+            Add(1, 0, new Coord(5, 5)); // 패치 구석 칸
+            Add(2, 1, new Coord(0, 0));
+            round = new RoundSystem(battle, config, new[] { patch });
+
+            round.Tick(2.1f);
+            Assert.AreEqual(0, round.Zones[0].owner);
+        }
+
+        [Test]
+        public void Patch_Contested_PausesProgress()
+        {
+            var patch = new[] { new Coord(4, 4), new Coord(5, 4) };
+            var a = Add(1, 0, patch[0]);
+            var b = Add(2, 1, new Coord(0, 0));
+            round = new RoundSystem(battle, config, new[] { patch });
+
+            round.Tick(1.5f);           // 팀0 진행 1.5
+            MoveTo(b, patch[1]);        // 적 진입 — 경합
+            round.Tick(5f);
+            Assert.AreEqual(-1, round.Zones[0].owner); // 경합 중 탈환 없음
+
+            MoveTo(b, new Coord(0, 0)); // 적 이탈 — 진행 재개 (리셋 아님)
+            round.Tick(0.6f);
+            Assert.AreEqual(0, round.Zones[0].owner);
+        }
+
+        [Test]
         public void SuddenDeath_KillWins()
         {
             Add(1, 0, new Coord(0, 0));

@@ -10,10 +10,11 @@ namespace SeoYuGi.Battle
         public float roundSeconds = 120f;  // 라운드 제한 (초과 시 판정)
     }
 
-    /// <summary>거점 1개. owner -1 = 미소유.</summary>
+    /// <summary>거점 1개 — 다중 칸 패치 (탱고파이브식 넓은 거점). owner -1 = 미소유.</summary>
     public class Zone
     {
-        public Coord cell;
+        public List<Coord> cells = new List<Coord>();
+        public Coord Center;
         public int owner = -1;
         public int capturingTeam = -1;
         public float progress; // 0..captureSeconds
@@ -54,12 +55,31 @@ namespace SeoYuGi.Battle
             };
         }
 
-        public RoundSystem(BattleState state, RoundConfig config)
+        /// <param name="zoneCellGroups">거점별 칸 목록 (좌→우). null이면 DefaultZoneCells 1칸 거점 3개.</param>
+        public RoundSystem(BattleState state, RoundConfig config, IEnumerable<IEnumerable<Coord>> zoneCellGroups = null)
         {
             State = state;
             Config = config;
-            foreach (var c in DefaultZoneCells(state.Grid.Width, state.Grid.Height))
-                zones.Add(new Zone { cell = c });
+            if (zoneCellGroups == null)
+            {
+                var groups = new List<IEnumerable<Coord>>();
+                foreach (var c in DefaultZoneCells(state.Grid.Width, state.Grid.Height))
+                    groups.Add(new[] { c });
+                zoneCellGroups = groups;
+            }
+            foreach (var group in zoneCellGroups)
+            {
+                var z = new Zone();
+                int sx = 0, sy = 0;
+                foreach (var c in group)
+                {
+                    z.cells.Add(c);
+                    sx += c.x;
+                    sy += c.y;
+                }
+                z.Center = new Coord(sx / z.cells.Count, sy / z.cells.Count);
+                zones.Add(z);
+            }
 
             CountAlive(prevAlive);
         }
@@ -76,15 +96,25 @@ namespace SeoYuGi.Battle
         {
             foreach (var z in zones)
             {
-                int unitId = State.Grid.GetUnitAt(z.cell);
-                if (unitId == Cell.NoUnit)
+                // 패치 위 팀별 주둔 여부
+                bool team0 = false, team1 = false;
+                foreach (var cell in z.cells)
+                {
+                    int unitId = State.Grid.GetUnitAt(cell);
+                    if (unitId == Cell.NoUnit) continue;
+                    if (State.GetUnit(unitId).team == 0) team0 = true;
+                    else team1 = true;
+                }
+
+                if (!team0 && !team1)
                 {
                     z.capturingTeam = -1; // 비우면 진행 리셋
                     z.progress = 0f;
                     continue;
                 }
+                if (team0 && team1) continue; // 경합 — 진행 일시정지 (탱고파이브식)
 
-                int team = State.GetUnit(unitId).team;
+                int team = team0 ? 0 : 1;
                 if (team == z.owner)
                 {
                     z.capturingTeam = -1;

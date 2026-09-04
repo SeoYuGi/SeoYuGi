@@ -11,48 +11,42 @@ namespace SeoYuGi.BattleView
 {
     /// <summary>
     /// 전투 진입점 + 매치 오케스트레이션 (기획서 §05: 3라운드 2선승).
+    /// 맵은 BattleMaps 고정 5장 중 mapIndex — 시드 무작위 없음(유저·AI 모두 지형 학습).
     /// 라운드마다 Core(BattleState/시스템들)를 통째로 새로 조립하고,
     /// Predictor만 매치 내내 살아남아 라운드를 거치며 인간을 학습한다.
     /// 흐름: Playing → (라운드 종료) → Briefing(SPACE) → 다음 라운드 → ... → MatchOver(R).
     /// </summary>
     public class BattleRunner : MonoBehaviour
     {
-        [Serializable]
-        class UnitSpawn
-        {
-            public int id;
-            public int team;
-            public Coord pos;
-            public UnitClass cls;
-        }
-
         enum Phase { Playing, Briefing, MatchOver }
 
+        // 슬롯 로스터 — 양팀 미러 픽 + 탱고파이브식 콜사인. 픽 변경은 여기서.
+        static readonly (int id, int team, UnitClass cls, string name)[] Roster =
+        {
+            (1, 0, UnitClass.Tank,    "알파"),
+            (2, 0, UnitClass.Balance, "브라보"),
+            (3, 0, UnitClass.Sniper,  "찰리"),
+            (4, 1, UnitClass.Tank,    "델타"),
+            (5, 1, UnitClass.Balance, "에코"),
+            (6, 1, UnitClass.Sniper,  "폭스"),
+        };
+        static readonly string[] ZoneLetters = { "A", "B", "C" };
+
         [Header("Config")]
-        [SerializeField] GridConfig gridConfig = new GridConfig { width = 9, height = 9 }; // 기획서: 9×9
         [SerializeField] MoveConfig moveConfig = new MoveConfig();
         [SerializeField] CombatConfig combatConfig = new CombatConfig();
         [SerializeField] RoundConfig roundConfig = new RoundConfig();
 
-        [Header("Map (자동 생성)")]
-        [SerializeField] int mapSeed = 20260904;
-        [Range(4, 8)]
-        [SerializeField] int wallTiles = 8; // 세부기획 B: 벽 4~8개
+        [Header("Map — BattleMaps 고정 5장 중 선택")]
+        [SerializeField] int mapIndex = 0;
 
-        [Header("Setup — 3v3 (양팀 미러 픽)")]
-        [SerializeField] List<UnitSpawn> spawns = new List<UnitSpawn>
-        {
-            new UnitSpawn { id = 1, team = 0, pos = new Coord(2, 1), cls = UnitClass.Tank },
-            new UnitSpawn { id = 2, team = 0, pos = new Coord(4, 1), cls = UnitClass.Balance },
-            new UnitSpawn { id = 3, team = 0, pos = new Coord(6, 1), cls = UnitClass.Sniper },
-            new UnitSpawn { id = 4, team = 1, pos = new Coord(2, 7), cls = UnitClass.Tank },
-            new UnitSpawn { id = 5, team = 1, pos = new Coord(4, 7), cls = UnitClass.Balance },
-            new UnitSpawn { id = 6, team = 1, pos = new Coord(6, 7), cls = UnitClass.Sniper }
-        };
-        [SerializeField] Color[] teamColors = { new Color(0.25f, 0.5f, 1f), new Color(1f, 0.3f, 0.25f) };
+        [Header("Camera (자동 프레이밍)")]
+        [SerializeField] float cameraPitch = 55f;
+        [SerializeField] float cameraDistanceScale = 0.95f;
 
         [Header("슬롯 — 내 조작은 1기, 나머지는 AI (기획서 §04)")]
-        [SerializeField] int playerUnitId = 2; // 팀0 치즈태비
+        [SerializeField] int playerUnitId = 2; // 브라보 (밸런스)
+        [SerializeField] Color[] teamColors = { new Color(0.25f, 0.5f, 1f), new Color(1f, 0.3f, 0.25f) };
 
         [Tooltip("비우면 큐브 유닛 자동 생성")]
         [SerializeField] UnitView unitPrefab;
@@ -78,8 +72,9 @@ namespace SeoYuGi.BattleView
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
 
         Phase phase = Phase.Playing;
+        ParsedMap map;
+        GridConfig gridConfig;
         int playerTeam;
-        List<Coord> walls;           // 매치 내내 같은 맵 — 학습이 맵 위에서 누적되도록
         bool gridViewBuilt;
         Coord humanPrevPos;          // Predictor 이동 관찰용 직전 위치
         Func<Coord, bool> playerVisibleFn;
@@ -101,35 +96,31 @@ namespace SeoYuGi.BattleView
 
         void Start()
         {
-            playerTeam = spawns.Find(s => s.id == playerUnitId).team;
+            map = BattleMaps.Get(mapIndex);
+            gridConfig = new GridConfig { width = map.Width, height = map.Height };
+            playerTeam = FindRoster(playerUnitId).team;
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c);
-
-            // 자동 맵: 스폰 칸 주변 + 거점 칸은 벽 금지. 매치 내내 동일 (재계산 없음).
-            var reserved = new HashSet<Coord>();
-            foreach (var s in spawns)
-            {
-                reserved.Add(s.pos);
-                foreach (var dir in Coord.Directions4)
-                    reserved.Add(s.pos + dir);
-            }
-            foreach (var c in RoundSystem.DefaultZoneCells(gridConfig.width, gridConfig.height))
-            {
-                reserved.Add(c);
-                foreach (var dir in Coord.Directions4)
-                    reserved.Add(c + dir); // 거점 입구도 확보
-            }
-            walls = MapGenerator.GenerateWalls(gridConfig, wallTiles, mapSeed, reserved);
 
             Match = new MatchSystem();
             predictor = NewPredictor();
             BuildRound();
+            SetupCamera();
+            Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
+        }
+
+        static (int id, int team, UnitClass cls, string name) FindRoster(int unitId)
+        {
+            foreach (var r in Roster)
+                if (r.id == unitId) return r;
+            throw new ArgumentException($"roster에 없는 unitId {unitId}");
         }
 
         Predictor NewPredictor()
         {
-            var cfg = new PredictionConfig { MapWidth = gridConfig.width, MapHeight = gridConfig.height };
-            foreach (var z in RoundSystem.DefaultZoneCells(gridConfig.width, gridConfig.height))
-                cfg.ZoneCells.Add(new PredCell(z.x, z.y));
+            var cfg = new PredictionConfig { MapWidth = map.Width, MapHeight = map.Height };
+            foreach (var zone in map.Zones)
+            foreach (var c in zone)
+                cfg.ZoneCells.Add(new PredCell(c.x, c.y));
             return new Predictor(cfg);
         }
 
@@ -139,68 +130,71 @@ namespace SeoYuGi.BattleView
             ClearRoundObjects();
 
             var grid = new GridModel(gridConfig);
-            foreach (var c in walls)
+            foreach (var c in map.Walls)
                 grid.SetObstacle(c);
 
             Battle = new BattleState(grid);
-            foreach (var s in spawns)
-                Battle.AddUnit(new UnitState(s.id, s.team, s.pos, s.cls));
+            foreach (var r in Roster)
+                Battle.AddUnit(new UnitState(r.id, r.team, map.Spawns[r.id], r.cls));
 
             Move = new MoveSystem(Battle, moveConfig);
             Combat = new CombatSystem(Battle, combatConfig);
-            Round = new RoundSystem(Battle, roundConfig);
+            Round = new RoundSystem(Battle, roundConfig, map.Zones);
             vision = new VisionSystem(Battle);
 
             if (!gridViewBuilt)
             {
                 gridViewBuilt = true;
                 gridView.Build(grid);
-                var zoneCells = new List<Coord>();
-                foreach (var z in Round.Zones) zoneCells.Add(z.cell);
-                gridView.MarkZones(zoneCells);
+                var allZoneCells = new List<Coord>();
+                foreach (var zone in map.Zones)
+                    allZoneCells.AddRange(zone);
+                gridView.MarkZones(allZoneCells);
+                CreateZoneLabels();
             }
             gridView.ClearBaseTints(); // 이전 라운드 거점 소유 틴트 제거
 
-            foreach (var s in spawns)
+            foreach (var r in Roster)
             {
                 var view = CreateUnitView();
-                view.name = $"Unit_{s.id}_{s.cls}";
+                view.name = $"Unit_{r.id}_{r.cls}";
                 // 클래스별 덩치 차이 — 모델 들어오기 전 임시 구분 (Bind 전에 적용해야 기준 스케일로 잡힘)
-                view.transform.localScale *= ViewScale(s.cls);
-                view.Bind(s.id, teamColors[s.team], gridView, s.pos);
+                view.transform.localScale *= ViewScale(r.cls);
+                view.Bind(r.id, teamColors[r.team], gridView, map.Spawns[r.id]);
                 viewRegistry.Register(view);
                 roundObjects.Add(view.gameObject);
 
-                var bar = UnitHpBar.Create(transform, Battle.GetUnit(s.id), view.transform);
-                hpBars[s.id] = bar;
+                var bar = UnitHpBar.Create(transform, Battle.GetUnit(r.id), view.transform, r.name, teamColors[r.team]);
+                hpBars[r.id] = bar;
                 roundObjects.Add(bar.gameObject);
 
-                if (s.team != playerTeam)
+                if (r.team != playerTeam)
                 {
-                    var ghost = CreateGhost(teamColors[s.team]);
-                    ghosts[s.id] = ghost;
+                    var ghost = CreateGhost(teamColors[r.team]);
+                    ghosts[r.id] = ghost;
                     roundObjects.Add(ghost);
                 }
             }
 
-            hud.Init(Battle, Round, combatConfig, Match, playerUnitId);
+            hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindRoster(playerUnitId).name);
             input.Init(Move, Combat, gridView, viewRegistry, playerUnitId, playerVisibleFn);
 
             Round.OnZoneCaptured += zone =>
             {
                 var tint = Color.Lerp(teamColors[zone.owner], Color.white, 0.35f);
-                gridView.SetBaseTint(zone.cell, tint);
-                Debug.Log($"거점 {zone.cell} → 팀 {zone.owner} 탈환");
+                foreach (var c in zone.cells)
+                    gridView.SetBaseTint(c, tint);
+                Debug.Log($"거점 {zone.Center} → 팀 {zone.owner} 탈환");
             };
             Round.OnSuddenDeath += _ => Debug.Log("서든데스! 다음 탈환 또는 킬로 즉시 승부");
 
             // 슬롯: 나 빼고 전부 AI. 적팀 뇌에만 Predictor 주입 — "AI군은 인간을 노린다"(기획서 §05).
             worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound);
             aiDrivers.Clear();
-            foreach (var s in spawns)
-                if (s.id != playerUnitId)
-                    aiDrivers.Add(new AiSlotDriver(s.id, s.cls, Move, Combat,
-                        s.team != playerTeam ? predictor : null));
+            foreach (var r in Roster)
+                if (r.id != playerUnitId)
+                    aiDrivers.Add(new AiSlotDriver(r.id, r.cls, Move, Combat,
+                        r.team != playerTeam ? predictor : null));
 
             Move.OnUnitMoved += (unitId, path, yellow) =>
             {
@@ -225,6 +219,37 @@ namespace SeoYuGi.BattleView
             hpBars.Clear();
             ghosts.Clear();
             viewRegistry.Clear();
+        }
+
+        /// <summary>거점 패치 중앙에 대형 A/B/C 글자 (탱고파이브식).</summary>
+        void CreateZoneLabels()
+        {
+            for (int i = 0; i < Round.Zones.Count && i < ZoneLetters.Length; i++)
+            {
+                var go = new GameObject($"ZoneLabel_{ZoneLetters[i]}");
+                go.transform.SetParent(transform);
+                go.transform.position = gridView.CoordToWorld(Round.Zones[i].Center) + Vector3.up * 0.06f;
+                go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥에 눕힘
+                var tm = go.AddComponent<TextMesh>();
+                tm.text = ZoneLetters[i];
+                tm.fontSize = 64;
+                tm.characterSize = 0.3f; // 3×3 패치에 맞게 큼직하게
+                tm.anchor = TextAnchor.MiddleCenter;
+                tm.alignment = TextAlignment.Center;
+                tm.color = new Color(1f, 1f, 1f, 0.45f);
+            }
+        }
+
+        /// <summary>맵 크기에 맞춰 카메라를 탱고파이브식 틸트 뷰로 프레이밍.</summary>
+        void SetupCamera()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            var center = (gridView.CoordToWorld(new Coord(0, 0)) +
+                          gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1))) * 0.5f;
+            cam.transform.rotation = Quaternion.Euler(cameraPitch, 0f, 0f);
+            float dist = Mathf.Max(map.Width, map.Height) * cameraDistanceScale;
+            cam.transform.position = center - cam.transform.forward * dist;
         }
 
         /// <summary>인간 이동을 홉 단위로 Predictor에 공급 — 학습 단위는 개체(슬롯) (세부기획 E).</summary>

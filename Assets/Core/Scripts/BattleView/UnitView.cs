@@ -86,8 +86,27 @@ namespace SeoYuGi.BattleView
             hitRoutine = null;
         }
 
-        /// <summary>즉시 위치 동기화 (밀침·대시·점멸 등 연출 없는 이동).</summary>
+        /// <summary>즉시 위치 동기화 (점멸·시야 재등장 등 순간이동이 맞는 경우).</summary>
         public void SnapTo(Coord c) => transform.position = WorldOf(c);
+
+        /// <summary>빠른 미끄러짐 (대시·밀침) — 순간이동처럼 안 보이게.</summary>
+        public void PlaySlide(Coord dest, float duration = 0.12f)
+        {
+            if (moving != null) StopCoroutine(moving);
+            moving = StartCoroutine(SlideRoutine(WorldOf(dest), duration));
+        }
+
+        IEnumerator SlideRoutine(Vector3 b, float duration)
+        {
+            Vector3 a = transform.position;
+            for (float t = 0f; t < duration; t += Time.deltaTime)
+            {
+                transform.position = Vector3.Lerp(a, b, t / duration);
+                yield return null;
+            }
+            transform.position = b;
+            moving = null;
+        }
 
         /// <summary>현재 표시 위치가 해당 칸과 어긋나 있는가.</summary>
         public bool IsAt(Coord c) => (transform.position - WorldOf(c)).sqrMagnitude < 0.0001f;

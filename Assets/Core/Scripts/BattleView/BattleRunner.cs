@@ -85,6 +85,7 @@ namespace SeoYuGi.BattleView
         readonly List<GameObject> roundObjects = new List<GameObject>();
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
         readonly Dictionary<int, GameObject> ghosts = new Dictionary<int, GameObject>(); // 적 잔상 마커
+        readonly HashSet<int> blinkSnapIds = new HashSet<int>(); // 점멸 직후 — 슬라이드 대신 번쩍+스냅
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
 
         void Awake()
@@ -306,9 +307,22 @@ namespace SeoYuGi.BattleView
 
             Combat.OnUnitDamaged += (unitId, dmg) =>
             {
-                viewRegistry.Get(unitId)?.PlayHit();
+                var v = viewRegistry.Get(unitId);
+                v?.PlayHit();
+                if (v != null && v.gameObject.activeInHierarchy)
+                    FloatingText.Spawn(v.transform.position, $"-{dmg}", new Color(1f, 0.25f, 0.2f), 1.1f);
                 Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {Battle.GetUnit(unitId).hp}/{Battle.GetUnit(unitId).maxHp})");
                 battleAudio.PlaySfx("S9_Hurt", 0.6f);
+            };
+
+            // 플로팅 텍스트 — 누가 뭘 하는지 머리 위에 뜸 (시야 안일 때만)
+            Combat.OnSkillCast += (unitId, kind) =>
+            {
+                var v = viewRegistry.Get(unitId);
+                if (v != null && v.gameObject.activeInHierarchy)
+                    FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
+                if (kind == SkillKind.Blink)
+                    blinkSnapIds.Add(unitId); // 점멸은 슬라이드 대신 번쩍+스냅 (SyncPresentation)
             };
 
             // 타격 연출 — 시야 밖 칸은 예고 필터와 같은 규칙으로 숨긴다 (정보 누출 방지)
@@ -323,14 +337,20 @@ namespace SeoYuGi.BattleView
             {
                 var u = Battle.GetUnit(unitId);
                 if (u.team == playerTeam || playerVisibleFn(u.pos))
+                {
                     CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(1f, 0.2f, 0.15f), 0.6f, 1.1f);
+                    FloatingText.Spawn(gridView.CoordToWorld(u.pos), "격파!", new Color(1f, 0.3f, 0.2f), 1.4f, 1.1f);
+                }
             };
 
             Combat.OnGuard += unitId =>
             {
                 var u = Battle.GetUnit(unitId);
                 if (u.team == playerTeam || playerVisibleFn(u.pos))
+                {
                     CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(0.3f, 0.7f, 1f));
+                    FloatingText.Spawn(gridView.CoordToWorld(u.pos), "방어", new Color(0.45f, 0.75f, 1f), 0.9f, 0.6f);
+                }
             };
 
             humanPrevPos = Battle.GetUnit(playerUnitId).pos;
@@ -353,6 +373,7 @@ namespace SeoYuGi.BattleView
             hpBars.Clear();
             ghosts.Clear();
             zoneDiscs.Clear();
+            blinkSnapIds.Clear();
             viewRegistry.Clear();
         }
 
@@ -476,6 +497,19 @@ namespace SeoYuGi.BattleView
             Match = new MatchSystem();
             predictor = NewPredictor(); // 새 매치 = 학습 백지
             ShowClassSelect();          // 재시작 때도 다시 픽 + 적팀 재롤
+        }
+
+        static string SkillLabel(SkillKind kind)
+        {
+            switch (kind)
+            {
+                case SkillKind.Smash: return "강타!";
+                case SkillKind.Dash: return "돌파!";
+                case SkillKind.Blink: return "그림자 도약!";
+                case SkillKind.Burst: return "파열탄!";
+                case SkillKind.Snipe: return "조준 사격!";
+                default: return "스킬!";
+            }
         }
 
         static float ViewScale(UnitClass cls)
@@ -609,7 +643,26 @@ namespace SeoYuGi.BattleView
 
                 // 밀침·대시·점멸 등 연출 없는 위치 변경 동기화
                 if (!view.IsMoving && !view.IsAt(unit.pos))
-                    view.SnapTo(unit.pos);
+                {
+                    var targetWorld = gridView.CoordToWorld(unit.pos);
+                    if (blinkSnapIds.Remove(unit.id))
+                    {
+                        // 점멸 — 순간이동이 정체성: 출발·도착 보라 번쩍 + 스냅
+                        var origin = view.transform.position;
+                        origin.y = 0f;
+                        CellFlash.Spawn(origin, new Color(0.7f, 0.4f, 1f));
+                        view.SnapTo(unit.pos);
+                        CellFlash.Spawn(targetWorld, new Color(0.7f, 0.4f, 1f));
+                    }
+                    else if ((view.transform.position - targetWorld).sqrMagnitude < 3.2f * 3.2f)
+                    {
+                        view.PlaySlide(unit.pos); // 대시·밀침 — 빠른 미끄러짐
+                    }
+                    else
+                    {
+                        view.SnapTo(unit.pos); // 시야 재등장 등 먼 거리 — 화면 가로지르는 슬라이드 방지
+                    }
+                }
             }
         }
     }

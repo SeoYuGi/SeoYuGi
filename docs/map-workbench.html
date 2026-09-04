@@ -126,7 +126,7 @@ footer{margin-top:36px;border-top:1px solid var(--line);padding-top:12px;font-si
     <span><span class="sw" style="background:var(--zone-soft)"></span>거점 A/B/C</span>
     <span><span class="sw" style="background:var(--zone);border-radius:50%"></span>팀0 스폰 1–3 (아래)</span>
     <span><span class="sw" style="background:var(--heat)"></span>팀1 스폰 4–6 (위)</span>
-    <span style="color:var(--heal);font-weight:700">✚ 힐팩 H (확장)</span>
+    <span style="color:var(--heal);font-weight:700">✚ 힐팩 H</span>
     <span style="color:var(--heat);font-weight:700">▲ 고지대 ^</span>
     <span><span class="sw" style="background:#07090d"></span>구덩이 _</span>
   </div>
@@ -170,11 +170,11 @@ const PRESETS = [
 "............_____",
 ".#.........._____",
 ".AAA...##..._____",
-".AAA.............",
+".AAA......H......",
 ".AAA...BBB....#..",
 "..#....BBB....#..",
 "..#....BBB...CCC.",
-".............CCC.",
+"......H......CCC.",
 "_____...##...CCC.",
 "_____..........#.",
 "_____............",
@@ -183,13 +183,13 @@ const PRESETS = [
 "....4...5...6....",
 ".................",
 "..AAA......^.....",
-"..AAA............",
+"..AAA.......H....",
 "..AAA..##........",
 ".......BBB...##..",
 "..^....BBB....^..",
 "..##...BBB.......",
 "........##..CCC..",
-"............CCC..",
+"....H.......CCC..",
 ".....^......CCC..",
 ".................",
 "....1...2...3...."]],
@@ -198,11 +198,11 @@ const PRESETS = [
 "..#...#.......#...#..",
 "....#...##.##...#....",
 ".##..#....#....#..##.",
-"........#...#........",
+"..H.....#...#........",
 ".AAA.#...BBB...#.CCC.",
 ".AAA..#..BBB..#..CCC.",
 ".AAA.#...BBB...#.CCC.",
-"........#...#........",
+"........#...#.....H..",
 ".##..#....#....#..##.",
 "....#...##.##...#....",
 "..#...#.......#...#..",
@@ -212,11 +212,11 @@ const PRESETS = [
 "...............",
 ".##.........##.",
 "...^.......#...",
-".....__.__.CCC.",
+".....__H__.CCC.",
 "....._BBB_.CCC.",
 ".AAA..BBB..CCC.",
 ".AAA._BBB_.....",
-".AAA.__.__.....",
+".AAA.__H__.....",
 "...#.......^...",
 ".##.........##.",
 "...............",
@@ -228,11 +228,11 @@ const PRESETS = [
 ".##.......##.",
 ".........CCC.",
 "..#......CCC.",
-".........CCC.",
+"..H......CCC.",
 ".....BBB.....",
 ".#...BBB...#.",
 ".....BBB.....",
-".AAA.........",
+".AAA......H..",
 ".AAA......#..",
 ".AAA.........",
 ".##.......##.",
@@ -324,7 +324,7 @@ const TOOLS = [
   {g:"A", name:"거점 A"}, {g:"B", name:"거점 B"}, {g:"C", name:"거점 C"},
   {g:"1", name:"스폰 1"}, {g:"2", name:"스폰 2"}, {g:"3", name:"스폰 3"},
   {g:"4", name:"스폰 4"}, {g:"5", name:"스폰 5"}, {g:"6", name:"스폰 6"},
-  {g:"H", name:"힐팩", ext:true},
+  {g:"H", name:"힐팩"},
   {g:"^", name:"고지대"},
   {g:"_", name:"구덩이"},
 ];
@@ -450,7 +450,7 @@ function validate(){
   // 확장 글리프
   let heals=0, highs=0;
   for(const row of rows)for(const ch of row){ if(ch==="H")heals++; if(ch==="^")highs++; }
-  if(heals) add("warn",`힐팩 H ×${heals} — BattleMaps.Parse에 'H' 분기 추가 전까지 FormatException을 던진다`);
+  if(heals) add("ok",`힐팩 H ×${heals} — 밟으면 +2 회복, 10초 리스폰 (PickupSystem)`);
   if(highs) add("ok",`고지대 ^ ×${highs} — 진입 비용 2 · 시야 +1 · 저격 벽 관통 · 항상 노출 · 낙하 1`);
   // 벽 수
   let walls=0; for(const row of rows)for(const ch of row) if(ch==="#")walls++;

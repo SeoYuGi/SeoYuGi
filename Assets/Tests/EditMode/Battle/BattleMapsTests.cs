@@ -79,6 +79,13 @@ namespace SeoYuGi.Battle.Tests
                 Assert.IsTrue(voids.Contains(mirror),
                     $"{map.Name}: 구덩이 {v}의 180° 대칭 {mirror}이 없음 — 양팀 불공정");
             }
+            var packs = new HashSet<Coord>(map.HealPacks);
+            foreach (var p in packs)
+            {
+                var mirror = new Coord(map.Width - 1 - p.x, map.Height - 1 - p.y);
+                Assert.IsTrue(packs.Contains(mirror),
+                    $"{map.Name}: 힐팩 {p}의 180° 대칭 {mirror}이 없음 — 양팀 불공정");
+            }
         }
 
         [TestCaseSource(nameof(AllMapIndices))]

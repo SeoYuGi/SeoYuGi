@@ -6,7 +6,7 @@ Shader "SeoYuGi/UnitOutline"
     Properties
     {
         _OutlineColor ("Outline Color", Color) = (0.05, 0.04, 0.06, 1)
-        _OutlineWidth ("Outline Width (world units)", Float) = 0.055
+        _OutlineWidth ("Outline Width (world units)", Float) = 0.045
     }
     SubShader
     {

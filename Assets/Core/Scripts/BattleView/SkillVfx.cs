@@ -25,69 +25,76 @@ namespace SeoYuGi.BattleView
             var hi = StrikeVfx.TeamHi(mine);
             Color Alpha(Color col, float a) { col.a = a; return col; }
 
+            // 공통 시전 신호 — 어느 스킬이든 시전자 위에 큰 팀색 섬광 + 발밑 링. "누가 지금 스킬 썼다"가 먼저 읽히고,
+            // 스킬별 형태는 그 위에 얹힌다. (개별 형태만으론 전체 맵 뷰에서 묻혀서 잘 안 보였다 — 2026-09-05)
+            FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.7f, hi, 2.4f, 0.9f, 0.32f);
+            RingWave.Spawn(origin, Alpha(hi, 0.9f), 1.8f, 0.3f);
+
             switch (kind)
             {
                 // 색은 팀이 쥐고, 클래스는 '형태'로 갈린다 — 링(밀침) / 기둥(강타) / 줄기(돌파) / 겹링(비명) / 발톱(할퀴기)
                 case SkillKind.ShieldPush: // 방패 밀침 — 납작하고 넓은 링 두 겹이 바깥으로 쿵
-                    RingWave.Spawn(origin, Alpha(hi, 0.9f), 3.4f, 0.3f);
-                    FxSequencer.Delay(0.08f, () => RingWave.Spawn(origin, Alpha(c, 0.6f), 4.2f, 0.45f));
+                    RingWave.Spawn(origin, Alpha(hi, 0.95f), 4.2f, 0.4f);
+                    FxSequencer.Delay(0.1f, () => RingWave.Spawn(origin, Alpha(c, 0.7f), 5.2f, 0.6f));
                     break;
 
                 case SkillKind.Smash: // 강타 — 하늘에서 내리꽂는 광기둥 + 바닥 파쇄 링 + 파편
                     ImpactVfx.Pillar(origin, hi);
-                    RingWave.Spawn(origin, Alpha(c, 0.85f), 2.2f, 0.35f);
-                    FxQuad.Burst(VfxTextures.Spark, origin, hi, 8, 0.7f, 3.2f);
+                    RingWave.Spawn(origin, Alpha(c, 0.9f), 3f, 0.45f);
+                    FxQuad.Burst(VfxTextures.Spark, origin, hi, 12, 1f, 3.6f);
                     break;
 
                 case SkillKind.Dash: // 돌파 — 먼지 구름 + 사방으로 길게 뻗는 속도 줄기 (잔상은 러너가 경로 위에 얹는다)
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, origin + Vector3.up * 0.15f, 1.5f, 0.45f);
+                    VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, origin + Vector3.up * 0.15f, 1.8f, 0.6f);
                     for (int i = 0; i < 4; i++)
                     {
                         float a = i * 1.5708f + 0.4f;
                         var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
-                        FxQuad.One(VfxTextures.Wind, origin + Vector3.up * 0.4f, hi, 1.4f, 0.6f, 0.28f,
-                            spinDeg: a * Mathf.Rad2Deg, velocity: dir * 5f);
+                        FxQuad.One(VfxTextures.Wind, origin + Vector3.up * 0.4f, hi, 2f, 0.7f, 0.38f,
+                            spinDeg: a * Mathf.Rad2Deg, velocity: dir * 5.5f);
                     }
                     break;
 
                 case SkillKind.Scream: // 비명 교란 — 음파가 네 겹으로 빠르게 퍼짐 + 시전자 번쩍 (스턴의 시각 언어)
-                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.6f, hi, 1.2f, 1.4f, 0.2f);
-                    RingWave.Spawn(origin, Alpha(hi, 0.9f), 2f, 0.28f);
-                    FxSequencer.Delay(0.1f, () => RingWave.Spawn(origin, Alpha(c, 0.7f), 3f, 0.4f));
-                    FxSequencer.Delay(0.2f, () => RingWave.Spawn(origin, Alpha(c, 0.5f), 4f, 0.55f));
-                    FxSequencer.Delay(0.3f, () => RingWave.Spawn(origin, Alpha(c, 0.3f), 5f, 0.7f));
+                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.6f, hi, 1.8f, 1.6f, 0.3f);
+                    RingWave.Spawn(origin, Alpha(hi, 0.95f), 2.5f, 0.35f);
+                    FxSequencer.Delay(0.1f, () => RingWave.Spawn(origin, Alpha(c, 0.8f), 3.8f, 0.5f));
+                    FxSequencer.Delay(0.2f, () => RingWave.Spawn(origin, Alpha(c, 0.6f), 5f, 0.65f));
+                    FxSequencer.Delay(0.3f, () => RingWave.Spawn(origin, Alpha(c, 0.4f), 6.2f, 0.8f));
                     break;
 
                 case SkillKind.Blink: // 그림자 도약 — 이 origin은 도착지 (시뮬이 먼저 순간이동). 등장: 검은 연기 찢고 나타남
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, origin + Vector3.up * 0.3f, 1.5f, 0.55f);
-                    FxQuad.One(VfxTextures.Electric, origin + Vector3.up * 0.5f, c, 1.8f, 0.5f, 0.25f);
+                    VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, origin + Vector3.up * 0.3f, 1.8f, 0.75f);
+                    FxQuad.One(VfxTextures.Electric, origin + Vector3.up * 0.5f, c, 2.6f, 0.6f, 0.4f);
+                    FxSequencer.Delay(0.12f, () => FxQuad.One(VfxTextures.Electric, origin + Vector3.up * 0.55f, hi, 2.2f, 0.5f, 0.3f, spinDeg: 60f));
                     break;
 
                 case SkillKind.Claw: // 할퀴기 — 발톱 자국 세 장이 시전자 위에서 교차 (판정 칸엔 StrikeVfx가 또 긁는다)
-                    FxQuad.One(VfxTextures.Claw, origin + Vector3.up * 0.6f, c, 1.6f, 0.3f, 0.25f, spinDeg: -30f);
-                    FxSequencer.Delay(0.07f, () => FxQuad.One(VfxTextures.Claw, origin + Vector3.up * 0.65f, hi, 1.7f, 0.3f, 0.25f, spinDeg: 40f));
-                    FxSequencer.Delay(0.14f, () => FxQuad.One(VfxTextures.Claw, origin + Vector3.up * 0.55f, c, 1.5f, 0.3f, 0.25f, spinDeg: 95f));
+                    FxQuad.One(VfxTextures.Claw, origin + Vector3.up * 0.6f, c, 2.3f, 0.35f, 0.35f, spinDeg: -30f);
+                    FxSequencer.Delay(0.07f, () => FxQuad.One(VfxTextures.Claw, origin + Vector3.up * 0.65f, hi, 2.5f, 0.35f, 0.35f, spinDeg: 40f));
+                    FxSequencer.Delay(0.14f, () => FxQuad.One(VfxTextures.Claw, origin + Vector3.up * 0.55f, c, 2.2f, 0.35f, 0.35f, spinDeg: 95f));
                     break;
 
-                case SkillKind.Burst: // 파열탄 — 폭광
-                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.4f, c, 2.8f, 1f, 0.35f);
+                case SkillKind.Burst: // 파열탄 — 폭광 + 파편
+                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.4f, c, 3.6f, 1.1f, 0.45f);
+                    FxQuad.Burst(VfxTextures.Spark, origin + Vector3.up * 0.3f, hi, 8, 0.7f, 3.4f);
                     break;
 
                 case SkillKind.BombDeliver: // 폭탄 배달 — 이륙 돌풍 + 상승 광구 (비행 연출은 UnitView)
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, origin + Vector3.up * 0.15f, 1.6f, 0.5f);
-                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.3f, hi, 1.6f, 1.2f, 0.6f,
-                        velocity: Vector3.up * 2.2f);
-                    RingWave.Spawn(origin, Alpha(c, 0.7f), 2f, 0.4f);
+                    VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, origin + Vector3.up * 0.15f, 1.9f, 0.7f);
+                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.3f, hi, 2.2f, 1.3f, 0.75f,
+                        velocity: Vector3.up * 2.4f);
+                    RingWave.Spawn(origin, Alpha(c, 0.8f), 2.8f, 0.5f);
                     break;
 
                 case SkillKind.KnockShot: // 밀쳐내기 사격 — 샷건 흰 먼지 펑 + 총구 섬광
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoof, origin + Vector3.up * 0.35f, 1.6f, 0.6f);
-                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.55f, hi, 1.4f, 0.5f, 0.12f);
-                    FxQuad.Burst(VfxTextures.Spark, origin + Vector3.up * 0.5f, hi, 3, 0.4f, 3f);
+                    VfxLibrary.Spawn(VfxLibrary.ToonPoof, origin + Vector3.up * 0.35f, 1.9f, 0.8f);
+                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.55f, hi, 2.2f, 0.6f, 0.18f);
+                    FxQuad.Burst(VfxTextures.Spark, origin + Vector3.up * 0.5f, hi, 6, 0.6f, 3.4f);
                     break;
 
-                case SkillKind.Snipe: // 저격 — 차지 글로우 (0.8초 예고와 맞물리는 긴장)
-                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.55f, c, 0.6f, 1.6f, 0.7f);
+                case SkillKind.Snipe: // 저격 — 차지 글로우 (0.8초 예고와 맞물리는 긴장). 예고 동안 계속 빛나게 길게
+                    FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.55f, c, 1f, 2f, 0.8f);
                     break;
             }
         }

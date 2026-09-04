@@ -3,6 +3,7 @@ using System.Text;
 using SeoYuGi.Battle;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
@@ -47,8 +48,108 @@ public class UIClassSelectPopup : UIPopup
 
     void Pick(UnitClass cls)
     {
+        if (TeamMode)
+        {
+            // 팀 구성 모드 — 카드 클릭 = 선택된 칸에 배정 후 다음 칸으로 (세 번 클릭이면 팀 완성)
+            teamCls[editIdx] = cls;
+            if (editIdx < teamCls.Length - 1) editIdx++;
+            RefreshTeamStrip();
+            return;
+        }
         UIManager.Instance.ClosePopupUI(this);
         OnPicked?.Invoke(cls);
+    }
+
+    // ── 싱글 팀 구성 모드 — 나 + 봇 2의 클래스를 이 화면에서 한 번에 짠다 (적 조합은 비공개) ──
+    // 멀티 로비처럼 "팀원 조합을 내가 정하는" 경험을 팀원이 깎은 카드 화면 위에 얹는다. 카드 아래 칩 3개 + 출격 버튼.
+
+    /// <summary>팀 확정 — classes[i] = names[i]의 클래스 (0 = 나).</summary>
+    public Action<UnitClass[]> OnTeamPicked;
+
+    string[] teamNames;
+    UnitClass[] teamCls;
+    int editIdx;
+    readonly System.Collections.Generic.List<Image> chipBgs = new System.Collections.Generic.List<Image>();
+    readonly System.Collections.Generic.List<Outline> chipOutlines = new System.Collections.Generic.List<Outline>();
+    readonly System.Collections.Generic.List<Text> chipTexts = new System.Collections.Generic.List<Text>();
+    bool TeamMode => teamCls != null;
+
+    const float ChipW = 250f, ChipH = 64f, ChipGap = 16f, StripY = -432f;
+
+    /// <summary>팀 구성 모드 켜기. names[0] = 나, 이후 봇. initial = 기본 클래스.</summary>
+    public void SetTeam(string[] names, UnitClass[] initial)
+    {
+        teamNames = names;
+        teamCls = (UnitClass[])initial.Clone();
+        editIdx = 0;
+        BuildTeamStrip();
+        RefreshTeamStrip();
+    }
+
+    void BuildTeamStrip()
+    {
+        int n = teamNames.Length;
+        float stripW = n * ChipW + (n - 1) * ChipGap;
+        float left = -stripW / 2f - 100f; // 출격 버튼 자리만큼 왼쪽으로
+
+        for (int i = 0; i < n; i++)
+        {
+            int idx = i;
+            float cx = left + ChipW / 2f + i * (ChipW + ChipGap);
+            var bg = Img(transform, null, CardBg, new Vector2(cx, StripY), new Vector2(ChipW, ChipH));
+            var img = bg.GetComponent<Image>();
+            img.raycastTarget = true;
+            BindEvent(bg.gameObject, _ => { editIdx = idx; RefreshTeamStrip(); });
+            var ol = bg.gameObject.AddComponent<Outline>();
+            ol.effectDistance = new Vector2(2f, -2f);
+            chipBgs.Add(img);
+            chipOutlines.Add(ol);
+
+            Txt(bg, "", 16, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter,
+                new Vector2(-ChipW / 2f, 0f), new Vector2(ChipW, ChipH), GameFonts.Hud, rich: true);
+            chipTexts.Add(bg.GetChild(bg.childCount - 1).GetComponent<Text>());
+        }
+
+        // 출격 버튼 — 스트립 오른쪽
+        float bx = left + stripW + 40f + 90f;
+        var plate = UISkin.ButtonPlate();
+        var btn = Img(transform, plate, plate != null ? Color.white : new Color(0.16f, 0.7f, 0.55f),
+            new Vector2(bx, StripY), new Vector2(180f, ChipH));
+        btn.GetComponent<Image>().raycastTarget = true;
+        BindEvent(btn.gameObject, _ => StartTeam());
+        Txt(btn, "출격  (Enter)", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+            new Vector2(-90f, 0f), new Vector2(180f, ChipH), GameFonts.Hud);
+
+        Txt(transform, "칩을 고르고 카드를 클릭하면 그 칸에 배정됩니다 · 상대 조합은 시작 전까지 비공개", 14,
+            FontStyle.Normal, DimText, TextAnchor.MiddleCenter,
+            new Vector2(-400f, StripY - 46f), new Vector2(800f, 22f), GameFonts.Hud);
+    }
+
+    void RefreshTeamStrip()
+    {
+        for (int i = 0; i < chipTexts.Count; i++)
+        {
+            var meta = Meta[(int)teamCls[i]];
+            bool sel = i == editIdx;
+            chipTexts[i].text = $"{teamNames[i]} · {(i == 0 ? "나" : "봇")}\n" +
+                                $"<b>{Colored(meta.name, meta.color)}</b>";
+            chipBgs[i].color = sel ? Color.Lerp(CardBg, meta.color, 0.3f) : CardBg;
+            chipOutlines[i].effectColor = sel ? Color.Lerp(meta.color, Color.white, 0.4f) : new Color(0.25f, 0.3f, 0.4f);
+        }
+    }
+
+    void StartTeam()
+    {
+        UIManager.Instance.ClosePopupUI(this);
+        OnTeamPicked?.Invoke(teamCls);
+    }
+
+    void LateUpdate()
+    {
+        if (!TeamMode || Keyboard.current == null) return;
+        if (UIManager.Instance == null || !UIManager.Instance.IsTopPopup(this)) return;
+        if (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame)
+            StartTeam();
     }
 
     // ── 카드 구축 ─────────────────────────────────────────────

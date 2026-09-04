@@ -308,7 +308,7 @@ namespace SeoYuGi.BattleView
             briefTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefLineStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleLeft, wordWrap = true };
             keyStyle = new GUIStyle(GUI.skin.box) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-            slotNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            slotNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Overflow };
             slotCostStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
             slotCoolStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
@@ -467,7 +467,7 @@ namespace SeoYuGi.BattleView
             var u = battle.GetUnit(playerUnitId);
             if (u == null || !u.alive) return;
 
-            const float slotW = 88f, slotH = 64f, gap = 8f, segW = 140f;
+            const float slotW = 108f, slotH = 64f, gap = 8f, segW = 150f; // 88은 "방패 밀어붙이기"(8자)가 잘렸다
             float totalW = segW + gap + 4 * slotW + 3 * gap + gap + segW;
             float x0 = W / 2f - totalW / 2f;
             float y = H - slotH - 14f;
@@ -514,7 +514,10 @@ namespace SeoYuGi.BattleView
             var hackSeg = new Rect(x0 + totalW - segW, y, segW, slotH);
             float charge = hackCharge != null ? Mathf.Clamp01(hackCharge()) : 0f;
             bool hackReady = charge >= 1f;
-            var hackColor = hackReady ? new Color(1f, 0.45f, 1f) : new Color(0.62f, 0.45f, 1f);
+            // 색 언어: 핑크·보라(마법소녀 톤) 대신 내 팀 틸 — 준비 완료면 밝게 맥동
+            var hackColor = hackReady
+                ? Color.Lerp(new Color(0.45f, 1f, 0.95f), Color.white, 0.5f + 0.5f * Mathf.Sin(Time.time * 6f))
+                : new Color(0.3f, 0.75f, 0.72f);
             GUI.color = hackColor;
             GUI.Label(new Rect(hackSeg.x, hackSeg.y + 2, hackSeg.width, 30), $"{charge * 100f:0}%", bigNumStyle);
             GUI.color = Color.white;
@@ -528,8 +531,8 @@ namespace SeoYuGi.BattleView
         {
             if (active)
             {
-                // 조준 중인 슬롯 — 노란 프레임으로 "지금 이거 조준 중" 표시
-                GUI.color = new Color(1f, 0.85f, 0.25f);
+                // 조준 중인 슬롯 — 틸 프레임 (노랑은 이동 색이라 금지). 조준 칸 틴트와 같은 색이라 연결이 읽힌다
+                GUI.color = new Color(0.45f, 1f, 0.95f);
                 GUI.DrawTexture(new Rect(r.x - 3, r.y - 3, r.width + 6, r.height + 6), Texture2D.whiteTexture);
             }
             GUI.color = enabled ? Color.white : new Color(1f, 1f, 1f, 0.4f);
@@ -546,7 +549,7 @@ namespace SeoYuGi.BattleView
                 float fh = r.height * Mathf.Clamp01(coolFrac);
                 GUI.color = new Color(0f, 0f, 0f, 0.65f);
                 GUI.DrawTexture(new Rect(r.x, r.y + r.height - fh, r.width, fh), Texture2D.whiteTexture);
-                GUI.color = new Color(1f, 0.6f, 0.3f);
+                GUI.color = Color.white; // 쿨타임 숫자 — 주황은 적 색이라 흰색으로
                 GUI.Label(new Rect(r.x, r.y, r.width, r.height), $"{coolRemain:0.0}s", slotCoolStyle);
                 GUI.color = Color.white;
             }

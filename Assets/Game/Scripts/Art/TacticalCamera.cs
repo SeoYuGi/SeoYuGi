@@ -8,6 +8,7 @@ namespace SeoYuGi.Art
     /// 롤(LoL)식 쿼터뷰 카메라 — Main Camera에 붙인다.
     /// - 마우스 스크롤: 줌 인/아웃
     /// - Y: 플레이어 고정 추적 ↔ 자유 시점 토글
+    /// - Q / W: 시야 좌/우 45° 회전
     /// - 자유 시점일 때 마우스를 화면 모서리로 밀면 그 방향으로 시야 이동(엣지 팬)
     /// QuarterViewCamera와 같은 앵글 규약(pitch/yaw/distance)을 쓰되 둘을 동시에 켜지 말 것.
     /// </summary>
@@ -18,8 +19,10 @@ namespace SeoYuGi.Art
         [SerializeField] float pitch = 60f;
         [SerializeField] float yaw = -45f;
         [SerializeField] float smoothTime = 0.12f;
+        [SerializeField] float rotateStep = 45f;   // Q/W 한 번당 회전각
+        [SerializeField] float rotateSmooth = 0.18f;
         [Header("줌")]
-        [SerializeField] float distance = 10f;
+        [SerializeField] float distance = 7.5f;   // 시작 줌 — 10은 유닛이 작아 실루엣이 안 읽혔다 (2026-09-05)
         [SerializeField] float zoomStep = 1.2f;   // 스크롤 한 틱당 거리 변화
         [SerializeField] float minDistance = 5f;
         [SerializeField] float maxDistance = 18f;
@@ -33,10 +36,13 @@ namespace SeoYuGi.Art
         Transform target;
         Vector3 focus;      // 카메라가 바라보는 지점
         Vector3 velocity;
+        float targetYaw;    // Q/W 목표 요 — yaw가 여기로 부드럽게 따라간다
+        float yawVelocity;
 
         void Start()
         {
             if (runner == null) runner = FindFirstObjectByType<BattleRunner>();
+            targetYaw = yaw;
         }
 
         void LateUpdate()
@@ -49,6 +55,7 @@ namespace SeoYuGi.Art
                 if (target != null) focus = target.position;
             }
 
+            yaw = Mathf.SmoothDampAngle(yaw, targetYaw, ref yawVelocity, rotateSmooth);
             var rot = Quaternion.Euler(pitch, yaw, 0f);
             var desired = focus - rot * Vector3.forward * distance;
             transform.position = Vector3.SmoothDamp(transform.position, desired, ref velocity, smoothTime);
@@ -64,6 +71,12 @@ namespace SeoYuGi.Art
             {
                 Locked = !Locked;
                 if (!Locked && target != null) focus = target.position; // 풀리는 순간 현재 위치에서 시작
+            }
+            if (kb != null)
+            {
+                // Q/W 좌우 45° 회전 — 벽 뒤·고지대 뒤편을 돌려 본다. 엣지 팬도 회전된 요 기준으로 따라감.
+                if (kb.qKey.wasPressedThisFrame) targetYaw -= rotateStep;
+                if (kb.wKey.wasPressedThisFrame) targetYaw += rotateStep;
             }
 
             if (mouse != null)

@@ -509,11 +509,24 @@ namespace SeoYuGi.BattleView
             ShowPickBackground(); // 재시작 픽에서도 배경 유지
 
             var popup = UIManager.Instance.ShowPopupUI<UIClassSelectPopup>();
-            popup.OnPicked = cls =>
+
+            // 싱글 팀 구성 — 나 + 내 팀 봇 2의 클래스를 같은 화면에서 짠다 (멀티 로비 경험). 적팀은 랜덤 롤, 비공개.
+            var mineIdx = new List<int>();
+            for (int i = 0; i < roster.Length; i++)
+                if (roster[i].id == playerUnitId) mineIdx.Insert(0, i); // 0번 = 나
+                else if (roster[i].team == playerTeam) mineIdx.Add(i);
+            var names = new string[mineIdx.Count];
+            var initial = new UnitClass[mineIdx.Count];
+            for (int i = 0; i < mineIdx.Count; i++)
             {
-                for (int i = 0; i < roster.Length; i++)
-                    if (roster[i].id == playerUnitId)
-                        roster[i].cls = cls;
+                names[i] = roster[mineIdx[i]].name;
+                initial[i] = roster[mineIdx[i]].cls;
+            }
+            popup.SetTeam(names, initial);
+            popup.OnTeamPicked = classes =>
+            {
+                for (int i = 0; i < mineIdx.Count; i++)
+                    roster[mineIdx[i]].cls = classes[i];
                 RollEnemyClasses();
                 BuildMatchSetup();
                 BuildRound();

@@ -18,6 +18,7 @@ namespace SeoYuGi.Ai
         private float _dodgeReadyTime;         // 회피 쿨타임 — 옆걸음 무한 반복 방지 (근접전이 성립하게)
         private float _nextMoveTime;           // 이동 페이싱 — 한 걸음 뒤 잠깐 서서 판단 (제자리 왕복 방지)
         private bool _dodgeMove;               // 이번 판단의 Move가 회피인가 — 회피는 페이싱을 안 탄다
+        private readonly Random _rng;          // 페이싱 지터 — 슬롯마다 다른 시드. 셋이 같은 박자로 기술 쏘는 모양새 방지
         private readonly Cell[] _recent = new Cell[3]; // 최근 밟은 칸 3개 — 옆걸음·배회가 되돌아가지 않게
         private int _recentCount;
         private float _lastActiveTime;         // 마지막으로 뭔가 한 시각 — 프리징 감지
@@ -29,6 +30,10 @@ namespace SeoYuGi.Ai
             _actorId = actorId;
             _cfg = config;
             _predictor = predictor;
+            // 개막 위상 분산 — 전원 0초에 준비돼서 동시에 첫 기술을 쏘던 것. 슬롯별로 0~1.5×간격 만큼 엇갈려 시작.
+            _rng = new Random(actorId * 7919 + 17);
+            _nextAttackTime = (float)_rng.NextDouble() * config.AttackInterval * 1.5f;
+            _nextDecisionTime = (float)_rng.NextDouble() * config.MinDecisionInterval;
         }
 
         /// 코어가 매 프레임(또는 주기적으로) 호출. None이면 아무것도 하지 않는다.
@@ -134,13 +139,17 @@ namespace SeoYuGi.Ai
                 }
             }
 
+            // 패배 긴급 — 적이 거점을 더 쥐고 있으면 이대로 시간이 가면 진다. 대치·고지 사수·힐팩 다 접고 거점으로.
+            // (거점 다 털리는데 근접 대치로 멀뚱히 서 있거나 저격수가 고지대에 눌러앉던 문제.)
+            bool losing = ZoneDeficit(world, me.Team) > 0;
+
             // 3.2) 근접 대치 — 적이 붙어 있으면 근접 클래스는 자리를 지킨다. 매 판단마다 거점으로 걸어 나가면
             //      플레이어가 쫓아다니는 술래잡기가 된다. 공격은 위 2~3단계가 쿨다운 돌 때 나간다.
-            if (target.HasValue && IsMelee(me.Class) && IsOrthoAdjacent(me.Pos, target.Value.Pos))
+            if (!losing && target.HasValue && IsMelee(me.Class) && IsOrthoAdjacent(me.Pos, target.Value.Pos))
                 return AiCommand.None;
 
             // 3.5) 습성 카운터 전술 (D) — 스타일 파악되면 통수 포지셔닝 (R2+)
-            if (_predictor != null && world.Round >= 2 && TryCounterTactic(world, me, out var counterStep))
+            if (!losing && _predictor != null && world.Round >= 2 && TryCounterTactic(world, me, out var counterStep))
             {
                 if (counterStep.HasValue)
                     return AiCommand.Of(CommandType.Move, counterStep.Value);
@@ -149,7 +158,7 @@ namespace SeoYuGi.Ai
 
             // 3.7) 힐팩 — HP가 상했고 근처에 있을 때만. 거점 플레이보다 앞서지만 회피·공격보다는 뒤.
             // "전술적으로 안 먹기"는 두 문턱으로: 손상(HealSeekMissingHp) + 거리(HealSeekRadius).
-            var healStep = StepTowardHealPack(world, me);
+            var healStep = losing ? null : StepTowardHealPack(world, me);
             if (healStep.HasValue) return AiCommand.Of(CommandType.Move, healStep.Value);
 
             // 4) 거점 이동
@@ -166,8 +175,9 @@ namespace SeoYuGi.Ai
         private float EffectiveDodgeChance(IWorldView world) =>
             _cfg.DodgeChance * (world.Round <= 1 ? 0.6f : 1f);
 
+        /// 공격 간격 ±30% 지터 — 고정 박자면 쿨이 같은 슬롯끼리 다시 동기화된다.
         private float EffectiveAttackInterval(IWorldView world) =>
-            _cfg.AttackInterval * (world.Round <= 1 ? 1.35f : 1f);
+            _cfg.AttackInterval * (world.Round <= 1 ? 1.35f : 1f) * (0.7f + (float)_rng.NextDouble() * 0.6f);
 
         /// 습성 카운터: 러시형 유저 → 원거리가 고지대 선점해 점사.
         /// 고지형 유저 → 기동형이 유저 선호 고지대를 먼저 접수.
@@ -550,6 +560,15 @@ namespace SeoYuGi.Ai
 
         private static bool IsMelee(ClassId c) =>
             c == ClassId.Tank || c == ClassId.Balance || c == ClassId.Assassin;
+
+        /// 적 소유 거점 수 − 내 팀 소유 거점 수. 양수면 타임아웃 판정에서 지는 쪽.
+        private static int ZoneDeficit(IWorldView world, TeamId team)
+        {
+            int deficit = 0;
+            foreach (var z in world.Zones)
+                if (z.HasOwner) deficit += z.Owner == team ? -1 : 1;
+            return deficit;
+        }
 
         /// 살아있는 적이 십자 인접 칸에 있는가 — 근접 대치 판정.
         private static bool EnemyAdjacent(IWorldView world, ActorState me)

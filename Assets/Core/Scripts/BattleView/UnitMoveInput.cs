@@ -107,11 +107,15 @@ namespace SeoYuGi.BattleView
             // 전투 입력: A=공격 조준, S=스킬1 조준, D=스킬2 조준 (토글), ESC=취소. 방어는 기획 삭제.
             if (Keyboard.current != null && selectedUnitId != -1)
             {
-                if (Keyboard.current.aKey.wasPressedThisFrame)
+                // 쿨타임 중인 행동은 조준 모드 자체를 안 연다 — 범위도 안 그리고 버저도 없이 조용히 무시.
+                // (조준 → 클릭 → 거부 → 버저 루프가 "삐삐" 소음의 주범이었다.) 이미 켜진 조준을 끄는 건 항상 허용.
+                var su = moveSystem.State.GetUnit(selectedUnitId);
+                float now = moveSystem.State.time;
+                if (Keyboard.current.aKey.wasPressedThisFrame && (aim == AimMode.Attack || su.attackReadyAt <= now))
                     aim = aim == AimMode.Attack ? AimMode.None : AimMode.Attack;
-                if (Keyboard.current.sKey.wasPressedThisFrame)
+                if (Keyboard.current.sKey.wasPressedThisFrame && (aim == AimMode.Skill || su.skillReadyAt[0] <= now))
                     aim = aim == AimMode.Skill ? AimMode.None : AimMode.Skill;
-                if (Keyboard.current.dKey.wasPressedThisFrame)
+                if (Keyboard.current.dKey.wasPressedThisFrame && (aim == AimMode.Skill2 || su.skillReadyAt[1] <= now))
                     aim = aim == AimMode.Skill2 ? AimMode.None : AimMode.Skill2;
                 if (Keyboard.current.escapeKey.wasPressedThisFrame)
                     aim = AimMode.None;
@@ -124,6 +128,16 @@ namespace SeoYuGi.BattleView
         {
             if (result.accepted || result.pending) return; // Pending = 네트워크 제출 — 일단 받아들여진 걸로
             Debug.Log($"{action} 불가: {result.actDenied}");
+            Deny();
+        }
+
+        float lastDenyTime = -10f;
+
+        /// <summary>거부 버저 — 0.5초에 한 번만. 쿨타임 중 연타하면 매 클릭마다 울려 귀가 아팠다.</summary>
+        void Deny()
+        {
+            if (Time.unscaledTime - lastDenyTime < 0.5f) return;
+            lastDenyTime = Time.unscaledTime;
             OnActionDenied?.Invoke();
         }
 
@@ -206,7 +220,7 @@ namespace SeoYuGi.BattleView
 
             var result = sink.Submit(BattleIntent.Move(selectedUnitId, dest));
             if (!result.accepted && !result.pending && result.moveDenied == MoveDenied.Locked)
-                OnActionDenied?.Invoke(); // 쿨타임 중 이동 시도 — 버저
+                Deny(); // 쿨타임 중 이동 시도 — 버저
             // 성공 시 연출은 MoveSystem.OnUnitMoved → BattleRunner가 재생
         }
 

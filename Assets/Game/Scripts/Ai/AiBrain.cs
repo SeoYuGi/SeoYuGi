@@ -71,8 +71,7 @@ namespace SeoYuGi.Ai
                     return AiCommand.Of(CommandType.Move, dodge.Value);
                 if (world.Round >= 2 && world.HasDecoy(_actorId))
                     return AiCommand.Of(CommandType.Decoy, me.Pos); // 장비라 AP 소모 없음
-                if (ap >= _cfg.CostGuard)
-                    return AiCommand.Of(CommandType.Guard, me.Pos);
+                // 방어는 기획에서 삭제(2026-09-05) — 못 피하면 그냥 맞는다
             }
 
             // 1.5) 개막 카운터 (E) — 러시 습관 감지 시 시작 6초 안에 반복 진입로에 선제 설치 (R2+)

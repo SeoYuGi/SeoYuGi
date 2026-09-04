@@ -14,6 +14,9 @@ namespace SeoYuGi.Ai
         private readonly AiConfig _cfg;
         private readonly Predictor _predictor; // 적팀 뇌만 보유, 아군 팀원은 null
         private float _nextDecisionTime;
+        private float _lastActiveTime;         // 마지막으로 뭔가 한 시각 — 프리징 감지
+        private Cell _prevPos;                 // 직전 위치 — 옆걸음 왕복 방지
+        private bool _hasPrevPos;
 
         public AiBrain(int actorId, AiConfig config, Predictor predictor = null)
         {
@@ -32,15 +35,34 @@ namespace SeoYuGi.Ai
             float ap = world.GetAp(_actorId);
 
             var cmd = Decide(world, me, ap);
+
+            // 프리징 방지: 한동안 무행동 + 거점 위도 아니면 배회 한 걸음
+            if (cmd.Type == CommandType.None &&
+                world.Time - _lastActiveTime > _cfg.IdleWanderAfter &&
+                ap >= _cfg.CostMove && !OnAnyZonePatch(world, me.Pos))
+            {
+                var wander = WanderStep(world, me);
+                if (wander.HasValue) cmd = AiCommand.Of(CommandType.Move, wander.Value);
+            }
+
             if (cmd.Type != CommandType.None)
+            {
+                _lastActiveTime = world.Time;
                 _nextDecisionTime = world.Time + _cfg.MinDecisionInterval + _cfg.AggressionDelay;
+            }
+
+            if (!_hasPrevPos || !_prevPos.Equals(me.Pos))
+            {
+                _prevPos = me.Pos; // 다음 판단에서 "방금 있던 칸" 회피용
+                _hasPrevPos = true;
+            }
             return cmd;
         }
 
         private AiCommand Decide(IWorldView world, ActorState me, float ap)
         {
-            // 1) 회피 — 내 칸에 곧 떨어지는 적 예고가 있으면 비키거나, 디코이를 태우거나, 막는다
-            if (IsThreatened(world, me.Team, me.Pos))
+            // 1) 회피 — 내 칸에 곧 떨어지는 적 예고. 반응 하한 + 클래스별 확률 (완벽 회피 금지)
+            if (ShouldDodge(world, me))
             {
                 var dodge = FindDodgeCell(world, me);
                 if (dodge.HasValue && ap >= _cfg.CostMove)
@@ -150,19 +172,26 @@ namespace SeoYuGi.Ai
 
         private Cell? StepTowardBestZone(IWorldView world, ActorState me)
         {
+            // 목표 거점: 미소유(중립·적) 우선 — 이미 딴 거점은 제외하고 다음으로 로테이션.
+            // 전부 우리 것이면 가장 가까운 거점을 수비.
+            bool anyNotOurs = false;
+            foreach (var z in world.Zones)
+                if (!(z.HasOwner && z.Owner == me.Team)) { anyNotOurs = true; break; }
+
             ZoneState? goal = null;
             float bestScore = float.MinValue;
             foreach (var z in world.Zones)
             {
                 bool ours = z.HasOwner && z.Owner == me.Team;
-                float score = -Manhattan(me.Pos, z.Cell) + (ours ? -5f : 0f); // 미소유 우선
+                if (anyNotOurs && ours) continue; // 먹은 거점에 눌러앉지 말 것
+                float score = -Manhattan(me.Pos, z.Cell);
                 if (score > bestScore) { bestScore = score; goal = z; }
             }
             if (!goal.HasValue) return null;
 
             var patch = goal.Value.Cells ?? new[] { goal.Value.Cell };
 
-            // 이미 패치 위면 눌러앉기 — 중심 한 칸을 두고 비비지 않는다
+            // 목표 패치 위면 정지 — 점거(또는 수비) 유지. 공격은 상위 우선순위가 알아서 한다.
             foreach (var c in patch)
                 if (c.Equals(me.Pos)) return null;
 
@@ -177,15 +206,21 @@ namespace SeoYuGi.Ai
             }
             if (!targetCell.HasValue) return null; // 패치 만석 — 밀치지 말고 대기
 
+            // 더 가까워지는 이웃 우선. 없으면 같은 거리 옆걸음 — 오목한 벽 앞 영구 정지 방지.
+            // 옆걸음은 직전 칸 제외 — 두 칸 왕복 진동 방지.
+            int curDist = Manhattan(me.Pos, targetCell.Value);
             Cell? best = null;
-            int bestDist = Manhattan(me.Pos, targetCell.Value);
+            Cell? sidestep = null;
+            int bestDist = curDist;
             foreach (var n in OrthoNeighbors(me.Pos))
             {
                 if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
                 int d = Manhattan(n, targetCell.Value);
                 if (d < bestDist) { bestDist = d; best = n; }
+                else if (d == curDist && sidestep == null && !(_hasPrevPos && n.Equals(_prevPos)))
+                    sidestep = n;
             }
-            return best;
+            return best ?? sidestep;
         }
 
         private Cell? FindDodgeCell(IWorldView world, ActorState me)
@@ -194,6 +229,51 @@ namespace SeoYuGi.Ai
                 if (world.IsWalkable(n) && !IsThreatened(world, me.Team, n))
                     return n;
             return null;
+        }
+
+        /// 내 칸에 떨어질 예고 중 "반응 가능하고 + 주사위를 통과한" 게 있는가.
+        /// 주사위는 (스트라이크, 액터)별 결정적 해시 — 같은 위협엔 항상 같은 판단 (판단 깜빡임 방지).
+        private bool ShouldDodge(IWorldView world, ActorState me)
+        {
+            foreach (var t in world.Telegraphs)
+            {
+                if (t.Team == me.Team || !t.Cell.Equals(me.Pos)) continue;
+                float lead = t.ImpactTime - world.Time;
+                if (lead > _cfg.DodgeWindow) continue;      // 아직 여유 — 반응 안 함
+                if (lead < _cfg.MinDodgeLead) continue;     // 너무 늦음 — 인간적 반응 한계
+                uint h = (uint)(t.Cell.X * 73856093 ^ t.Cell.Y * 19349663
+                                ^ (int)(t.ImpactTime * 997f) ^ _actorId * 83492791);
+                if (h % 100 < _cfg.DodgeChance * 100f) return true;
+            }
+            return false;
+        }
+
+        /// 목표가 없어 얼어붙었을 때 한 걸음 배회 — 시간 기반 의사난수로 방향 선택, 직전 칸은 회피.
+        private Cell? WanderStep(IWorldView world, ActorState me)
+        {
+            Cell? fallback = null;
+            int pick = (int)(world.Time * 3.7f) + _actorId;
+            int seen = 0;
+            foreach (var n in OrthoNeighbors(me.Pos))
+            {
+                if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
+                if (_hasPrevPos && n.Equals(_prevPos)) { fallback = n; continue; } // 왔던 길은 최후순위
+                seen++;
+                if (pick % seen == 0) fallback = n; // reservoir 흉내 — 결정적이면서 다양
+                if (fallback == null) fallback = n;
+            }
+            return fallback;
+        }
+
+        private bool OnAnyZonePatch(IWorldView world, Cell pos)
+        {
+            foreach (var z in world.Zones)
+            {
+                var patch = z.Cells ?? new[] { z.Cell };
+                foreach (var c in patch)
+                    if (c.Equals(pos)) return true;
+            }
+            return false;
         }
 
         private bool IsThreatened(IWorldView world, TeamId myTeam, Cell cell)

@@ -10,9 +10,9 @@ public class UIClassSelectPopup : UIPopup
 
     public Action<UnitClass> OnPicked;
 
-    // UnitClass enum 순서와 동일 — Resources/UI의 클래스별 초상
+    // UnitClass enum 순서와 동일 — Resources/UI의 클래스별 카드 아트 (원화 기반 가공판)
     static readonly string[] Portraits =
-        { "Portrait_Tank", "Portrait_Balance", "Portrait_Assassin", "Portrait_Grenadier", "Portrait_Sniper" };
+        { "Card_Tank", "Card_Balance", "Card_Assassin", "Card_Grenadier", "Card_Sniper" };
 
     public override void Init()
     {

@@ -19,17 +19,23 @@ namespace SeoYuGi.BattleView
         UnitState unit;
         Transform follow;
         Renderer[] pips;
+        Color pipColor = FullColor;
+        bool alwaysShowPips;
         MaterialPropertyBlock mpb;
         Camera cam;
 
+        /// <param name="pipColor">핍 색 — 아군 초록, 적 빨강 (색 규칙 G). default = 초록.</param>
+        /// <param name="alwaysShowPips">true면 풀피여도 핍 표시 (내 유닛). 나머지는 다쳤을 때만.</param>
         public static UnitHpBar Create(Transform parent, UnitState unit, Transform follow,
-            string displayName = null, Color nameColor = default)
+            string displayName = null, Color nameColor = default, Color pipColor = default, bool alwaysShowPips = false)
         {
             var go = new GameObject($"HpBar_{unit.id}");
             go.transform.SetParent(parent);
             var bar = go.AddComponent<UnitHpBar>();
             bar.unit = unit;
             bar.follow = follow;
+            bar.pipColor = pipColor == default ? FullColor : pipColor;
+            bar.alwaysShowPips = alwaysShowPips;
             bar.Build();
             if (!string.IsNullOrEmpty(displayName))
                 bar.BuildName(displayName, nameColor == default ? Color.white : nameColor);
@@ -79,9 +85,13 @@ namespace SeoYuGi.BattleView
             transform.position = follow.position + Vector3.up * Height;
             if (cam != null) transform.rotation = cam.transform.rotation;
 
+            // 풀피는 핍 숨김 (내 유닛 제외) — 머리 위 소음 감소 (가시성 F)
+            bool showPips = alwaysShowPips || unit.hp < unit.maxHp;
             for (int i = 0; i < pips.Length; i++)
             {
-                mpb.SetColor(BaseColorId, i < unit.hp ? FullColor : EmptyColor);
+                if (pips[i].enabled != showPips) pips[i].enabled = showPips;
+                if (!showPips) continue;
+                mpb.SetColor(BaseColorId, i < unit.hp ? pipColor : EmptyColor);
                 pips[i].SetPropertyBlock(mpb);
             }
         }

@@ -86,7 +86,6 @@ namespace SeoYuGi.BattleView
         // 라운드마다 파괴·재생성되는 뷰 오브젝트
         readonly List<GameObject> roundObjects = new List<GameObject>();
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
-        readonly Dictionary<int, GameObject> ghosts = new Dictionary<int, GameObject>(); // 적 잔상 마커
         readonly HashSet<int> blinkSnapIds = new HashSet<int>(); // 점멸 직후 — 슬라이드 대신 번쩍+스냅
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
 
@@ -145,6 +144,8 @@ namespace SeoYuGi.BattleView
         void ShowClassSelect()
         {
             phase = Phase.ClassSelect;
+            hud.Hide(); // 재시작 시 이전 매치 HUD·종료 배너 잔상 제거
+            battleAudio.PlayBgm("B6_Title"); // 승/패 스팅어 → 타이틀 테마 복귀
             if (UIManager.Instance == null)
                 new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
             ShowPickBackground(); // 재시작 픽에서도 배경 유지
@@ -260,16 +261,18 @@ namespace SeoYuGi.BattleView
                 viewRegistry.Register(view);
                 roundObjects.Add(view.gameObject);
 
-                var bar = UnitHpBar.Create(transform, Battle.GetUnit(r.id), view.transform, r.name, teamColors[r.team]);
+                // 가시성: 발밑 팀 링 (내 유닛 = 이중 링+펄스), 내 유닛 머리 위 ▼
+                bool isPlayer = r.id == playerUnitId;
+                UnitIndicators.AddTeamRing(view.transform, teamColors[r.team], isPlayer);
+                if (isPlayer) UnitIndicators.AddPlayerArrow(view.transform, teamColors[r.team]);
+
+                // HP 핍: 아군 초록/적 빨강, 풀피면 숨김(내 유닛 제외)
+                var pipColor = r.team == playerTeam ? new Color(0.3f, 0.9f, 0.4f) : new Color(1f, 0.3f, 0.25f);
+                var bar = UnitHpBar.Create(transform, Battle.GetUnit(r.id), view.transform, r.name, teamColors[r.team],
+                    pipColor, alwaysShowPips: isPlayer);
                 hpBars[r.id] = bar;
                 roundObjects.Add(bar.gameObject);
 
-                if (r.team != playerTeam)
-                {
-                    var ghost = CreateGhost(teamColors[r.team]);
-                    ghosts[r.id] = ghost;
-                    roundObjects.Add(ghost);
-                }
             }
 
             hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindRoster(playerUnitId).name);
@@ -439,7 +442,6 @@ namespace SeoYuGi.BattleView
                 if (go != null) Destroy(go);
             roundObjects.Clear();
             hpBars.Clear();
-            ghosts.Clear();
             zoneDiscs.Clear();
             blinkSnapIds.Clear();
             viewRegistry.Clear();
@@ -610,21 +612,6 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>고스트 마커 — 시야에서 사라진 적의 마지막 목격 위치 (세부기획 B).</summary>
-        GameObject CreateGhost(Color teamColor)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = "Ghost";
-            go.transform.SetParent(transform);
-            go.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-            Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
-
-            var mpb = new MaterialPropertyBlock();
-            mpb.SetColor(BaseColorId, Color.Lerp(teamColor, new Color(0.3f, 0.3f, 0.35f), 0.65f));
-            go.GetComponent<Renderer>().SetPropertyBlock(mpb);
-            go.SetActive(false);
-            return go;
-        }
-
         void Update()
         {
             if (phase == Phase.ClassSelect || Move == null) return;
@@ -699,19 +686,7 @@ namespace SeoYuGi.BattleView
                         battleAudio.PlaySfx("S23_GhostFade", 0.8f);
                 }
 
-                // 고스트 마커: 살아있지만 안 보이는 적 → 마지막 목격 위치에 잔상
-                if (isEnemy && ghosts.TryGetValue(unit.id, out var ghost))
-                {
-                    bool showGhost = false;
-                    if (unit.alive && !visible && vision.TryGetLastSeen(playerTeam, unit.id, out var seen))
-                    {
-                        showGhost = true;
-                        ghost.transform.position = gridView.CoordToWorld(seen) + Vector3.up * 0.3f;
-                    }
-                    if (ghost.activeSelf != showGhost) ghost.SetActive(showGhost);
-                }
-
-                if (!visible) continue;
+                if (!visible) continue; // 시야 밖 적 — 흔적 없이 완전 비표시 (고스트 마커 폐지)
 
                 // 쿨타임/방어 시각화: 잠긴 유닛은 어둡게
                 view.SetDimmed(unit.moveCooldown > 0f || unit.guardUntil > Battle.time);

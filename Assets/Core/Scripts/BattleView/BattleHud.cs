@@ -143,6 +143,14 @@ namespace SeoYuGi.BattleView
             overlay = Overlay.MatchEnd;
         }
 
+        /// <summary>픽 단계(맵/클래스 선택) — 인게임 HUD 전부 숨김. 다음 Init까지 유지.</summary>
+        public void Hide()
+        {
+            battle = null; // OnGUI 조기 리턴
+            overlay = Overlay.None;
+            subtitleText = null;
+        }
+
         /// <summary>보이스 재생 동안 하단에 한글 자막 표시.</summary>
         public void ShowSubtitle(string text, float seconds)
         {
@@ -263,7 +271,7 @@ namespace SeoYuGi.BattleView
             GUI.Label(new Rect(r.x, r.y, r.width, 20), rightAlign ? $"{dots}  {(team == playerTeam ? "아군" : "적군")}" : $"{(team == playerTeam ? "아군" : "적군")}  {dots}", style);
             GUI.color = Color.white;
 
-            string winsText = $"승리 {match.GetWins(team)}/{MatchSystem.WinsNeeded}";
+            string winsText = $"승 {match.GetWins(team)} / {MatchSystem.MaxRounds}판"; // 3판 다수승
             GUI.Label(new Rect(r.x, r.y + 20, r.width, 16),
                 winsText, new GUIStyle(roundStyle) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft });
         }

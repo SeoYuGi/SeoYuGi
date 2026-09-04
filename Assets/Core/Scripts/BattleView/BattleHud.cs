@@ -31,9 +31,13 @@ namespace SeoYuGi.BattleView
         int briefingWinner;
         string[] briefingLines;
 
+        // 관제 AI 보이스 자막 (영어 보이스 + 한글 자막)
+        string subtitleText;
+        float subtitleUntil;
+
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle;
-        GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle;
+        GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
         bool stylesReady;
         UnitMoveInput moveInput; // 선택 상태 조회용 — 같은 GO에서 자동 연결
 
@@ -71,6 +75,13 @@ namespace SeoYuGi.BattleView
             overlay = Overlay.MatchEnd;
         }
 
+        /// <summary>보이스 재생 동안 하단에 한글 자막 표시.</summary>
+        public void ShowSubtitle(string text, float seconds)
+        {
+            subtitleText = text;
+            subtitleUntil = Time.time + seconds;
+        }
+
         void OnGUI()
         {
             if (battle == null) return;
@@ -85,6 +96,7 @@ namespace SeoYuGi.BattleView
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();
+            DrawSubtitle(); // 오버레이 위에도 보이게 마지막에
 
             GUI.matrix = Matrix4x4.identity;
         }
@@ -109,6 +121,7 @@ namespace SeoYuGi.BattleView
             slotCoolStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             subStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
+            subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
         }
 
         // ── 상단 바: 생존·스코어 | 남은시간 | 거점 칩 ─────────────────
@@ -332,6 +345,20 @@ namespace SeoYuGi.BattleView
             GUI.Label(new Rect(box.x, box.y + box.height - 34, box.width, 22),
                 "SPACE — 다음 라운드 (AI가 학습을 적용합니다)",
                 new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
+            GUI.color = Color.white;
+        }
+
+        void DrawSubtitle()
+        {
+            if (string.IsNullOrEmpty(subtitleText) || Time.time >= subtitleUntil) return;
+
+            var box = new Rect(W / 2f - 200, H - 140, 400, 40);
+            GUI.color = new Color(0f, 0f, 0f, 0.65f);
+            GUI.DrawTexture(box, Texture2D.whiteTexture);
+            GUI.color = new Color(0.55f, 0.95f, 1f); // 관제 AI 시안 톤
+            GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "- AI 관제 -",
+                new GUIStyle(subStyle) { fontStyle = FontStyle.Bold });
+            GUI.Label(new Rect(box.x, box.y + 8, box.width, 32), subtitleText, subtitleStyle);
             GUI.color = Color.white;
         }
 

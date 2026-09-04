@@ -36,6 +36,9 @@ namespace SeoYuGi.BattleView
         public bool HasSelection => selectedUnitId != -1;
         /// <summary>HUD용 — 현재 조준 모드 (배너·슬롯 하이라이트).</summary>
         public AimMode CurrentAim => aim;
+
+        /// <summary>플레이어 행동 거부(AP 부족·쿨타임 등) — 버저 SFX용.</summary>
+        public event System.Action OnActionDenied;
         readonly List<Coord> blue = new List<Coord>();
         readonly List<Coord> yellow = new List<Coord>();
         readonly List<Coord> aimRange = new List<Coord>();
@@ -63,6 +66,7 @@ namespace SeoYuGi.BattleView
             selectedUnitId = -1; // 라운드 재시작 — 이전 라운드 선택은 무효
             aim = AimMode.None;
             rayCamera = Camera.main;
+            Select(playerUnitId); // 시작부터 내 유닛 선택 — 이동 그리드(파랑/노랑) 즉시 표시
         }
 
         void Update()
@@ -99,9 +103,11 @@ namespace SeoYuGi.BattleView
             RefreshHighlights(); // 게이지·예고가 실시간이라 매 프레임 갱신
         }
 
-        static void Log(ActDenied result, string action)
+        void Log(ActDenied result, string action)
         {
-            if (result != ActDenied.None) Debug.Log($"{action} 불가: {result}");
+            if (result == ActDenied.None) return;
+            Debug.Log($"{action} 불가: {result}");
+            OnActionDenied?.Invoke();
         }
 
         bool TryHoverCell(out Coord cell)
@@ -169,7 +175,9 @@ namespace SeoYuGi.BattleView
             var view = views.Get(selectedUnitId);
             if (view != null && view.IsMoving) return; // 연출 중 연타 방지
 
-            moveSystem.TryMove(selectedUnitId, dest);
+            var attempt = moveSystem.TryMove(selectedUnitId, dest);
+            if (!attempt.success && attempt.denied == MoveDenied.Locked)
+                OnActionDenied?.Invoke(); // 쿨타임 중 이동 시도 — 버저
             // 성공 시 연출은 MoveSystem.OnUnitMoved → BattleRunner가 재생
         }
 

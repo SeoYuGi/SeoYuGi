@@ -67,7 +67,9 @@ namespace SeoYuGi.BattleView
 
         CoreWorldView worldView;
         BattleHud hud;
+        BattleAudio battleAudio;
         VisionSystem vision;
+        readonly HashSet<int> audioVisibleEnemies = new HashSet<int>(); // 발견/소실 SFX용
         Predictor predictor;
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
 
@@ -93,12 +95,18 @@ namespace SeoYuGi.BattleView
             if (viewRegistry == null) viewRegistry = gameObject.AddComponent<UnitViewRegistry>();
             hud = GetComponent<BattleHud>();
             if (hud == null) hud = gameObject.AddComponent<BattleHud>();
+            battleAudio = GetComponent<BattleAudio>();
+            if (battleAudio == null) battleAudio = gameObject.AddComponent<BattleAudio>();
         }
 
         void Start()
         {
             playerTeam = FindRoster(playerUnitId).team;
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c);
+
+            // 플레이어 행동 거부 버저 — input은 라운드 넘어 유지되므로 1회만 구독
+            input.OnActionDenied += () => battleAudio.PlaySfx("S24_ApBuzz", 0.5f);
+
             Match = new MatchSystem();
             ShowMapSelect();
         }
@@ -239,8 +247,18 @@ namespace SeoYuGi.BattleView
                 foreach (var c in zone.cells)
                     gridView.SetBaseTint(c, tint);
                 Debug.Log($"거점 {zone.Center} → 팀 {zone.owner} 탈환");
+
+                bool ours = zone.owner == playerTeam;
+                battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
+                if (ours) PlayVoiceLine("Voice_ZoneCaptured", "구역 확보");
+                else PlayVoiceLine("Voice_ZoneLost", "구역 상실");
             };
-            Round.OnSuddenDeath += _ => Debug.Log("서든데스! 다음 탈환 또는 킬로 즉시 승부");
+            Round.OnSuddenDeath += _ =>
+            {
+                Debug.Log("서든데스! 다음 탈환 또는 킬로 즉시 승부");
+                battleAudio.PlaySfx("S15_SuddenDeath", 2f);
+                PlayVoiceLine("Voice_SuddenDeath", "서든데스");
+            };
 
             // 슬롯: 나 빼고 전부 AI. 적팀 뇌에만 Predictor 주입 — "AI군은 인간을 노린다"(기획서 §05).
             worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound);
@@ -256,13 +274,38 @@ namespace SeoYuGi.BattleView
                 var movedView = viewRegistry.Get(unitId);
                 if (movedView != null && movedView.gameObject.activeInHierarchy)
                     movedView.PlayPath(path, moveConfig.hopDuration);
-                if (unitId == playerUnitId) ObserveHumanPath(path);
+                if (unitId == playerUnitId)
+                {
+                    ObserveHumanPath(path);
+                    battleAudio.PlaySfx(yellow ? "S7_YellowMove" : "S6_Hop", yellow ? 1f : 0.4f);
+                }
             };
+
+            Combat.OnTelegraph += strike =>
+            {
+                if (strike.team == playerTeam) battleAudio.PlaySfx("S2_TelegraphAlly", 0.8f);
+                else if (AnyCellVisible(strike)) battleAudio.PlaySfx("S1_TelegraphEnemy", 0.8f);
+            };
+            Combat.OnStrikeResolved += (strike, hit) =>
+            {
+                if (strike.attackerId == playerUnitId)
+                {
+                    battleAudio.PlaySfx(hit ? "S3_Hit" : "S4_Miss", 0.8f);
+                    if (hit) battleAudio.PlaySfx("S5_ApRefund", 1f); // 적중 = 예측 성공 = AP 환급음
+                }
+                else if (hit) battleAudio.PlaySfx("S3_Hit", 0.8f);
+            };
+            Combat.OnGuard += _ => battleAudio.PlaySfx("S8_Guard", 0.8f);
+            Combat.OnSkillCast += (unitId, kind) => battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
+            Combat.OnWallCrash += _ => battleAudio.PlaySfx("S21_WallCrash", 0.6f);
+            Combat.OnUnitDied += unitId =>
+                battleAudio.PlaySfx(Battle.GetUnit(unitId).team == playerTeam ? "S10a_DeathAlly" : "S10b_DeathEnemy", 1.5f);
 
             Combat.OnUnitDamaged += (unitId, dmg) =>
             {
                 viewRegistry.Get(unitId)?.PlayHit();
                 Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {Battle.GetUnit(unitId).hp}/{Battle.GetUnit(unitId).maxHp})");
+                battleAudio.PlaySfx("S9_Hurt", 0.6f);
             };
 
             // 타격 연출 — 시야 밖 칸은 예고 필터와 같은 규칙으로 숨긴다 (정보 누출 방지)
@@ -288,8 +331,14 @@ namespace SeoYuGi.BattleView
             };
 
             humanPrevPos = Battle.GetUnit(playerUnitId).pos;
+            audioVisibleEnemies.Clear();
             input.enabled = true;
             phase = Phase.Playing;
+
+            battleAudio.SetTypingLoop(false); // 브리핑 종료
+            battleAudio.PlayBgm(Match.CurrentRound >= 3 ? "B2_Round3" : "B1_Round1");
+            battleAudio.PlaySfx("S13_RoundStart", 1.5f);
+            PlayVoiceLine("Voice_RoundStart", "라운드 개시");
             Debug.Log($"라운드 {Match.CurrentRound} 시작 (Predictor round={predictor.Round})");
         }
 
@@ -336,6 +385,33 @@ namespace SeoYuGi.BattleView
             cam.transform.position = center - cam.transform.forward * dist;
         }
 
+        /// <summary>영어 관제 보이스 + 한글 핵심 단어 자막 동시 출력.</summary>
+        void PlayVoiceLine(string clip, string subtitle)
+        {
+            float length = battleAudio.PlayVoice(clip);
+            hud.ShowSubtitle(subtitle, Mathf.Max(2.5f, length));
+        }
+
+        bool AnyCellVisible(TelegraphStrike strike)
+        {
+            foreach (var c in strike.cells)
+                if (vision.IsVisibleTo(playerTeam, c)) return true;
+            return false;
+        }
+
+        static string SkillSfx(SkillKind kind)
+        {
+            switch (kind)
+            {
+                case SkillKind.Smash: return "S16_Smash";
+                case SkillKind.Dash: return "S17_Dash";
+                case SkillKind.Blink: return "S18_Blink";
+                case SkillKind.Burst: return "S19_Burst";
+                case SkillKind.Snipe: return "S20_Snipe";
+                default: return "S3_Hit";
+            }
+        }
+
         /// <summary>인간 이동을 홉 단위로 Predictor에 공급 — 학습 단위는 개체(슬롯) (세부기획 E).</summary>
         void ObserveHumanPath(IReadOnlyList<Coord> path)
         {
@@ -360,18 +436,28 @@ namespace SeoYuGi.BattleView
         {
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
             Debug.Log($"라운드 {Match.CurrentRound} 종료 — 팀 {winnerTeam} 승리");
+            battleAudio.SetCaptureLoop(false);
+            battleAudio.PlaySfx("S14_RoundEnd", 1.5f);
+
             int endedRound = Match.CurrentRound;
             bool matchOver = Match.RecordRoundResult(winnerTeam);
             if (matchOver)
             {
                 hud.ShowMatchEnd();
                 phase = Phase.MatchOver;
+                bool myWin = Match.MatchWinner == playerTeam;
+                battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
+                if (myWin) PlayVoiceLine("Voice_MatchWin", "예측 초과 — 통제 불능");
+                else PlayVoiceLine("Voice_MatchLose", "구역 통제권 회수됨");
             }
             else
             {
                 // 라운드 간 브리핑 — AI가 학습한 내용을 보여준다 (심사 기준 ① 어필 지점)
                 hud.ShowBriefing(endedRound, winnerTeam, predictor.GetBriefing(playerUnitId));
                 phase = Phase.Briefing;
+                battleAudio.PlayBgm("B3_Briefing");
+                battleAudio.SetTypingLoop(true);
+                PlayVoiceLine("Voice_PredictionApplied", "예측 모델 적용");
             }
         }
 
@@ -469,12 +555,15 @@ namespace SeoYuGi.BattleView
             gridView.UpdateFog(playerVisibleFn); // 시야 밖 타일 어둡게 (세부기획 B)
 
             // 거점 점거 원형 게이지 — 점거 중인 팀 색으로 바닥에 차오름
+            bool anyCapturing = false;
             for (int i = 0; i < zoneDiscs.Count; i++)
             {
                 var z = Round.Zones[i];
                 float frac = z.capturingTeam >= 0 ? z.progress / roundConfig.captureSeconds : 0f;
                 zoneDiscs[i].SetProgress(frac, z.capturingTeam >= 0 ? teamColors[z.capturingTeam] : Color.clear);
+                if (z.capturingTeam >= 0 && z.progress > 0f) anyCapturing = true;
             }
+            battleAudio.SetCaptureLoop(anyCapturing);
 
             foreach (var unit in Battle.Units)
             {
@@ -487,6 +576,15 @@ namespace SeoYuGi.BattleView
                 if (view.gameObject.activeSelf != visible)
                     view.gameObject.SetActive(visible);
                 hpBars[unit.id].SetVisible(visible);
+
+                // 적 발견 핑 / 소실 SFX — 가시성 전환 시 1회
+                if (isEnemy && unit.alive)
+                {
+                    if (visible && audioVisibleEnemies.Add(unit.id))
+                        battleAudio.PlaySfx("S22_DetectPing", 0.6f);
+                    else if (!visible && audioVisibleEnemies.Remove(unit.id))
+                        battleAudio.PlaySfx("S23_GhostFade", 0.8f);
+                }
 
                 // 고스트 마커: 살아있지만 안 보이는 적 → 마지막 목격 위치에 잔상
                 if (isEnemy && ghosts.TryGetValue(unit.id, out var ghost))

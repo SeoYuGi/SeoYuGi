@@ -40,6 +40,8 @@ namespace SeoYuGi.Battle
         public event Action<int, int> OnUnitDamaged;                 // (unitId, damage)
         public event Action<int> OnUnitDied;
         public event Action<int> OnGuard;
+        public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
+        public event Action<int> OnWallCrash;            // 밀침으로 벽/맵 경계 충돌
 
         readonly List<TelegraphStrike> strikes = new List<TelegraphStrike>();
 
@@ -127,7 +129,10 @@ namespace SeoYuGi.Battle
                 default: result = ActDenied.BadTarget; break;
             }
             if (result == ActDenied.None)
+            {
                 unit.ap -= Config.costSkill;
+                OnSkillCast?.Invoke(unitId, skill.kind);
+            }
             return result;
         }
 
@@ -423,6 +428,7 @@ namespace SeoYuGi.Battle
                 if (!State.Grid.IsWalkableTerrain(next))
                 {
                     // 벽/맵 경계 충돌
+                    OnWallCrash?.Invoke(unit.id);
                     if (wallBonusDamage > 0) Damage(unit, wallBonusDamage);
                     return;
                 }

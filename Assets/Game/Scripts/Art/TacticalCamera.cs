@@ -24,8 +24,8 @@ namespace SeoYuGi.Art
         [SerializeField] float minDistance = 5f;
         [SerializeField] float maxDistance = 18f;
         [Header("엣지 팬 (자유 시점)")]
-        [SerializeField] float panSpeed = 14f;      // 초당 월드 유닛
-        [SerializeField] int edgePixels = 60;       // 모서리 감지 폭
+        [SerializeField] float panSpeed = 14f;      // 초당 월드 유닛 (모서리 최심부 기준)
+        [SerializeField] int edgePixels = 480;      // 모서리 감지 폭 — 후하게, 깊이 비례 가속이라 넓어도 안 널뜀
         [SerializeField] float outsideTolerance = 100f; // 화면 밖 이만큼까지는 모서리로 취급
 
         public bool Locked { get; private set; } = true;
@@ -90,16 +90,18 @@ namespace SeoYuGi.Art
             mousePos.y = Mathf.Clamp(mousePos.y, 0f, Screen.height);
 
             Vector2 dir = Vector2.zero;
-            if (mousePos.x <= edgePixels) dir.x = -1f;
-            else if (mousePos.x >= Screen.width - edgePixels) dir.x = 1f;
-            if (mousePos.y <= edgePixels) dir.y = -1f;
-            else if (mousePos.y >= Screen.height - edgePixels) dir.y = 1f;
+            float depth = 0f; // 모서리에 얼마나 깊이 들어갔나 (0~1)
+            if (mousePos.x <= edgePixels) { dir.x = -1f; depth = Mathf.Max(depth, 1f - mousePos.x / edgePixels); }
+            else if (mousePos.x >= Screen.width - edgePixels) { dir.x = 1f; depth = Mathf.Max(depth, 1f - (Screen.width - mousePos.x) / edgePixels); }
+            if (mousePos.y <= edgePixels) { dir.y = -1f; depth = Mathf.Max(depth, 1f - mousePos.y / edgePixels); }
+            else if (mousePos.y >= Screen.height - edgePixels) { dir.y = 1f; depth = Mathf.Max(depth, 1f - (Screen.height - mousePos.y) / edgePixels); }
             if (dir == Vector2.zero) return;
 
-            // 카메라 요 기준의 지면 좌표계로 이동
+            // 카메라 요 기준의 지면 좌표계로 이동. 깊이 비례 가속 — 살짝 걸치면 느리게, 끝까지 밀면 최고속
             var yawRot = Quaternion.Euler(0f, yaw, 0f);
             var move = yawRot * new Vector3(dir.x, 0f, dir.y);
-            focus += move.normalized * (panSpeed * Time.deltaTime);
+            float speed = panSpeed * Mathf.Lerp(0.35f, 1f, depth);
+            focus += move.normalized * (speed * Time.deltaTime);
         }
 
         bool TryFindTarget()

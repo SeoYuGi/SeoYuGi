@@ -133,7 +133,9 @@ namespace SeoYuGi.BattleView
         void Start()
         {
             playerTeam = FindRoster(playerUnitId).team;
-            playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c);
+            // 해킹 시야 강탈 중엔 전부 보임 — 이 함수가 안개·적 예고 필터·타격 VFX 필터의 공통 기준이라 여기서 걷는다
+            playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c)
+                || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time));
 
             // 플레이어 행동 거부 버저 — input은 라운드 넘어 유지되므로 1회만 구독
             input.OnActionDenied += () => battleAudio.PlaySfx("S24_ApBuzz", 0.5f);
@@ -210,8 +212,7 @@ namespace SeoYuGi.BattleView
                 {
                     var from = v.transform.position;
                     GhostTrail.SpawnAt(v.gameObject, from, new Color(0.12f, 0.06f, 0.2f, 0.85f));
-                    if (VfxLibrary.Spawn(VfxLibrary.HcfxAppearStart, new Vector3(from.x, 0.1f, from.z), 1.5f, 0.8f) == null)
-                        VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f);
+                    VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f); // 검은 연기 펑 — SF 텔레포트(마법진+광기둥)는 세계관·크기 안 맞아 제거
                     v.CancelMove();
                 }
                 blinkSnapIds.Add(unitId); // 점멸 스냅 규칙 유지
@@ -386,7 +387,9 @@ namespace SeoYuGi.BattleView
             humanUnitIds = setup.HumanUnitIds();
             playerUnitId = NetLobby.MyUnitId();
             playerTeam = FindSlot(playerUnitId).team;
-            playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c);
+            // 해킹 시야 강탈 중엔 전부 보임 — 이 함수가 안개·적 예고 필터·타격 VFX 필터의 공통 기준이라 여기서 걷는다
+            playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c)
+                || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time));
 
             mapIndex = setup.mapIndex;
             map = BattleMaps.Get(mapIndex);
@@ -443,7 +446,7 @@ namespace SeoYuGi.BattleView
             if (view != null && view.gameObject.activeInHierarchy)
                 FloatingText.Spawn(view.transform.position, $"-{dmg}", new Color(1f, 0.25f, 0.2f), 1.1f);
             battleAudio.PlaySfx("S9_Hurt", 0.6f);
-            if (IsUnitVisibleToPlayer(unitId)) { CameraShaker.Shake(0.28f); ImpactFx.Punch(0.5f); }
+            if (unitId == playerUnitId) CameraShaker.Shake(0.12f); // 가독성 다이어트 — 내 피격만 미세 셰이크, 비네트 없음
         }
 
         void OnNetDeath(int unitId)
@@ -1025,9 +1028,9 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlaySfx("S9_Hurt", 0.6f);
                 if (IsUnitVisibleToPlayer(unitId))
                 {
-                    CameraShaker.Shake(0.28f); // 피격 — 짧고 절도 있게
-                    HitStop.Do(0.05f);
-                    ImpactFx.Punch(0.5f);
+                    // 가독성 다이어트: 셰이크·히트스톱·비네트는 격파 전용. 일반 피격은 칸 안 연출 + 숫자 + 소리만.
+                    // 내가 맞았을 때만 아주 짧은 셰이크 — "내 문제"는 몸으로 알아야 하니까.
+                    if (unitId == playerUnitId) CameraShaker.Shake(0.12f);
                     ImpactVfx.Sparks(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
                     StrikeVfx.HitReaction(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
                     battleAudio.PlayThump(big: false);
@@ -1051,8 +1054,7 @@ namespace SeoYuGi.BattleView
                     {
                         var from = v.transform.position;
                         GhostTrail.SpawnAt(v.gameObject, from, new Color(0.12f, 0.06f, 0.2f, 0.85f));
-                        if (VfxLibrary.Spawn(VfxLibrary.HcfxAppearStart, new Vector3(from.x, 0.1f, from.z), 1.5f, 0.8f) == null)
-                            VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f);
+                        VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f); // 검은 연기 펑 — SF 텔레포트(마법진+광기둥) 제거
                         CellFlash.Spawn(new Vector3(from.x, 0f, from.z), new Color(0.7f, 0.4f, 1f));
                         v.CancelMove();
                         v.SnapTo(unit.pos);
@@ -1547,7 +1549,7 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < healPackViews.Count; i++)
                 healPackViews[i].SetAvailable(Pickup.Packs[i].active);
 
-            // 해킹 시야 강탈 — 지속 중엔 안개는 그대로, 적 유닛 위치만 전부 드러난다
+            // 해킹 시야 강탈 — 지속 중엔 안개 전체가 걷히고(playerVisibleFn) 적 유닛도 전부 드러난다
             bool hackReveal = hackSystem != null && hackSystem.RevealActive(playerTeam, Battle.time);
 
             foreach (var unit in Battle.Units)

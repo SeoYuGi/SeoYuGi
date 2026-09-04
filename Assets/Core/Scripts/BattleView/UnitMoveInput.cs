@@ -13,13 +13,19 @@ namespace SeoYuGi.BattleView
     /// </summary>
     public class UnitMoveInput : MonoBehaviour
     {
-        [SerializeField] Color blueRangeColor = new Color(0.3f, 0.6f, 1f);
-        [SerializeField] Color yellowRangeColor = new Color(1f, 0.85f, 0.2f);
-        [SerializeField] Color telegraphColor = new Color(0.91f, 0.25f, 0.12f);      // 적 설치 공격 예고 (빨강)
-        [SerializeField] Color allyTelegraphColor = new Color(1f, 0.6f, 0.1f);       // 아군 예고 (주황) — 피아 구분
-        [SerializeField] Color aimRangeColor = new Color(1f, 0.6f, 0.15f);           // 조준 가능 칸 (주황)
-        [SerializeField] Color aimImpactColor = new Color(1f, 0.12f, 0.08f);         // 발사 시 맞는 칸 (진빨강)
-        [SerializeField] Color aimInvalidColor = new Color(0.35f, 0.6f, 1f);         // 타겟 아닌 호버 칸 (파랑) = 클릭하면 이동
+        // ── 색 언어 (가독성 패스 2026-09-05) — 한 색 = 한 뜻. 인스펙터 튜닝 대신 코드 단일 원천.
+        //   빨강   = 적 위협 (적 예고) — 이 색은 다른 어떤 것에도 쓰지 않는다
+        //   흰색   = 내 공격 (내 예고·발사 시 맞는 칸)
+        //   파랑/노랑 = 내가 갈 수 있는 곳 (게이지 이내 / 과부하)
+        //   연노랑 = 내가 쏠 수 있는 곳 (조준 가능 칸)
+        //   팀 색(틸·주황)은 유닛·HP바에만 — 바닥 틴트엔 안 쓴다
+        static readonly Color blueRangeColor = new Color(0.3f, 0.6f, 1f);
+        static readonly Color yellowRangeColor = new Color(1f, 0.85f, 0.2f);
+        static readonly Color telegraphColor = new Color(0.91f, 0.25f, 0.12f);      // 적 예고 — 유일한 빨강
+        static readonly Color allyTelegraphColor = new Color(0.92f, 0.95f, 1f);      // 내 예고 — 흰 (구 주황: 조준·고지대와 겹쳤음)
+        static readonly Color aimRangeColor = new Color(1f, 0.88f, 0.45f);           // 조준 가능 칸 — 연노랑
+        static readonly Color aimImpactColor = new Color(1f, 1f, 0.9f);              // 발사 시 맞는 칸 — 흰 (구 진빨강: 적 위협과 혼동)
+        static readonly Color aimInvalidColor = new Color(0.35f, 0.6f, 1f);          // 타겟 아닌 호버 칸 (파랑) = 클릭하면 이동
 
         Camera rayCamera; // Camera.main 자동 연결
 
@@ -211,7 +217,7 @@ namespace SeoYuGi.BattleView
 
             if (selectedUnitId != -1 && aim != AimMode.None)
             {
-                // 조준 모드: 이동 범위 대신 조준 가능 칸(주황) + 발사 시 맞는 칸(진빨강)
+                // 조준 모드: 이동 범위 대신 조준 가능 칸(연노랑) + 발사 시 맞는 칸(흰)
                 int skillIdx = aim == AimMode.Skill2 ? 1 : 0;
                 if (aim == AimMode.Attack) combat.GetAttackRange(selectedUnitId, aimRange);
                 else combat.GetSkillRange(selectedUnitId, skillIdx, aimRange);
@@ -254,23 +260,29 @@ namespace SeoYuGi.BattleView
                 }
             }
 
-            // 설치 공격 예고 표시 — 같은 칸이면 예고가 이김 (나중 쓰기 우선). 펄스로 깜빡임.
-            // 피아 구분: 아군 예고 = 주황, 적 예고 = 빨강 — "빨간 건 피해야 함"이 즉시 읽히게.
-            // 판정 0.35초 전부터 점멸이 급가속 — 긴장→판정 해소 리듬 (타격감 D안).
+            // 설치 공격 예고 표시 — 같은 칸이면 예고가 이김 (나중 쓰기 우선).
+            // 초점 계층: 움직이는 건 "내 칸을 노리는 적 예고"뿐 — 펄스 + 판정 0.35초 전 급점멸.
+            // 나머지 적 예고는 정적·살짝 어둡게(정보는 남기되 시선은 안 뺏게), 내 예고는 흰색 정적.
             // 적 예고는 내 팀 시야 안의 칸만 보인다 — 안개 속 예측 설치가 서프라이즈로 남게.
+            var me = moveSystem.State.GetUnit(playerUnitId);
             float pulseK = Mathf.PingPong(Time.time * 2.5f, 0.4f);
-            var enemyPulse = Color.Lerp(telegraphColor, Color.white, pulseK);
-            var allyPulse = Color.Lerp(allyTelegraphColor, Color.white, pulseK);
+            var threatPulse = Color.Lerp(telegraphColor, Color.white, pulseK);
+            var calmEnemy = telegraphColor * 0.7f;
+            calmEnemy.a = 1f;
             foreach (var strike in combat.ActiveStrikes)
             {
                 bool mine = strike.team == playerTeam;
-                var baseColor = mine ? allyTelegraphColor : telegraphColor;
-                Color c2 = mine ? allyPulse : enemyPulse;
+                bool threatensMe = false;
+                if (!mine && me != null && me.alive)
+                    foreach (var c in strike.cells)
+                        if (c == me.pos) { threatensMe = true; break; }
+
+                Color c2 = mine ? allyTelegraphColor : (threatensMe ? threatPulse : calmEnemy);
                 float remain = strike.impactTime - combat.State.time;
-                if (remain < 0.35f)
+                if (threatensMe && remain < 0.35f)
                 {
                     bool on = Mathf.Sin(Time.time * 45f) > 0f;
-                    c2 = on ? Color.Lerp(baseColor, Color.white, 0.5f) : baseColor * 0.45f;
+                    c2 = on ? Color.Lerp(telegraphColor, Color.white, 0.5f) : telegraphColor * 0.45f;
                     c2.a = 1f;
                 }
                 foreach (var c in strike.cells)

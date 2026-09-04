@@ -423,16 +423,13 @@ namespace SeoYuGi.BattleView
             UpdateFogOverlays();
         }
 
-        /// <summary>시야 밖 칸 위에 반투명 안개 레이어를 켜고, 시야 안은 끈다. 살짝 일렁여 "안개" 느낌.</summary>
+        /// <summary>
+        /// 시야 밖 칸 위에 안개 솜뭉치를 켜고, 시야 안은 끈다.
+        /// 솜뭉치마다 위상이 달라 각자 천천히 돌고 숨쉬며(전체 동시 깜빡임 아님), 시야 경계 칸은 옅어져 스며든다.
+        /// </summary>
         void UpdateFogOverlays()
         {
             EnsureFogMat();
-            // 은은한 맥동 — 색만 갱신하면 공유 머티리얼이라 1회로 전체 반영
-            float pulse = 0.85f + 0.15f * Mathf.Sin(Time.time * 1.3f);
-            var col = fogOverlayColor;
-            col.a *= pulse;
-            fogOverlayMat.color = col;
-
             for (int y = 0; y < grid.Height; y++)
             for (int x = 0; x < grid.Width; x++)
             {
@@ -446,34 +443,51 @@ namespace SeoYuGi.BattleView
                     fogOverlays[c] = ov;
                 }
                 if (ov.activeSelf != on) ov.SetActive(on);
+                if (on) ov.GetComponent<FogWisp>().SetEdge(IsFogEdge(c));
             }
+        }
+
+        /// <summary>시야 칸과 맞닿은 안개 칸인가 — 경계는 옅게 해서 딱딱한 on/off 선을 없앤다.</summary>
+        bool IsFogEdge(Coord c)
+        {
+            foreach (var d in Coord.Directions4)
+            {
+                var n = c + d;
+                if (!grid.InBounds(n) || tiles[n.x, n.y] == null) continue;
+                if (!fogged.Contains(n)) return true;
+            }
+            return false;
         }
 
         void EnsureFogMat()
         {
             if (fogOverlayMat != null) return;
-            fogOverlayMat = new Material(Shader.Find("Sprites/Default")) { color = fogOverlayColor };
-            fogOverlayMat.mainTexture = SoftBlobTexture(); // 부드러운 방사형 — 칸이 겹치며 구름처럼 뭉갬
+            fogOverlayMat = new Material(Shader.Find("Sprites/Default")) { color = Color.white }; // 색·알파는 솜뭉치별 MPB
+            fogOverlayMat.mainTexture = CloudTexture();
         }
 
-        static Texture2D softBlob;
-        /// <summary>중앙 불투명 → 가장자리 투명한 부드러운 원. 칸마다 얹어 겹치면 각 없는 안개가 된다.</summary>
-        static Texture2D SoftBlobTexture()
+        static Texture2D cloudTex;
+        /// <summary>방사형 감쇠 × 펄린 노이즈 — 가장자리가 불규칙한 솜뭉치. 칸마다 겹치면 구름 덩어리가 된다.</summary>
+        static Texture2D CloudTexture()
         {
-            if (softBlob != null) return softBlob;
-            const int n = 64;
-            softBlob = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            if (cloudTex != null) return cloudTex;
+            const int n = 96;
+            cloudTex = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
             float c = (n - 1) * 0.5f;
+            const float ox = 13.7f, oy = 41.3f; // 노이즈 오프셋 고정 — 매 실행 같은 구름
             for (int y = 0; y < n; y++)
             for (int x = 0; x < n; x++)
             {
                 float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c; // 0(중앙)~1(가장자리)
-                float a = Mathf.Clamp01(1f - d);
-                a = a * a * (3f - 2f * a); // smoothstep — 가장자리 부드럽게
-                softBlob.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                float fall = Mathf.Clamp01(1f - d);
+                fall = fall * fall * (3f - 2f * fall); // smoothstep
+                float noise = Mathf.PerlinNoise(ox + x / 18f, oy + y / 18f) * 0.65f
+                            + Mathf.PerlinNoise(ox + x / 7f, oy + y / 7f) * 0.35f;
+                float a = fall * (0.55f + 0.45f * noise); // 덮임은 보장, 결은 노이즈가
+                cloudTex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
             }
-            softBlob.Apply();
-            return softBlob;
+            cloudTex.Apply();
+            return cloudTex;
         }
 
         GameObject CreateFogOverlay(Coord c)
@@ -484,12 +498,52 @@ namespace SeoYuGi.BattleView
             Destroy(ov.GetComponent<Collider>());
             ov.transform.position = transform.position + new Vector3(c.x * tileSize, fogOverlayHeight, c.y * tileSize);
             ov.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥과 평행 (위에서 내려다봄)
-            ov.transform.localScale = new Vector3(tileSize * 1.7f, tileSize * 1.7f, 1f); // 이웃과 겹쳐 경계 무마
             var r = ov.GetComponent<Renderer>();
             r.sharedMaterial = fogOverlayMat;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;
+
+            // 좌표 해시 위상 — 같은 칸은 항상 같은 결, 이웃끼리는 어긋나서 덩어리째 안 깜빡인다
+            float phase = ((c.x * 73856093 ^ c.y * 19349663) & 0xffff) / 65535f * 6.2832f;
+            ov.AddComponent<FogWisp>().Init(fogOverlayColor, tileSize * 1.85f, phase);
             return ov;
+        }
+
+        /// <summary>안개 솜뭉치 1장 — 느린 자전 + 숨쉬기 + 은은한 알파 맥동. 경계 칸이면 절반 알파.</summary>
+        class FogWisp : MonoBehaviour
+        {
+            static readonly int ColorId = Shader.PropertyToID("_Color");
+            Renderer rend;
+            MaterialPropertyBlock mpb;
+            Color baseColor;
+            float phase, spin, baseScale;
+            bool edge;
+
+            public void Init(Color color, float scale, float phase)
+            {
+                rend = GetComponent<Renderer>();
+                mpb = new MaterialPropertyBlock();
+                baseColor = color;
+                baseScale = scale;
+                this.phase = phase;
+                spin = (phase < 3.1416f ? 1f : -1f) * (3f + phase); // 3~9도/초, 방향 섞임
+                transform.Rotate(0f, 0f, phase * 57.3f, Space.Self);   // 시작 각도도 제각각
+            }
+
+            public void SetEdge(bool value) => edge = value;
+
+            void LateUpdate()
+            {
+                float t = Time.time;
+                transform.Rotate(0f, 0f, spin * Time.deltaTime, Space.Self);
+                float breathe = 1f + 0.09f * Mathf.Sin(t * 0.7f + phase);
+                transform.localScale = new Vector3(baseScale * breathe, baseScale * breathe, 1f);
+
+                var col = baseColor;
+                col.a *= (0.85f + 0.15f * Mathf.Sin(t * 1.1f + phase * 1.3f)) * (edge ? 0.45f : 1f);
+                mpb.SetColor(ColorId, col);
+                rend.SetPropertyBlock(mpb);
+            }
         }
 
         void RepaintAll()

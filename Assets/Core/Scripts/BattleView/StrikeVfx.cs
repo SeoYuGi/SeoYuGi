@@ -30,14 +30,12 @@ namespace SeoYuGi.BattleView
 
             if (machine)
             {
-                // 기계 — SF 록온 마커 (프리팹 없으면 시안 레티클 폴백)
+                // 기계 — 시안 레티클 (바닥 문양 루프 프리팹은 칸마다 돌아가며 시선을 뺏어 제거 — 가독성 패스)
                 int shown = 0;
                 foreach (var w in cells)
                 {
                     if (shown++ >= 6) break;
-                    var m = VfxLibrary.Spawn(VfxLibrary.HcfxLockOn, w + Vector3.up * 0.04f, seconds + 0.5f, 0.55f);
-                    if (m != null) m.transform.SetParent(root.transform);
-                    else ScopeMarker.Spawn(root.transform, w, new Color(0.4f, 0.9f, 1f, 0.9f), 0.7f);
+                    ScopeMarker.Spawn(root.transform, w, new Color(0.4f, 0.9f, 1f, 0.9f), 0.7f);
                 }
                 if (cls == UnitClass.Sniper) // 감시 드론 — 레이저 조준선
                     LaserBeam.Spawn(root.transform, casterWorld + Vector3.up * 0.55f,

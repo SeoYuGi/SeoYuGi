@@ -41,9 +41,9 @@ namespace SeoYuGi.BattleView
                     RingWave.Spawn(origin, new Color(1f, 0.85f, 0.3f, 0.35f), 4f, 0.75f);
                     break;
 
-                case SkillKind.Blink: // 그림자 도약 — 이 origin은 도착지 (시뮬이 먼저 순간이동). 등장: 연기 찢고 나타남
-                    if (VfxLibrary.Spawn(VfxLibrary.HcfxAppearEnd, origin + Vector3.up * 0.1f, 1.5f, 0.8f) == null)
-                        VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, origin + Vector3.up * 0.3f, 1.5f, 0.55f);
+                case SkillKind.Blink: // 그림자 도약 — 이 origin은 도착지 (시뮬이 먼저 순간이동). 등장: 검은 연기 찢고 나타남
+                    // SF 텔레포트(HCFX_Appear: 마법진+광기둥)는 검은 고양이 톤도, 1칸 스케일도 안 맞아 제거
+                    VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, origin + Vector3.up * 0.3f, 1.5f, 0.55f);
                     FxQuad.One(VfxTextures.Electric, origin + Vector3.up * 0.5f, new Color(0.75f, 0.45f, 1f), 1.8f, 0.5f, 0.25f);
                     break;
 

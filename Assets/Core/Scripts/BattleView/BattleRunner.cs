@@ -116,7 +116,6 @@ namespace SeoYuGi.BattleView
 
         // 예측 사격 추적 (G) — 캐스팅 직후 예고와 매칭해 적중/실패 자막
         readonly List<(int attackerId, Coord cell, float time)> pendingPredictedShots = new List<(int, Coord, float)>();
-        PredictionMarker predictionMarker; // 적 AI의 내 다음 칸 예측 — 바닥 보라 링 (학습이 보이게)
         static readonly Color PredictPurple = new Color(0.75f, 0.4f, 1f);
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
         float nextFakeCalloutTime; // 사후 귀속 자막 남발 방지
@@ -663,7 +662,6 @@ namespace SeoYuGi.BattleView
         /// <summary>라운드 1개 분량의 Core + 뷰 전체 조립. 라운드 시작마다 호출.</summary>
         void BuildRound()
         {
-            predictionMarker?.Hide(); // 새 라운드 — 이전 라운드 예측 잔상 제거
             ClearRoundObjects();
             if (pickBg != null) { Destroy(pickBg); pickBg = null; } // 픽 배경 제거
 
@@ -1606,14 +1604,6 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlaySfx("S22_DetectPing", 0.6f);
             }
 
-            // 적 AI의 "내 다음 칸" 예측을 바닥에 상시 표시 (R2+, 표본 충분할 때) — 피해 가면 배신, 밟으면 맞는다.
-            // 내 해킹으로 적 예측이 마비된 동안은 숨김 (마비가 보이게).
-            if (predictionMarker == null) predictionMarker = PredictionMarker.Create(transform);
-            var meUnit = Battle.GetUnit(playerUnitId);
-            var preds = predictor.PredictNextCells(playerUnitId, 1);
-            if (preds.Count > 0 && meUnit != null && meUnit.alive && !hackSystem.RevealActive(playerTeam, Battle.time))
-                predictionMarker.Show(gridView.CoordToWorld(new Coord(preds[0].Cell.X, preds[0].Cell.Y)));
-            else predictionMarker.Hide();
             hud.SetLearning(predictor.LearningProgress(playerUnitId), Match.CurrentRound);
 
             SyncPresentation();

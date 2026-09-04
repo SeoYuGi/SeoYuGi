@@ -113,7 +113,7 @@ namespace SeoYuGi.BattleView
 
         // 텍스처 링용 단위 쿼드 (2×2 — 반지름 1 링 텍스처가 꽉 차게)
         static Mesh quadMesh;
-        public static Mesh QuadMesh
+        static Mesh QuadMesh
         {
             get
             {

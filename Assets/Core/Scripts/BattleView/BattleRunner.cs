@@ -245,6 +245,7 @@ namespace SeoYuGi.BattleView
         {
             var cam = Camera.main;
             if (cam == null) return;
+            if (cam.GetComponent<QuarterViewCamera>() != null) return; // 추적 캠 우선 — 프레이밍 양보
             var center = (gridView.CoordToWorld(new Coord(0, 0)) +
                           gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1))) * 0.5f;
             cam.transform.rotation = Quaternion.Euler(cameraPitch, 0f, 0f);

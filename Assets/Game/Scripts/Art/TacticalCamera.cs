@@ -21,6 +21,7 @@ namespace SeoYuGi.Art
         [SerializeField] float smoothTime = 0.12f;
         [SerializeField] float rotateStep = 45f;   // Q/W 한 번당 회전각
         [SerializeField] float rotateSmooth = 0.18f;
+        [SerializeField] float lookAhead = 2.2f;   // 고정 추적 시 내 유닛보다 화면 위쪽(전방)을 이만큼 더 비춤 — 유닛이 정중앙이면 앞이 안 보였다
         [Header("줌")]
         [SerializeField] float distance = 7.5f;   // 시작 줌 — 10은 유닛이 작아 실루엣이 안 읽혔다 (2026-09-05)
         [SerializeField] float zoomStep = 1.2f;   // 스크롤 한 틱당 거리 변화
@@ -52,7 +53,8 @@ namespace SeoYuGi.Art
             if (Locked)
             {
                 if (target == null && !TryFindTarget()) return;
-                if (target != null) focus = target.position;
+                if (target != null)
+                    focus = target.position + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * lookAhead; // 화면 위 방향 = 전방
             }
 
             yaw = Mathf.SmoothDampAngle(yaw, targetYaw, ref yawVelocity, rotateSmooth);

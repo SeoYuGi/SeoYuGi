@@ -158,14 +158,31 @@ namespace SeoYuGi.Ai
                 float score = -Manhattan(me.Pos, z.Cell) + (ours ? -5f : 0f); // 미소유 우선
                 if (score > bestScore) { bestScore = score; goal = z; }
             }
-            if (!goal.HasValue || goal.Value.Cell.Equals(me.Pos)) return null;
+            if (!goal.HasValue) return null;
+
+            var patch = goal.Value.Cells ?? new[] { goal.Value.Cell };
+
+            // 이미 패치 위면 눌러앉기 — 중심 한 칸을 두고 비비지 않는다
+            foreach (var c in patch)
+                if (c.Equals(me.Pos)) return null;
+
+            // 목표 = 비어 있는 가장 가까운 패치 칸 (아군끼리 분산 진입)
+            Cell? targetCell = null;
+            int bestD = int.MaxValue;
+            foreach (var c in patch)
+            {
+                if (!world.IsWalkable(c)) continue; // 점유·벽 제외
+                int d = Manhattan(me.Pos, c);
+                if (d < bestD) { bestD = d; targetCell = c; }
+            }
+            if (!targetCell.HasValue) return null; // 패치 만석 — 밀치지 말고 대기
 
             Cell? best = null;
-            int bestDist = Manhattan(me.Pos, goal.Value.Cell);
+            int bestDist = Manhattan(me.Pos, targetCell.Value);
             foreach (var n in OrthoNeighbors(me.Pos))
             {
                 if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
-                int d = Manhattan(n, goal.Value.Cell);
+                int d = Manhattan(n, targetCell.Value);
                 if (d < bestDist) { bestDist = d; best = n; }
             }
             return best;

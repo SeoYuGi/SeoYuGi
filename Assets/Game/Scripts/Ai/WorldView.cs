@@ -33,7 +33,8 @@ namespace SeoYuGi.Ai
 
     public struct ZoneState
     {
-        public Cell Cell;
+        public Cell Cell;              // 패치 중심 (거리 계산·라벨용)
+        public Cell[] Cells;           // 패치 전체 칸 — null이면 Cell 1칸 취급
         public bool HasOwner;
         public TeamId Owner;
     }

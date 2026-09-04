@@ -51,21 +51,47 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void Vacate_ResetsProgress()
+        public void Vacate_DecaysProgress()
         {
+            // captureSeconds 2, decaySeconds 4 → 감소 속도 0.5/s
             var u = Add(1, 0, zoneM);
             Add(2, 1, new Coord(0, 0));
             NewRound();
 
             round.Tick(1.5f);
-            MoveTo(u, zoneM + Coord.Up); // 이탈
-            round.Tick(0.1f);
-            MoveTo(u, zoneM);            // 복귀 — 처음부터 다시
+            MoveTo(u, zoneM + Coord.Up); // 이탈 — 즉시 리셋 아님, 서서히 감소
+            round.Tick(4f);              // 1.5 게이지는 3초면 전부 빠짐
+            Assert.AreEqual(0f, round.Zones[1].progress);
+            Assert.AreEqual(-1, round.Zones[1].capturingTeam);
 
+            MoveTo(u, zoneM);            // 복귀 — 처음부터 다시
             round.Tick(1.9f);
             Assert.AreEqual(-1, round.Zones[1].owner);
             round.Tick(0.2f);
             Assert.AreEqual(0, round.Zones[1].owner);
+        }
+
+        [Test]
+        public void EnemyGauge_NeutralizedBeforeRecapture()
+        {
+            var a = Add(1, 0, zoneM);
+            var b = Add(2, 1, new Coord(0, 0));
+            NewRound();
+
+            round.Tick(1.0f);            // 팀0 게이지 1.0
+            MoveTo(a, new Coord(0, 1));
+            MoveTo(b, zoneM);            // 팀1 진입 — 먼저 중화
+
+            round.Tick(0.9f);            // 잔여 0.1 남음 — 아직 팀1 게이지 아님
+            Assert.AreEqual(-1, round.Zones[1].owner);
+            Assert.AreEqual(0, round.Zones[1].capturingTeam);
+
+            round.Tick(1.2f);            // 0.1 중화 + 1.1 적립
+            Assert.AreEqual(1, round.Zones[1].capturingTeam);
+            Assert.AreEqual(-1, round.Zones[1].owner);
+
+            round.Tick(1.0f);            // 누적 2.1 ≥ 2 — 탈환
+            Assert.AreEqual(1, round.Zones[1].owner);
         }
 
         [Test]

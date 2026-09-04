@@ -83,6 +83,7 @@ namespace SeoYuGi.BattleView
         readonly List<GameObject> roundObjects = new List<GameObject>();
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
         readonly Dictionary<int, GameObject> ghosts = new Dictionary<int, GameObject>(); // 적 잔상 마커
+        readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
 
         void Awake()
         {
@@ -154,6 +155,13 @@ namespace SeoYuGi.BattleView
             }
             gridView.ClearBaseTints(); // 이전 라운드 거점 소유 틴트 제거
 
+            foreach (var z in Round.Zones)
+            {
+                var disc = ZoneCaptureDisc.Create(transform, gridView.CoordToWorld(z.Center));
+                zoneDiscs.Add(disc);
+                roundObjects.Add(disc.gameObject);
+            }
+
             foreach (var r in Roster)
             {
                 var view = CreateUnitView();
@@ -198,7 +206,10 @@ namespace SeoYuGi.BattleView
 
             Move.OnUnitMoved += (unitId, path, yellow) =>
             {
-                viewRegistry.Get(unitId)?.PlayPath(path, moveConfig.hopDuration);
+                // 시야 밖(비활성) 뷰는 연출 생략 — 다시 보일 때 SyncPresentation의 SnapTo가 위치를 맞춘다
+                var movedView = viewRegistry.Get(unitId);
+                if (movedView != null && movedView.gameObject.activeInHierarchy)
+                    movedView.PlayPath(path, moveConfig.hopDuration);
                 if (unitId == playerUnitId) ObserveHumanPath(path);
             };
 
@@ -218,6 +229,7 @@ namespace SeoYuGi.BattleView
             roundObjects.Clear();
             hpBars.Clear();
             ghosts.Clear();
+            zoneDiscs.Clear();
             viewRegistry.Clear();
         }
 
@@ -384,6 +396,14 @@ namespace SeoYuGi.BattleView
         void SyncPresentation()
         {
             gridView.UpdateFog(playerVisibleFn); // 시야 밖 타일 어둡게 (세부기획 B)
+
+            // 거점 점거 원형 게이지 — 점거 중인 팀 색으로 바닥에 차오름
+            for (int i = 0; i < zoneDiscs.Count; i++)
+            {
+                var z = Round.Zones[i];
+                float frac = z.capturingTeam >= 0 ? z.progress / roundConfig.captureSeconds : 0f;
+                zoneDiscs[i].SetProgress(frac, z.capturingTeam >= 0 ? teamColors[z.capturingTeam] : Color.clear);
+            }
 
             foreach (var unit in Battle.Units)
             {

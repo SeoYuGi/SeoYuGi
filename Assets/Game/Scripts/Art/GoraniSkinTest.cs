@@ -12,12 +12,13 @@ namespace SeoYuGi.Art
     /// </summary>
     public static class GoraniSkinTestBootstrap
     {
-        const string SceneName = "GoraniSkinTest";
+        // 팀 합의(9/4): 작업은 SampleScene에서 — 스킨·카메라 훅도 거기서 돈다
+        static readonly string[] SceneNames = { "SampleScene", "GoraniSkinTest" };
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Init()
         {
-            if (SceneManager.GetActiveScene().name != SceneName) return;
+            if (System.Array.IndexOf(SceneNames, SceneManager.GetActiveScene().name) < 0) return;
             new GameObject("GoraniSkinApplier").AddComponent<GoraniSkinApplier>();
 
             // 롤식 카메라 장착 (씬에 QuarterViewCamera가 있으면 꺼서 충돌 방지)

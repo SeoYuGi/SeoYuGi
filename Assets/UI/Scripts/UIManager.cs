@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 public class UIManager : Singleton<UIManager>
@@ -21,6 +23,13 @@ public class UIManager : Singleton<UIManager>
     {
         base.Awake();
         DontDestroyOnLoad(this.gameObject);
+
+        // 씬에 EventSystem 없으면 UI 클릭이 전부 무시됨 — 자동 보장 (신 Input System 모듈)
+        if (FindFirstObjectByType<EventSystem>() == null)
+        {
+            var es = new GameObject("@EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            DontDestroyOnLoad(es);
+        }
     }
 
     GameObject GetOrCreateRoot(string name, UIType type)

@@ -18,10 +18,10 @@ namespace SeoYuGi.BattleView
     /// </summary>
     public class BattleRunner : MonoBehaviour
     {
-        enum Phase { Playing, Briefing, MatchOver }
+        enum Phase { ClassSelect, Playing, Briefing, MatchOver }
 
-        // 슬롯 로스터 — 양팀 미러 픽 + 탱고파이브식 콜사인. 픽 변경은 여기서.
-        static readonly (int id, int team, UnitClass cls, string name)[] Roster =
+        // 슬롯 로스터 — 탱고파이브식 콜사인. 내 슬롯은 선택 팝업으로, 적팀은 매치당 랜덤으로 덮어씀.
+        readonly (int id, int team, UnitClass cls, string name)[] roster =
         {
             (1, 0, UnitClass.Tank,    "알파"),
             (2, 0, UnitClass.Balance, "브라보"),
@@ -104,14 +104,46 @@ namespace SeoYuGi.BattleView
 
             Match = new MatchSystem();
             predictor = NewPredictor();
-            BuildRound();
-            SetupCamera();
             Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
+            ShowClassSelect();
         }
 
-        static (int id, int team, UnitClass cls, string name) FindRoster(int unitId)
+        /// <summary>클래스 선택 팝업 → 픽 적용 + 적팀 랜덤 롤 → 매치 시작.</summary>
+        void ShowClassSelect()
         {
-            foreach (var r in Roster)
+            phase = Phase.ClassSelect;
+            if (UIManager.Instance == null)
+                new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
+
+            var popup = UIManager.Instance.ShowPopupUI<UIClassSelectPopup>();
+            popup.OnPicked = cls =>
+            {
+                for (int i = 0; i < roster.Length; i++)
+                    if (roster[i].id == playerUnitId)
+                        roster[i].cls = cls;
+                RollEnemyClasses();
+                BuildRound();
+                SetupCamera();
+            };
+        }
+
+        /// <summary>적팀 클래스 매치당 1회 랜덤 (중복 없음). 라운드 간엔 유지 — 학습 매치 구조 보호.</summary>
+        void RollEnemyClasses()
+        {
+            var pool = new List<UnitClass>
+                { UnitClass.Tank, UnitClass.Balance, UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
+            for (int i = 0; i < roster.Length; i++)
+            {
+                if (roster[i].team == playerTeam) continue;
+                int pick = UnityEngine.Random.Range(0, pool.Count);
+                roster[i].cls = pool[pick];
+                pool.RemoveAt(pick);
+            }
+        }
+
+        (int id, int team, UnitClass cls, string name) FindRoster(int unitId)
+        {
+            foreach (var r in roster)
                 if (r.id == unitId) return r;
             throw new ArgumentException($"roster에 없는 unitId {unitId}");
         }
@@ -135,7 +167,7 @@ namespace SeoYuGi.BattleView
                 grid.SetObstacle(c);
 
             Battle = new BattleState(grid);
-            foreach (var r in Roster)
+            foreach (var r in roster)
                 Battle.AddUnit(new UnitState(r.id, r.team, map.Spawns[r.id], r.cls));
 
             Move = new MoveSystem(Battle, moveConfig);
@@ -162,7 +194,7 @@ namespace SeoYuGi.BattleView
                 roundObjects.Add(disc.gameObject);
             }
 
-            foreach (var r in Roster)
+            foreach (var r in roster)
             {
                 var view = CreateUnitView();
                 view.name = $"Unit_{r.id}_{r.cls}";
@@ -199,7 +231,7 @@ namespace SeoYuGi.BattleView
             // 슬롯: 나 빼고 전부 AI. 적팀 뇌에만 Predictor 주입 — "AI군은 인간을 노린다"(기획서 §05).
             worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound);
             aiDrivers.Clear();
-            foreach (var r in Roster)
+            foreach (var r in roster)
                 if (r.id != playerUnitId)
                     aiDrivers.Add(new AiSlotDriver(r.id, r.cls, Move, Combat,
                         r.team != playerTeam ? predictor : null));
@@ -314,7 +346,7 @@ namespace SeoYuGi.BattleView
         {
             Match = new MatchSystem();
             predictor = NewPredictor(); // 새 매치 = 학습 백지
-            BuildRound();
+            ShowClassSelect();          // 재시작 때도 다시 픽 + 적팀 재롤
         }
 
         static float ViewScale(UnitClass cls)
@@ -357,7 +389,7 @@ namespace SeoYuGi.BattleView
 
         void Update()
         {
-            if (Move == null) return;
+            if (phase == Phase.ClassSelect || Move == null) return;
 
             if (phase == Phase.Briefing)
             {

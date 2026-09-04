@@ -117,6 +117,11 @@ namespace SeoYuGi.Art
                     runGo.AddComponent<SkinLoopAnimator>().Init(clips[0]);
                 skin.AddComponent<MoveSwapSkin>().Init(view, idleGo, runGo);
             }
+            else if (unit.team == 0)
+            {
+                // 리깅 불가 캐릭터(비둘기) — 절차적 파닥·통통 연출로 대체
+                skin.AddComponent<WaddleBounce>().Init(view, idleGo);
+            }
 
             // 드론류 기계는 부유 연출
             if (unit.team == 1 && unit.unitClass != UnitClass.Tank && unit.unitClass != UnitClass.Balance)

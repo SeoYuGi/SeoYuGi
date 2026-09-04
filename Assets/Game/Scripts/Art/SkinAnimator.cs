@@ -70,6 +70,50 @@ namespace SeoYuGi.Art
         }
     }
 
+    /// <summary>
+    /// 리깅이 불가능한 캐릭터(비둘기)용 절차적 이동 연출 —
+    /// 빠른 스쿼시&스트레치 + 뒤뚱 롤로 "파닥이며 통통 뛰는" 느낌을 낸다.
+    /// </summary>
+    public class WaddleBounce : MonoBehaviour
+    {
+        const float Frequency = 14f;   // 파닥 주기
+        const float Squash = 0.12f;    // 위아래 찌그러짐 폭
+        const float RollDeg = 6f;      // 뒤뚱 좌우 롤
+
+        UnitView view;
+        Transform target;
+        Vector3 baseScale;
+        Quaternion baseRot;
+        float t;
+
+        public void Init(UnitView view, GameObject targetGo)
+        {
+            this.view = view;
+            target = targetGo.transform;
+            baseScale = target.localScale;
+            baseRot = target.localRotation;
+        }
+
+        void Update()
+        {
+            if (target == null) return;
+            bool moving = view != null && view.IsMoving;
+            if (!moving)
+            {
+                target.localScale = Vector3.Lerp(target.localScale, baseScale, Time.deltaTime * 10f);
+                target.localRotation = Quaternion.Slerp(target.localRotation, baseRot, Time.deltaTime * 10f);
+                return;
+            }
+
+            t += Time.deltaTime * Frequency;
+            float s = Mathf.Sin(t);
+            float squash = 1f + s * Squash;
+            float side = 1f / Mathf.Sqrt(squash); // 부피 보존 — 눌리면 옆으로 퍼짐
+            target.localScale = new Vector3(baseScale.x * side, baseScale.y * squash, baseScale.z * side);
+            target.localRotation = baseRot * Quaternion.Euler(0f, 0f, Mathf.Sin(t * 0.5f) * RollDeg);
+        }
+    }
+
     /// <summary>드론류 기계의 공중 부유 연출 — 사인파 상하 + 미세 기울기.</summary>
     public class HoverBob : MonoBehaviour
     {

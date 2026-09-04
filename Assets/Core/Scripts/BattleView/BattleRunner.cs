@@ -13,7 +13,7 @@ namespace SeoYuGi.BattleView
 {
     /// <summary>
     /// 전투 진입점 + 매치 오케스트레이션 (기획서 §05: 3라운드 2선승).
-    /// 맵은 BattleMaps 고정 6장 중 매치 시작 팝업에서 선택 — 시드 무작위 없음(유저·AI 모두 지형 학습).
+    /// 맵은 BattleMaps 고정 6장 중 매치 시작 시 랜덤 — 지형 자체는 수제 고정(유저·AI 모두 지형 학습).
     /// 라운드마다 Core(BattleState/시스템들)를 통째로 새로 조립하고,
     /// Predictor만 매치 내내 살아남아 라운드를 거치며 인간을 학습한다.
     /// 흐름: Playing → (라운드 종료) → Briefing(SPACE) → 다음 라운드 → ... → MatchOver(R).
@@ -40,7 +40,7 @@ namespace SeoYuGi.BattleView
         [SerializeField] RoundConfig roundConfig = new RoundConfig();
         [SerializeField] PickupConfig pickupConfig = new PickupConfig();
 
-        [Header("Map — BattleMaps 고정 6장 중 선택")]
+        [Header("Map — BattleMaps 고정 6장 중 랜덤")]
         [SerializeField] int mapIndex = 0;
 
         [Header("Camera (자동 프레이밍)")]
@@ -89,6 +89,8 @@ namespace SeoYuGi.BattleView
         };
 
         Phase phase = Phase.Playing;
+        float countdownUntil;   // 라운드 시작 3·2·1 — 이 시각까지 시뮬·조작 정지
+        bool countdownRunning;
         ParsedMap map;
         GridConfig gridConfig;
         int playerTeam;
@@ -313,7 +315,7 @@ namespace SeoYuGi.BattleView
             ShowPickBackground();
 
             var popup = UIManager.Instance.ShowPopupUI<UITitlePopup>();
-            popup.OnSingle = ShowMapSelect;
+            popup.OnSingle = PickRandomMap;
             popup.OnHost = async () =>
             {
                 hud.ShowSubtitle("방 생성 중...", 10f);
@@ -349,17 +351,9 @@ namespace SeoYuGi.BattleView
             lobbyPopup = UIManager.Instance.ShowPopupUI<UILobbyPopup>();
             lobbyPopup.OnLeave = () => { NetBoot.Shutdown(); ShowTitle(); };
             lobbyPopup.OnStart = () =>
-            {
-                // 호스트: 맵 픽 → 시드 롤 → 전원에 MatchSetup 브로드캐스트
-                var mapPopup = UIManager.Instance.ShowPopupUI<UIMapSelectPopup>();
-                mapPopup.OnPicked = idx =>
-                    NetLobby.HostStart(idx, UnityEngine.Random.Range(int.MinValue, int.MaxValue));
-                mapPopup.OnEscape = () => // ESC = 로비로
-                {
-                    UIManager.Instance.ClosePopupUI(mapPopup);
-                    ShowLobby();
-                };
-            };
+                // 호스트: 맵 랜덤 → 시드 롤 → 전원에 MatchSetup 브로드캐스트
+                NetLobby.HostStart(UnityEngine.Random.Range(0, BattleMaps.Count),
+                    UnityEngine.Random.Range(int.MinValue, int.MaxValue));
         }
 
         /// <summary>매치 시작 브로드캐스트 수신 — 호스트·클라 모두 같은 라운드를 조립한다.
@@ -463,31 +457,16 @@ namespace SeoYuGi.BattleView
             ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f));
         }
 
-        /// <summary>맵 선택 팝업 → mapIndex 확정 + 맵 종속 상태 조립 → 클래스 선택으로.</summary>
-        void ShowMapSelect()
+        /// <summary>맵 랜덤 확정 + 맵 종속 상태 조립 → 클래스 선택으로.</summary>
+        void PickRandomMap()
         {
-            phase = Phase.ClassSelect; // 픽 단계(맵+클래스) 동안 시뮬레이션 정지
-            battleAudio.PlayBgm("B6_Title"); // 픽 화면 = 타이틀 테마
-            if (UIManager.Instance == null)
-                new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
-            ShowPickBackground();
-
-            var popup = UIManager.Instance.ShowPopupUI<UIMapSelectPopup>();
-            popup.OnPicked = idx =>
-            {
-                mapIndex = idx;
-                map = BattleMaps.Get(mapIndex);
-                gridConfig = new GridConfig { width = map.Width, height = map.Height };
-                predictor = NewPredictor();
-                hackSystem = NewHackSystem();
-                Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
-                ShowClassSelect();
-            };
-            popup.OnEscape = () => // ESC = 타이틀로
-            {
-                UIManager.Instance.ClosePopupUI(popup);
-                ShowTitle();
-            };
+            mapIndex = UnityEngine.Random.Range(0, BattleMaps.Count);
+            map = BattleMaps.Get(mapIndex);
+            gridConfig = new GridConfig { width = map.Width, height = map.Height };
+            predictor = NewPredictor();
+            hackSystem = NewHackSystem();
+            Debug.Log($"맵 랜덤 → [{map.Name}] ({map.Width}×{map.Height})");
+            ShowClassSelect();
         }
 
         /// <summary>클래스 선택 팝업 → 픽 적용 + 적팀 랜덤 롤 → 매치 시작.</summary>
@@ -511,10 +490,10 @@ namespace SeoYuGi.BattleView
                 BuildRound();
                 SetupCamera();
             };
-            popup.OnEscape = () => // ESC = 맵 선택으로
+            popup.OnEscape = () => // ESC = 타이틀로 (맵 선택 화면은 제거됨 — 랜덤 픽)
             {
                 UIManager.Instance.ClosePopupUI(popup);
-                ShowMapSelect();
+                ShowTitle();
             };
         }
 
@@ -670,6 +649,7 @@ namespace SeoYuGi.BattleView
             Combat.OnDamageDealt += hackSystem.NotifyDamage;
             vision = new VisionSystem(Battle);
             Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
+            Move.OnUnitMoved += (id, path, _) => Pickup.OnUnitPath(id, path); // 경로 통과 픽업 — 멈추지 않아도 먹는다
 
             foreach (var pack in Pickup.Packs)
             {
@@ -1047,8 +1027,10 @@ namespace SeoYuGi.BattleView
                 humanPrevPos[id] = Battle.GetUnit(id).pos;
             audioVisibleEnemies.Clear();
             ImpactFx.SetSuddenDeath(false); // 새 라운드 — 이전 라운드의 적색 맥동·잔여 글리치 제거
-            input.enabled = true; // 클라도 조작 — 인텐트는 NetIntentSink가 호스트로 전송
+            input.enabled = false; // 카운트다운 종료 시 해제 — 클라도 조작(인텐트는 NetIntentSink가 호스트로 전송)
             phase = Phase.Playing;
+            countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
+            countdownRunning = true;
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
                 NetSync.HostSendBeginRound(Match.CurrentRound); // 클라 — 같은 라운드 조립 신호
@@ -1287,6 +1269,19 @@ namespace SeoYuGi.BattleView
                 if (!IsNetClient && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
                     RestartMatch();
                 return;
+            }
+
+            // 라운드 시작 카운트다운 — 호스트·클라 모두 시뮬·조작 정지, 중앙에 3·2·1
+            if (countdownRunning)
+            {
+                if (Time.time < countdownUntil)
+                {
+                    hud.SetCountdown(Mathf.CeilToInt(countdownUntil - Time.time));
+                    return;
+                }
+                countdownRunning = false;
+                hud.SetCountdown(0);
+                input.enabled = true;
             }
 
             // 해킹 (H) — 궁게이지 만충 시, 5초간 적 예측 AI 교란 + 적 전원 위치 표시. 클라는 Pending.

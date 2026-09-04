@@ -189,6 +189,20 @@ namespace SeoYuGi.BattleView
             battle = null; // OnGUI 조기 리턴
             overlay = Overlay.None;
             subtitleText = null;
+            countdownNum = 0;
+        }
+
+        int countdownNum; // 라운드 시작 3·2·1 — 0이면 숨김
+
+        /// <summary>라운드 시작 카운트다운 — 중앙 대형 숫자. 0 = 숨김.</summary>
+        public void SetCountdown(int num) => countdownNum = num;
+
+        void DrawCountdown()
+        {
+            if (countdownNum <= 0) return;
+            GUI.color = new Color(1f, 0.85f, 0.25f);
+            GUI.Label(new Rect(0, H / 2f - 90, W, 100), countdownNum.ToString(), bannerStyle);
+            GUI.color = Color.white;
         }
 
         /// <summary>보이스 재생 동안 하단에 한글 자막 표시.</summary>
@@ -219,6 +233,7 @@ namespace SeoYuGi.BattleView
                 DrawBottomBar();
                 DrawChatLog();
                 DrawChatPanel();
+                DrawCountdown();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();

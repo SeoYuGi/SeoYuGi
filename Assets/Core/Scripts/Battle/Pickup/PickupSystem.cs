@@ -55,12 +55,35 @@ namespace SeoYuGi.Battle
                 var unit = State.GetUnit(unitId);
                 if (unit == null || !unit.alive || unit.hp >= unit.maxHp) continue;
 
-                int healed = Math.Min(Config.healAmount, unit.maxHp - unit.hp);
-                unit.hp += healed;
-                pack.active = false;
-                pack.respawnAt = State.time + Config.respawnSeconds;
-                OnPickup?.Invoke(unitId, pack.pos, healed);
+                Consume(pack, unit);
             }
+        }
+
+        /// <summary>이동 경로가 팩 칸을 지나면 픽업 — 멈추지 않아도 먹는다 (MoveSystem.OnUnitMoved에 배선).</summary>
+        public void OnUnitPath(int unitId, IReadOnlyList<Coord> path)
+        {
+            var unit = State.GetUnit(unitId);
+            if (unit == null || !unit.alive) return;
+            foreach (var pack in Packs)
+            {
+                if (!pack.active) continue;
+                if (unit.hp >= unit.maxHp) return; // 풀피 통과 = 팩 아낌 (밟기와 같은 규칙)
+                foreach (var c in path)
+                {
+                    if (c.x != pack.pos.x || c.y != pack.pos.y) continue;
+                    Consume(pack, unit);
+                    break;
+                }
+            }
+        }
+
+        void Consume(HealPack pack, UnitState unit)
+        {
+            int healed = Math.Min(Config.healAmount, unit.maxHp - unit.hp);
+            unit.hp += healed;
+            pack.active = false;
+            pack.respawnAt = State.time + Config.respawnSeconds;
+            OnPickup?.Invoke(unit.id, pack.pos, healed);
         }
     }
 }

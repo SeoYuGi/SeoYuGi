@@ -21,5 +21,7 @@ namespace SeoYuGi.Battle
 
         public float blinkBuffSeconds = 3f;         // 그림자 도약: 일반공격 +1 지속
         public int blinkBuffBonus = 1;
+
+        public int fallDamage = 1;                  // 고지대에서 밀려 떨어질 때 (벽꿍과 같은 수치 감각)
     }
 }

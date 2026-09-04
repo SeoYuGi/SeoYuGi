@@ -38,7 +38,7 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [TestCaseSource(nameof(AllMapIndices))]
-        public void ThreeZonePatches_3x3_LeftToRight_OnMiddleRow(int index)
+        public void ThreeZonePatches_3x3_LeftToRight_PointSymmetric(int index)
         {
             var map = BattleMaps.Get(index);
             Assert.AreEqual(3, map.Zones.Count);
@@ -50,8 +50,28 @@ namespace SeoYuGi.Battle.Tests
             }
             Assert.Less(centers[0].x, centers[1].x);
             Assert.Less(centers[1].x, centers[2].x);
-            foreach (var c in centers)
-                Assert.AreEqual(map.Height / 2, c.y, $"{map.Name}: 거점 중심은 중앙 행");
+
+            // 공정성: 중앙 행 고정 대신 180° 점대칭 — A↔C 미러, B는 자기 대칭 ('대각 회전'식 배치 허용)
+            Coord Mirror(Coord c) => new Coord(map.Width - 1 - c.x, map.Height - 1 - c.y);
+            var a = new HashSet<Coord>(map.Zones[0]);
+            var b = new HashSet<Coord>(map.Zones[1]);
+            foreach (var c in map.Zones[2])
+                Assert.IsTrue(a.Contains(Mirror(c)), $"{map.Name}: 거점 C {c}의 대칭이 A에 없음");
+            foreach (var c in map.Zones[1])
+                Assert.IsTrue(b.Contains(Mirror(c)), $"{map.Name}: 거점 B {c}가 자기 대칭이 아님");
+        }
+
+        [TestCaseSource(nameof(AllMapIndices))]
+        public void Highlands_ArePointSymmetric(int index)
+        {
+            var map = BattleMaps.Get(index);
+            var highs = new HashSet<Coord>(map.Highlands);
+            foreach (var h in highs)
+            {
+                var mirror = new Coord(map.Width - 1 - h.x, map.Height - 1 - h.y);
+                Assert.IsTrue(highs.Contains(mirror),
+                    $"{map.Name}: 고지대 {h}의 180° 대칭 {mirror}이 없음 — 양팀 불공정");
+            }
         }
 
         [TestCaseSource(nameof(AllMapIndices))]

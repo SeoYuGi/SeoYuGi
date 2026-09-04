@@ -17,6 +17,7 @@ namespace SeoYuGi.BattleView
         [Range(0.5f, 1f)]
         [SerializeField] float tileFill = 0.96f;  // 타일이 칸을 채우는 비율. 나머지가 틈 = 그리드 라인
         [SerializeField] float wallHeight = 0.6f; // 장애물 벽 블록 높이
+        [SerializeField] float highlandHeight = 0.35f; // 고지대 단상 높이 (벽보다 낮아 올라선 유닛이 보임)
         [SerializeField] Color fogColor = new Color(0.22f, 0.24f, 0.3f); // 시야 밖 타일 (세부기획 B)
 
         [Header("Textures")]
@@ -24,6 +25,7 @@ namespace SeoYuGi.BattleView
         [SerializeField] Texture2D floorTextureB;   // 바닥에 드문드문 섞이는 변형 (~20%)
         [SerializeField] Texture2D obstacleTexture;
         [SerializeField] Texture2D zoneTexture;     // 거점 타일
+        [SerializeField] Texture2D highlandTexture; // 고지대 단상 (비우면 장애물 텍스처)
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP
 
@@ -34,7 +36,7 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<Coord, Color> baseTints = new Dictionary<Coord, Color>();
         readonly HashSet<Coord> fogged = new HashSet<Coord>();
         MaterialPropertyBlock mpb;
-        Material matFloorA, matFloorB, matObstacle, matZone;
+        Material matFloorA, matFloorB, matObstacle, matZone, matHighland;
 
         public void Build(GridModel grid)
         {
@@ -46,27 +48,40 @@ namespace SeoYuGi.BattleView
             for (int x = 0; x < grid.Width; x++)
             {
                 var coord = new Coord(x, y);
-                bool isWall = grid.GetCell(coord).type == CellType.Obstacle;
-                var go = CreateTile(CoordToWorld(coord), isWall);
-                go.name = isWall ? $"Wall_{x}_{y}" : $"Tile_{x}_{y}";
+                var type = grid.GetCell(coord).type;
+                // CoordToWorld는 고지대 표면 높이를 더하므로 타일 생성은 평면 기준으로
+                var flat = transform.position + new Vector3(x * tileSize, 0f, y * tileSize);
+                var go = CreateTile(flat, type);
+                go.name = type switch
+                {
+                    CellType.Obstacle => $"Wall_{x}_{y}",
+                    CellType.Highland => $"Highland_{x}_{y}",
+                    _ => $"Tile_{x}_{y}"
+                };
                 tiles[x, y] = go.GetComponentInChildren<Renderer>();
 
                 if (floorTextureA != null)
-                    tiles[x, y].sharedMaterial = MaterialOf(coord, isWall);
+                    tiles[x, y].sharedMaterial = MaterialOf(coord, type);
             }
         }
 
-        GameObject CreateTile(Vector3 pos, bool isWall)
+        GameObject CreateTile(Vector3 pos, CellType type)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.transform.SetParent(transform);
             float side = tileSize * tileFill;
 
-            if (isWall)
+            if (type == CellType.Obstacle)
             {
                 // 벽 블록: 바닥 윗면(y=0.05)에서 시작해 wallHeight만큼
                 go.transform.localScale = new Vector3(side, wallHeight, side);
                 go.transform.position = pos + Vector3.up * (wallHeight * 0.5f - 0.05f);
+            }
+            else if (type == CellType.Highland)
+            {
+                // 고지대 단상: 벽과 같은 기준면에서 highlandHeight만큼 — 유닛이 위에 올라선다
+                go.transform.localScale = new Vector3(side, highlandHeight, side);
+                go.transform.position = pos + Vector3.up * (highlandHeight * 0.5f - 0.05f);
             }
             else
             {
@@ -76,8 +91,8 @@ namespace SeoYuGi.BattleView
             return go;
         }
 
-        /// <summary>텍스처 머티리얼 3종을 타일 원본 머티리얼 기반으로 1회 생성.</summary>
-        Material MaterialOf(Coord c, bool isWall)
+        /// <summary>텍스처 머티리얼들을 타일 원본 머티리얼 기반으로 1회 생성.</summary>
+        Material MaterialOf(Coord c, CellType type)
         {
             if (matFloorA == null)
             {
@@ -86,8 +101,10 @@ namespace SeoYuGi.BattleView
                 matFloorB = new Material(template) { mainTexture = floorTextureB != null ? floorTextureB : floorTextureA };
                 matObstacle = new Material(template) { mainTexture = obstacleTexture != null ? obstacleTexture : floorTextureA };
                 matZone = new Material(template) { mainTexture = zoneTexture != null ? zoneTexture : floorTextureA };
+                matHighland = new Material(template) { mainTexture = highlandTexture != null ? highlandTexture : (obstacleTexture != null ? obstacleTexture : floorTextureA) };
             }
-            if (isWall) return matObstacle;
+            if (type == CellType.Obstacle) return matObstacle;
+            if (type == CellType.Highland) return matHighland;
             return FloorVariant(c) ? matFloorB : matFloorA;
         }
 
@@ -95,8 +112,12 @@ namespace SeoYuGi.BattleView
         static bool FloorVariant(Coord c) =>
             (((c.x * 73856093) ^ (c.y * 19349663)) & 0x7fffffff) % 5 == 0;
 
-        public Vector3 CoordToWorld(Coord c) =>
-            transform.position + new Vector3(c.x * tileSize, 0f, c.y * tileSize);
+        /// <summary>칸의 표면 기준 월드 좌표 — 고지대 칸은 단상 윗면 높이가 더해진다.</summary>
+        public Vector3 CoordToWorld(Coord c)
+        {
+            float y = grid != null && grid.IsHighland(c) ? highlandHeight - 0.1f : 0f;
+            return transform.position + new Vector3(c.x * tileSize, y, c.y * tileSize);
+        }
 
         public Coord WorldToCoord(Vector3 world)
         {

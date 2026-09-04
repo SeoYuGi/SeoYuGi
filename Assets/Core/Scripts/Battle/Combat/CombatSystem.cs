@@ -227,7 +227,7 @@ namespace SeoYuGi.Battle
             var dir = UnitDir(unit.pos, target, int.MaxValue);
             if (dir == Coord.Zero) return ActDenied.BadTarget;
 
-            // 직선 1열: 벽/맵 끝까지 전부 예고. 유닛은 관통.
+            // 직선 1열: 벽/맵 끝까지 전부 예고. 유닛은 관통. 고지대 사수는 벽 너머까지.
             var strike = new TelegraphStrike
             {
                 attackerId = unit.id,
@@ -235,7 +235,7 @@ namespace SeoYuGi.Battle
                 impactTime = State.time + skill.telegraphSeconds,
                 damage = skill.damage
             };
-            for (var c = unit.pos + dir; State.Grid.IsWalkableTerrain(c); c += dir)
+            foreach (var c in SnipeLine(unit, dir))
                 strike.cells.Add(c);
             if (strike.cells.Count == 0) return ActDenied.BadTarget;
 
@@ -307,8 +307,7 @@ namespace SeoYuGi.Battle
                     break;
                 case SkillKind.Snipe:
                     foreach (var dir in Coord.Directions4)
-                        for (var c = unit.pos + dir; State.Grid.IsWalkableTerrain(c); c += dir)
-                            cells.Add(c);
+                        cells.AddRange(SnipeLine(unit, dir));
                     break;
             }
         }
@@ -354,8 +353,7 @@ namespace SeoYuGi.Battle
                 {
                     var dir = UnitDir(unit.pos, hover, int.MaxValue);
                     if (dir == Coord.Zero) return false;
-                    for (var c = unit.pos + dir; State.Grid.IsWalkableTerrain(c); c += dir)
-                        cells.Add(c);
+                    cells.AddRange(SnipeLine(unit, dir));
                     return cells.Count > 0;
                 }
                 default: return false;
@@ -363,6 +361,23 @@ namespace SeoYuGi.Battle
         }
 
         // ── 내부 ──────────────────────────────────────────────────
+
+        /// <summary>저격 직선의 타격 칸들. 평지 사수는 첫 벽에서 정지, 고지대 사수는 벽을 넘겨 맵 끝까지(벽 칸 자체는 제외).</summary>
+        List<Coord> SnipeLine(UnitState unit, Coord dir)
+        {
+            var cells = new List<Coord>();
+            bool elevated = State.Grid.IsHighland(unit.pos);
+            for (var c = unit.pos + dir; State.Grid.InBounds(c); c += dir)
+            {
+                if (!State.Grid.IsWalkableTerrain(c))
+                {
+                    if (elevated) continue;
+                    break;
+                }
+                cells.Add(c);
+            }
+            return cells;
+        }
 
         /// <summary>target이 pos에서 직선(상하좌우) maxDist 이내면 단위 방향, 아니면 Zero.</summary>
         static Coord UnitDir(Coord pos, Coord target, int maxDist)
@@ -425,17 +440,25 @@ namespace SeoYuGi.Battle
             for (int i = 0; i < cells; i++)
             {
                 var next = unit.pos + dir;
-                if (!State.Grid.IsWalkableTerrain(next))
+                // 평지 → 고지대 밀침은 단면 충돌(벽꿍과 동일) — 밀어서 올려주는 건 없다
+                bool uphill = State.Grid.IsHighland(next) && !State.Grid.IsHighland(unit.pos);
+                if (!State.Grid.IsWalkableTerrain(next) || uphill)
                 {
-                    // 벽/맵 경계 충돌
+                    // 벽/맵 경계/고지대 단면 충돌
                     OnWallCrash?.Invoke(unit.id);
                     if (wallBonusDamage > 0) Damage(unit, wallBonusDamage);
                     return;
                 }
                 if (State.Grid.GetUnitAt(next) != Cell.NoUnit) return; // 유닛에 막힘 — 추가 피해 없음
 
+                bool falls = State.Grid.IsHighland(unit.pos) && !State.Grid.IsHighland(next);
                 State.Grid.MoveOccupant(unit.pos, next);
                 unit.pos = next;
+                if (falls)
+                {
+                    Damage(unit, Config.fallDamage); // 고지대 낙하
+                    if (!unit.alive) return;
+                }
             }
         }
     }

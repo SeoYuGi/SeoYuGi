@@ -35,6 +35,13 @@ namespace SeoYuGi.Battle
                 }
             }
 
+            // 고지대 노출: 단상 위 유닛은 적팀에게 항상 보인다 — "다 보는 대신 다 보인다"
+            foreach (var unit in State.Units)
+            {
+                if (unit.alive && State.Grid.IsHighland(unit.pos))
+                    visible[1 - unit.team].Add(unit.pos);
+            }
+
             // 고스트: 적이 보이는 동안 마지막 목격 위치 갱신
             foreach (var unit in State.Units)
             {
@@ -47,7 +54,7 @@ namespace SeoYuGi.Battle
 
         void AddUnitVision(UnitState unit, HashSet<Coord> set)
         {
-            int r = unit.sightRange;
+            int r = unit.sightRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0); // 고지대 시야 보너스
             for (int dy = -r; dy <= r; dy++)
             for (int dx = -r; dx <= r; dx++)
             {

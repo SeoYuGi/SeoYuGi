@@ -38,19 +38,27 @@ namespace SeoYuGi.Battle
 
         public Cell GetCell(Coord c) => cells[Index(c)];
 
-        /// <summary>맵 안 + 장애물 아님 + 유닛 없음.</summary>
+        /// <summary>맵 안 + 장애물 아님 + 유닛 없음. (고지대는 걸을 수 있음)</summary>
         public bool IsWalkable(Coord c)
         {
             if (!InBounds(c)) return false;
             ref var cell = ref cells[Index(c)];
-            return cell.type == CellType.Empty && cell.occupantUnitId == Cell.NoUnit;
+            return cell.type != CellType.Obstacle && cell.occupantUnitId == Cell.NoUnit;
         }
 
         /// <summary>지형만 판정(점유 무시). 해석기에서 사용.</summary>
         public bool IsWalkableTerrain(Coord c)
         {
-            return InBounds(c) && cells[Index(c)].type == CellType.Empty;
+            return InBounds(c) && cells[Index(c)].type != CellType.Obstacle;
         }
+
+        public bool IsHighland(Coord c)
+        {
+            return InBounds(c) && cells[Index(c)].type == CellType.Highland;
+        }
+
+        /// <summary>이동 진입 비용: 고지대 2, 평지 1 — 올라가는 게 결단이 되게.</summary>
+        public int EnterCost(Coord c) => IsHighland(c) ? 2 : 1;
 
         /// <summary>해당 칸의 유닛 id. 없으면 -1.</summary>
         public int GetUnitAt(Coord c) => InBounds(c) ? cells[Index(c)].occupantUnitId : Cell.NoUnit;
@@ -62,6 +70,12 @@ namespace SeoYuGi.Battle
             if (cell.occupantUnitId != Cell.NoUnit)
                 throw new InvalidOperationException($"cell {c} is occupied by unit {cell.occupantUnitId}");
             cell.type = CellType.Obstacle;
+        }
+
+        public void SetHighland(Coord c)
+        {
+            if (!InBounds(c)) throw new ArgumentOutOfRangeException(nameof(c));
+            cells[Index(c)].type = CellType.Highland;
         }
 
         public void PlaceUnit(int unitId, Coord c)

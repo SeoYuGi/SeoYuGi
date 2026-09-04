@@ -33,7 +33,12 @@ public class UIMapSelectPopup : UIPopup
             card.transform.Find("Name").GetComponent<Text>().text = map.Name;
             card.transform.Find("Desc").GetComponent<Text>().text =
                 $"{map.Width}×{map.Height} · 벽 {map.Walls.Count}개";
-            card.transform.Find("MapView").GetComponent<RawImage>().texture = tex;
+
+            var raw = card.transform.Find("MapView").GetComponent<RawImage>();
+            raw.texture = tex;
+            // 맵마다 크기가 달라 카드 안(242×150)에 비율 유지로 맞춤
+            float s = Mathf.Min(242f / map.Width, 150f / map.Height);
+            raw.rectTransform.sizeDelta = new Vector2(map.Width * s, map.Height * s);
         }
     }
 
@@ -56,6 +61,7 @@ public class UIMapSelectPopup : UIPopup
 
         var floor = new Color(0.20f, 0.22f, 0.28f);
         var wall  = new Color(0.58f, 0.62f, 0.70f);
+        var high  = new Color(0.82f, 0.56f, 0.34f); // 고지대
         var zone  = new Color(0.12f, 0.48f, 0.55f);
         var team0 = new Color(0.30f, 0.70f, 0.78f);
         var team1 = new Color(1.00f, 0.41f, 0.27f);
@@ -64,6 +70,7 @@ public class UIMapSelectPopup : UIPopup
             for (int x = 0; x < map.Width; x++)
                 tex.SetPixel(x, y, floor);
         foreach (var c in map.Walls) tex.SetPixel(c.x, c.y, wall);
+        foreach (var c in map.Highlands) tex.SetPixel(c.x, c.y, high);
         foreach (var cells in map.Zones)
             foreach (var c in cells) tex.SetPixel(c.x, c.y, zone);
         foreach (var kv in map.Spawns)

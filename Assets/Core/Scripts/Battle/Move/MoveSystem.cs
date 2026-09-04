@@ -107,7 +107,10 @@ namespace SeoYuGi.Battle
             if (path == null)
                 return new MoveAttempt { denied = MoveDenied.Unreachable };
 
-            bool yellow = path.Count > BlueSteps(unit);
+            // 게이지는 칸 수가 아니라 진입 비용 합(고지대 2)으로 소모
+            int cost = 0;
+            foreach (var c in path) cost += State.Grid.EnterCost(c);
+            bool yellow = cost > BlueSteps(unit);
 
             State.Grid.MoveOccupant(unit.pos, dest);
             unit.pos = dest;
@@ -120,7 +123,7 @@ namespace SeoYuGi.Battle
             }
             else
             {
-                unit.moveGauge -= path.Count;
+                unit.moveGauge -= cost;
             }
 
             OnUnitMoved?.Invoke(unitId, path, yellow);

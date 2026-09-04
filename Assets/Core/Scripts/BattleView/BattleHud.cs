@@ -36,6 +36,14 @@ namespace SeoYuGi.BattleView
         string subtitleText;
         float subtitleUntil;
 
+        // 빠른채팅 로그 — 좌하단에 최근 3줄. 자막(중앙)과 자리가 겹치지 않는다.
+        struct ChatEntry { public string text; public Color color; public float until; }
+        readonly List<ChatEntry> chatLog = new List<ChatEntry>();
+        const int ChatLogMax = 3;
+
+        /// <summary>Tab 홀드 중 프리셋 치트시트 표시 — BattleRunner가 매 프레임 갱신.</summary>
+        public bool ShowChatCheatsheet { get; set; }
+
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle;
         GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
@@ -183,6 +191,13 @@ namespace SeoYuGi.BattleView
             subtitleUntil = Time.time + seconds;
         }
 
+        /// <summary>빠른채팅 수신 — 좌하단 로그에 한 줄 추가. 팀 필터는 호출부 담당.</summary>
+        public void AddChatLine(string callsign, string text, Color color)
+        {
+            chatLog.Add(new ChatEntry { text = $"[{callsign}] {text}", color = color, until = Time.time + 6f });
+            if (chatLog.Count > ChatLogMax) chatLog.RemoveAt(0);
+        }
+
         void OnGUI()
         {
             if (battle == null) return;
@@ -195,6 +210,8 @@ namespace SeoYuGi.BattleView
             {
                 DrawBanner();
                 DrawBottomBar();
+                DrawChatLog();
+                if (ShowChatCheatsheet) DrawChatCheatsheet();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();
@@ -510,6 +527,54 @@ namespace SeoYuGi.BattleView
                 new GUIStyle(subStyle) { fontStyle = FontStyle.Bold });
             GUI.Label(new Rect(box.x, box.y + 8, box.width, 32), subtitleText, subtitleStyle);
             GUI.color = Color.white;
+        }
+
+        /// <summary>빠른채팅 로그 — 좌하단. 오래된 줄부터 위로 밀려 사라진다.</summary>
+        void DrawChatLog()
+        {
+            for (int i = chatLog.Count - 1; i >= 0; i--)
+                if (Time.time >= chatLog[i].until) chatLog.RemoveAt(i);
+            if (chatLog.Count == 0) return;
+
+            const float lineH = 22f, boxW = 250f;
+            float y = H - 108f - chatLog.Count * lineH;
+
+            GUI.color = new Color(0f, 0f, 0f, 0.5f);
+            GUI.DrawTexture(new Rect(12, y - 4, boxW, chatLog.Count * lineH + 8), Texture2D.whiteTexture);
+
+            for (int i = 0; i < chatLog.Count; i++)
+            {
+                // 마지막 1초는 서서히 옅어짐 — 사라지는 게 툭 끊기지 않게
+                float remain = chatLog[i].until - Time.time;
+                var c = chatLog[i].color;
+                c.a = Mathf.Clamp01(remain);
+                GUI.color = c;
+                GUI.Label(new Rect(20, y + i * lineH, boxW - 16, lineH), chatLog[i].text, labelStyle);
+            }
+            GUI.color = Color.white;
+        }
+
+        /// <summary>Tab 홀드 치트시트 — 조작을 뺏지 않는 읽기 전용 안내.</summary>
+        void DrawChatCheatsheet()
+        {
+            var lines = SeoYuGi.Chat.QuickChat.Lines;
+            const float colW = 150f, rowH = 24f;
+            int rows = (lines.Length + 1) / 2;
+            float boxW = colW * 2 + 24f, boxH = rows * rowH + 34f;
+            float x0 = W / 2f - boxW / 2f, y0 = H - 110f - boxH;
+
+            GUI.color = new Color(0f, 0f, 0f, 0.8f);
+            GUI.DrawTexture(new Rect(x0, y0, boxW, boxH), Texture2D.whiteTexture);
+            GUI.color = new Color(0.55f, 0.95f, 1f);
+            GUI.Label(new Rect(x0, y0 + 4, boxW, 20), "빠른채팅 — 숫자키", subStyle);
+            GUI.color = Color.white;
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                float x = x0 + 12f + (i / rows) * colW;
+                float y = y0 + 28f + (i % rows) * rowH;
+                GUI.Label(new Rect(x, y, colW, rowH), $"{i + 1}  {lines[i]}", labelStyle);
+            }
         }
 
         void DrawMatchEnd()

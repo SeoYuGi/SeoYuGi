@@ -1,0 +1,221 @@
+using System;
+using Unity.Collections;
+using Unity.Netcode;
+using SeoYuGi.Battle;
+
+namespace SeoYuGi.Net
+{
+    /// <summary>
+    /// 인게임 동기화 — 호스트가 시뮬 상태를 뿌리고 클라는 덮어쓴다 (호스트 권위).
+    ///  - 스냅샷 12Hz (비신뢰): 유닛 스칼라 + 거점 게이지 + 힐팩 + 시계
+    ///  - 라운드 경계 (신뢰): 시작 / 종료(+브리핑)
+    /// 클라는 시뮬을 틱하지 않는다 — 시야만 로컬 재계산, 연출은 스냅샷 차분에서 파생.
+    /// Battle.Core 타입에 직접 쓰므로 러너(Assembly-CSharp) 의존이 없다.
+    /// </summary>
+    public static class NetSync
+    {
+        const string MsgSnap = "sy_sn";
+        const string MsgRound = "sy_rd";
+        const string MsgEnd = "sy_ed";
+        const float SnapInterval = 1f / 12f;
+
+        // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
+        public static event Action<int> OnBeginRound;                    // matchRound
+        public static event Action<int, int, int, bool, string[]> OnRoundEnd; // winner, w0, w1, matchOver, briefing
+        public static event Action<int, int> OnClientDamage;             // unitId, dmg — 스냅샷 차분
+        public static event Action<int> OnClientDeath;                   // unitId
+        public static event Action<int, int> OnClientZoneOwner;          // zoneIdx, newOwner
+
+        static BattleState battle;
+        static RoundSystem round;
+        static PickupSystem pickup;
+        static int boundRound = -1; // 라운드 게이트 — 이전 라운드 스냅샷 드롭
+        static float sendTimer;
+
+        /// <summary>접속 직후 1회 — NetLobby.Begin에서 호출.</summary>
+        public static void Register()
+        {
+            var mm = NetworkManager.Singleton.CustomMessagingManager;
+            mm.RegisterNamedMessageHandler(MsgSnap, OnSnapMsg);
+            mm.RegisterNamedMessageHandler(MsgRound, OnRoundMsg);
+            mm.RegisterNamedMessageHandler(MsgEnd, OnEndMsg);
+        }
+
+        /// <summary>클라 — BuildRound 직후 코어 참조 바인딩. 이걸 해야 스냅샷이 적용된다.</summary>
+        public static void ClientBind(BattleState b, RoundSystem r, PickupSystem p, int matchRound)
+        {
+            battle = b;
+            round = r;
+            pickup = p;
+            boundRound = matchRound;
+        }
+
+        // ── 호스트 송신 ─────────────────────────────
+
+        /// <summary>호스트 — 라운드 조립 완료 알림. 클라는 수신 즉시 같은 라운드를 조립한다.</summary>
+        public static void HostSendBeginRound(int matchRound)
+        {
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe(matchRound);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgRound, w);
+        }
+
+        /// <summary>호스트 — 매 프레임 호출. 내부에서 12Hz로 스로틀.</summary>
+        public static void HostTick(float realDt, BattleState b, RoundSystem r, PickupSystem p, int matchRound)
+        {
+            sendTimer += realDt;
+            if (sendTimer < SnapInterval) return;
+            sendTimer = 0f;
+
+            using var w = new FastBufferWriter(1024, Allocator.Temp);
+            w.WriteValueSafe(matchRound);
+            w.WriteValueSafe(b.time);
+
+            w.WriteValueSafe((byte)b.Units.Count);
+            foreach (var u in b.Units)
+            {
+                w.WriteValueSafe((byte)u.id);
+                w.WriteValueSafe((byte)u.pos.x);
+                w.WriteValueSafe((byte)u.pos.y);
+                w.WriteValueSafe((sbyte)u.hp);
+                w.WriteValueSafe(u.alive);
+                w.WriteValueSafe(u.ap);
+                w.WriteValueSafe(u.moveGauge);
+                w.WriteValueSafe(u.moveCooldown);
+                w.WriteValueSafe(u.regenDelay);
+                w.WriteValueSafe(u.guardUntil);
+                w.WriteValueSafe(u.attackBuffUntil);
+            }
+
+            w.WriteValueSafe((byte)r.Zones.Count);
+            foreach (var z in r.Zones)
+            {
+                w.WriteValueSafe((sbyte)z.owner);
+                w.WriteValueSafe((sbyte)z.capturingTeam);
+                w.WriteValueSafe(z.progress);
+            }
+
+            w.WriteValueSafe((byte)p.Packs.Count);
+            foreach (var pack in p.Packs)
+            {
+                w.WriteValueSafe(pack.active);
+                w.WriteValueSafe(pack.respawnAt);
+            }
+
+            NetworkManager.Singleton.CustomMessagingManager
+                .SendNamedMessageToAll(MsgSnap, w, NetworkDelivery.Unreliable);
+        }
+
+        /// <summary>호스트 — 라운드 종료. 브리핑은 클라별 유닛 기준이라 targeted 전송.</summary>
+        public static void HostSendRoundEnd(ulong clientId, int winner, int w0, int w1, bool matchOver, string[] briefing)
+        {
+            using var w = new FastBufferWriter(2048, Allocator.Temp);
+            w.WriteValueSafe(winner);
+            w.WriteValueSafe(w0);
+            w.WriteValueSafe(w1);
+            w.WriteValueSafe(matchOver);
+            w.WriteValueSafe(briefing?.Length ?? 0);
+            if (briefing != null)
+                foreach (var line in briefing)
+                    w.WriteValueSafe(line);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgEnd, clientId, w);
+        }
+
+        // ── 클라 수신 ─────────────────────────────
+
+        static void OnRoundMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int matchRound);
+            OnBeginRound?.Invoke(matchRound);
+        }
+
+        static void OnEndMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int winner);
+            r.ReadValueSafe(out int w0);
+            r.ReadValueSafe(out int w1);
+            r.ReadValueSafe(out bool matchOver);
+            r.ReadValueSafe(out int lineCount);
+            var lines = new string[lineCount];
+            for (int i = 0; i < lineCount; i++)
+                r.ReadValueSafe(out lines[i]);
+            boundRound = -1; // 라운드 종료 — 잔여 스냅샷 드롭
+            OnRoundEnd?.Invoke(winner, w0, w1, matchOver, lines);
+        }
+
+        static void OnSnapMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+
+            r.ReadValueSafe(out int matchRound);
+            if (battle == null || matchRound != boundRound) return; // 조립 전/이전 라운드 — 드롭
+
+            r.ReadValueSafe(out float time);
+            battle.time = time;
+
+            r.ReadValueSafe(out byte unitCount);
+            for (int i = 0; i < unitCount; i++)
+            {
+                r.ReadValueSafe(out byte id);
+                r.ReadValueSafe(out byte x);
+                r.ReadValueSafe(out byte y);
+                r.ReadValueSafe(out sbyte hp);
+                r.ReadValueSafe(out bool alive);
+                r.ReadValueSafe(out float ap);
+                r.ReadValueSafe(out float gauge);
+                r.ReadValueSafe(out float cooldown);
+                r.ReadValueSafe(out float regen);
+                r.ReadValueSafe(out float guardUntil);
+                r.ReadValueSafe(out float buffUntil);
+
+                var u = battle.GetUnit(id);
+                if (u == null) continue;
+
+                // 차분 연출 — 덮어쓰기 전에 감지
+                if (hp < u.hp && alive) OnClientDamage?.Invoke(id, u.hp - hp);
+                if (!alive && u.alive) OnClientDeath?.Invoke(id);
+
+                var newPos = new Coord(x, y);
+                if (!u.pos.Equals(newPos))
+                {
+                    if (u.alive) battle.Grid.MoveOccupant(u.pos, newPos); // 점유 맵 동기 — 시야 계산 입력
+                    u.pos = newPos;
+                }
+                if (!alive && u.alive) battle.Grid.RemoveUnit(u.pos);
+                u.hp = hp;
+                u.alive = alive;
+                u.ap = ap;
+                u.moveGauge = gauge;
+                u.moveCooldown = cooldown;
+                u.regenDelay = regen;
+                u.guardUntil = guardUntil;
+                u.attackBuffUntil = buffUntil;
+            }
+
+            r.ReadValueSafe(out byte zoneCount);
+            for (int i = 0; i < zoneCount && i < round.Zones.Count; i++)
+            {
+                r.ReadValueSafe(out sbyte owner);
+                r.ReadValueSafe(out sbyte capturing);
+                r.ReadValueSafe(out float progress);
+
+                var z = round.Zones[i];
+                if (owner != z.owner && owner >= 0) OnClientZoneOwner?.Invoke(i, owner);
+                z.owner = owner;
+                z.capturingTeam = capturing;
+                z.progress = progress;
+            }
+
+            r.ReadValueSafe(out byte packCount);
+            for (int i = 0; i < packCount && i < pickup.Packs.Count; i++)
+            {
+                r.ReadValueSafe(out bool active);
+                r.ReadValueSafe(out float respawnAt);
+                pickup.Packs[i].active = active;
+                pickup.Packs[i].respawnAt = respawnAt;
+            }
+        }
+    }
+}

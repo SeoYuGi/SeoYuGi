@@ -249,5 +249,32 @@ namespace SeoYuGi.Battle.Tests
 
             Assert.AreEqual(0, round.Winner);
         }
+
+        /// <summary>
+        /// 중화 후 남은 시간 이월은 그 거점 안에서만 일어나야 한다.
+        /// (회귀) 이월 계산이 Tick의 deltaTime 파라미터를 덮어써서, 앞 순번 거점이 중화되면
+        /// 같은 프레임의 뒤 순번 거점들이 축소된 dt로 진행되던 버그.
+        /// </summary>
+        [Test]
+        public void Neutralize_DoesNotStealTimeFromOtherZones()
+        {
+            var a = Add(1, 0, zoneL);            // 팀0 — 좌측 점거 중
+            Add(2, 1, zoneM);                    // 팀1 — 중앙 점거 중
+            var c = Add(3, 1, new Coord(0, 0));  // 팀1 — 나중에 좌측으로 진입
+            NewRound();
+
+            round.Tick(1f); // 좌/중앙 각각 1초 적립 (captureSeconds = 2)
+            Assert.AreEqual(1f, round.Zones[0].progress, 1e-4f);
+            Assert.AreEqual(1f, round.Zones[1].progress, 1e-4f);
+
+            // 팀0이 좌측을 비우고 팀1이 진입 → 좌측이 '중화 후 이월' 경로를 탄다
+            MoveTo(a, new Coord(8, 8));
+            MoveTo(c, zoneL);
+
+            round.Tick(1.5f);
+
+            // 좌측에서 무슨 일이 있든 중앙은 온전한 1.5초를 받아 2초를 채워야 한다
+            Assert.AreEqual(1, round.Zones[1].owner, "중앙 거점이 온전한 dt를 받지 못했다");
+        }
     }
 }

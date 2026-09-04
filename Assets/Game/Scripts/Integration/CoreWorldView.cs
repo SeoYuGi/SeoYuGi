@@ -17,10 +17,10 @@ namespace SeoYuGi.Integration
         readonly CombatSystem combat;
         readonly RoundSystem round;
         readonly VisionSystem vision;
-        readonly int humanUnitId;
+        readonly HashSet<int> humanUnitIds;   // 인간 조종 슬롯 전체 — 멀티에서 여러 명
+        readonly HashSet<int> hackTeams;      // 인간이 있는 팀 — 해킹 장비 사용 가능 팀
         readonly int matchRound;
         readonly HackSystem hack;
-        readonly int animalTeam; // 해킹 장비는 길동물 팀 전용
 
         readonly List<ActorState> actors = new List<ActorState>();
         readonly List<ZoneState> zones = new List<ZoneState>();
@@ -29,16 +29,23 @@ namespace SeoYuGi.Integration
         AiCell[][] zoneCellCache; // 거점 칸은 라운드 내 불변 — 1회 변환
 
         public CoreWorldView(BattleState state, CombatSystem combat, RoundSystem round,
-            VisionSystem vision, int humanUnitId, int matchRound, HackSystem hack = null)
+            VisionSystem vision, HashSet<int> humanUnitIds, int matchRound, HackSystem hack = null)
         {
             this.state = state;
             this.combat = combat;
             this.round = round;
             this.vision = vision;
-            this.humanUnitId = humanUnitId;
+            this.humanUnitIds = humanUnitIds;
             this.matchRound = matchRound;
             this.hack = hack;
-            animalTeam = state.GetUnit(humanUnitId)?.team ?? 0;
+
+            // 해킹 장비는 인간이 있는 팀만 사용 (구 animalTeam 규칙의 다중 인간 확장)
+            hackTeams = new HashSet<int>();
+            foreach (var id in humanUnitIds)
+            {
+                var u = state.GetUnit(id);
+                if (u != null) hackTeams.Add(u.team);
+            }
 
             for (int x = 0; x < state.Grid.Width; x++)
                 for (int y = 0; y < state.Grid.Height; y++)
@@ -61,7 +68,7 @@ namespace SeoYuGi.Integration
                     Pos = new AiCell(u.pos.x, u.pos.y),
                     Hp = u.hp,
                     Alive = u.alive,
-                    IsHuman = u.id == humanUnitId
+                    IsHuman = humanUnitIds.Contains(u.id)
                 });
 
             zones.Clear();
@@ -114,7 +121,7 @@ namespace SeoYuGi.Integration
         {
             if (hack == null) return false;
             var u = state.GetUnit(actorId);
-            return u != null && u.team == animalTeam && hack.Has(actorId);
+            return u != null && hackTeams.Contains(u.team) && hack.Has(actorId);
         }
     }
 }

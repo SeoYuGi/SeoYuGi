@@ -42,11 +42,17 @@ MonoBehaviour:
     - Febucci.TextAnimatorForUnity.Runtime
     - Febucci.TextAnimatorForUnity.TMP.Runtime
     - Febucci.TextAnimatorForUnity.UITk.Runtime
+    - glTFast
+    - glTFast.dots
+    - glTFast.Export
+    - glTFast.Newtonsoft
     - Lofelt.NiceVibrations
     - Lofelt.NiceVibrations.Demo
     - MoreMountains.Tools
     - PauseManager
     - SeoYuGi.Battle.Core
+    - SeoYuGi.Net
+    - unity-websocket-sharp
     showAdvancedSettings: 0
   addMgrToSceneAutomatically: 0
   autoUpdateReferences: 1

@@ -25,6 +25,7 @@ namespace SeoYuGi.BattleView
 
         MoveSystem moveSystem;
         CombatSystem combat;
+        IIntentSink sink;
         GridView gridView;
         UnitViewRegistry views;
 
@@ -54,11 +55,16 @@ namespace SeoYuGi.BattleView
         int playerTeam;
         System.Func<Coord, bool> isCellVisible; // 내 팀 시야 — 적 예고 필터 (세부기획 B)
 
+        /// <summary>
+        /// sink = 행동 제출 통로 (싱글=즉시 실행, 멀티 클라=RPC).
+        /// moveSystem/combat은 조준 미리보기·범위 표시 등 읽기 쿼리 전용으로 유지.
+        /// </summary>
         public void Init(MoveSystem moveSystem, CombatSystem combat, GridView gridView, UnitViewRegistry views,
-            int playerUnitId, System.Func<Coord, bool> isCellVisible = null)
+            int playerUnitId, IIntentSink sink, System.Func<Coord, bool> isCellVisible = null)
         {
             this.moveSystem = moveSystem;
             this.combat = combat;
+            this.sink = sink;
             this.gridView = gridView;
             this.views = views;
             this.playerUnitId = playerUnitId;
@@ -96,7 +102,7 @@ namespace SeoYuGi.BattleView
                 if (Keyboard.current.sKey.wasPressedThisFrame)
                     aim = aim == AimMode.Skill ? AimMode.None : AimMode.Skill;
                 if (Keyboard.current.dKey.wasPressedThisFrame)
-                    Log(combat.TryGuard(selectedUnitId), "방어");
+                    Log(sink.Submit(BattleIntent.Guard(selectedUnitId)), "방어");
                 if (Keyboard.current.escapeKey.wasPressedThisFrame)
                     aim = AimMode.None;
             }
@@ -104,10 +110,10 @@ namespace SeoYuGi.BattleView
             RefreshHighlights(); // 게이지·예고가 실시간이라 매 프레임 갱신
         }
 
-        void Log(ActDenied result, string action)
+        void Log(IntentResult result, string action)
         {
-            if (result == ActDenied.None) return;
-            Debug.Log($"{action} 불가: {result}");
+            if (result.accepted || result.pending) return; // Pending = 네트워크 제출 — 일단 받아들여진 걸로
+            Debug.Log($"{action} 불가: {result.actDenied}");
             OnActionDenied?.Invoke();
         }
 
@@ -136,11 +142,11 @@ namespace SeoYuGi.BattleView
                         : combat.GetSkillImpact(selectedUnitId, target, aimImpact);
                     if (validTarget)
                     {
-                        var result = aim == AimMode.Attack
-                            ? combat.TryAttack(selectedUnitId, target)
-                            : combat.TrySkill(selectedUnitId, target);
+                        var result = sink.Submit(aim == AimMode.Attack
+                            ? BattleIntent.Attack(selectedUnitId, target)
+                            : BattleIntent.Skill(selectedUnitId, target));
                         Log(result, aim == AimMode.Attack ? "공격" : "스킬");
-                        if (result == ActDenied.None) aim = AimMode.None;
+                        if (result.accepted || result.pending) aim = AimMode.None;
                     }
                     else
                     {
@@ -187,8 +193,8 @@ namespace SeoYuGi.BattleView
             var view = views.Get(selectedUnitId);
             if (view != null && view.IsMoving) return; // 연출 중 연타 방지
 
-            var attempt = moveSystem.TryMove(selectedUnitId, dest);
-            if (!attempt.success && attempt.denied == MoveDenied.Locked)
+            var result = sink.Submit(BattleIntent.Move(selectedUnitId, dest));
+            if (!result.accepted && !result.pending && result.moveDenied == MoveDenied.Locked)
                 OnActionDenied?.Invoke(); // 쿨타임 중 이동 시도 — 버저
             // 성공 시 연출은 MoveSystem.OnUnitMoved → BattleRunner가 재생
         }

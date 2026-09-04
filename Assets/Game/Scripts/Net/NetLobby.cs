@@ -1,0 +1,342 @@
+using System;
+using Unity.Collections;
+using Unity.Netcode;
+using UnityEngine;
+using SeoYuGi.Battle;
+
+namespace SeoYuGi.Net
+{
+    /// <summary>
+    /// 로비 — 호스트 권위 슬롯 상태를 커스텀 메시지로 동기화.
+    /// NetworkObject/프리팹 등록이 전혀 필요 없는 CustomMessagingManager 기반 (씬 배선 0).
+    ///
+    /// 흐름: 접속 → 호스트가 빈 슬롯 자동 배정 → 클라는 슬롯 클릭(이동)·클래스 선택 요청
+    ///      → 호스트만 시작 가능 → MatchSetup 브로드캐스트.
+    /// 빈 슬롯 = Bot — 봇 백필은 여기서 공짜로 나온다 (1v1~3v3 자동).
+    /// </summary>
+    public static class NetLobby
+    {
+        const string MsgLobby = "sy_lobby"; // host→all : 슬롯 전체 상태
+        const string MsgSlot = "sy_slot";   // client→host : 슬롯 이동 요청 (unitId)
+        const string MsgClass = "sy_class"; // client→host : 클래스 변경 요청
+        const string MsgStart = "sy_start"; // host→all : 매치 시작 (MatchSetup)
+
+        // 슬롯 템플릿 — BattleRunner.roster와 동일한 6칸 (id, team, 콜사인)
+        static readonly (int id, int team, string name)[] Template =
+        {
+            (1, 0, "알파"), (2, 0, "브라보"), (3, 0, "찰리"),
+            (4, 1, "델타"), (5, 1, "에코"), (6, 1, "폭스"),
+        };
+
+        public struct LobbySlot
+        {
+            public int unitId;
+            public int team;
+            public string callsign;
+            public UnitClass cls;
+            public SlotOwner owner;
+            public ulong clientId; // RemoteHuman/LocalHuman(호스트 자신)일 때
+        }
+
+        public static LobbySlot[] Slots { get; private set; }
+        /// <summary>클라 수신 매치 구성 — 시작 메시지 도착 시 채워짐.</summary>
+        public static MatchSetup ReceivedSetup { get; private set; }
+
+        public static event Action OnChanged;    // 슬롯 상태 갱신 — UI 리프레시용
+        public static event Action OnMatchStart; // 시작 브로드캐스트 수신
+
+        static bool hooked;
+
+        /// <summary>호스트/클라 공통 — 접속 직후 1회 호출. 핸들러 등록 + (호스트) 초기 슬롯 구성.</summary>
+        public static void Begin()
+        {
+            var nm = NetworkManager.Singleton;
+            ReceivedSetup = null;
+
+            if (nm.IsHost)
+            {
+                Slots = new LobbySlot[Template.Length];
+                for (int i = 0; i < Template.Length; i++)
+                    Slots[i] = new LobbySlot
+                    {
+                        unitId = Template[i].id,
+                        team = Template[i].team,
+                        callsign = Template[i].name,
+                        cls = UnitClass.Balance,
+                        owner = SlotOwner.Bot
+                    };
+                Occupy(FindFree(0), nm.LocalClientId, SlotOwner.LocalHuman); // 호스트 = 팀0 첫 빈칸
+            }
+
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgLobby, OnLobbyMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgSlot, OnSlotMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgClass, OnClassMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgStart, OnStartMsg);
+            NetSync.Register(); // 인게임 동기화 핸들러도 같이
+
+            if (!hooked)
+            {
+                hooked = true;
+                nm.OnClientConnectedCallback += OnClientConnected;
+                nm.OnClientDisconnectCallback += OnClientDisconnected;
+            }
+
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        // ── 클라 → 호스트 요청 ─────────────────────────────
+
+        /// <summary>빈 슬롯 클릭 — 그 자리로 이동 (팀 변경 포함). 호스트는 즉시 처리.</summary>
+        public static void RequestSlot(int unitId)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm.IsHost) { MoveTo(nm.LocalClientId, unitId); return; }
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            nm.CustomMessagingManager.SendNamedMessage(MsgSlot, NetworkManager.ServerClientId, w);
+        }
+
+        public static void RequestClass(UnitClass cls)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm.IsHost) { SetClass(nm.LocalClientId, cls); return; }
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe((int)cls);
+            nm.CustomMessagingManager.SendNamedMessage(MsgClass, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>호스트 전용 — 매치 시작. mapIndex·시드는 호스트가 확정.</summary>
+        public static void HostStart(int mapIndex, int enemyRollSeed)
+        {
+            var nm = NetworkManager.Singleton;
+            if (!nm.IsHost) return;
+
+            RollBotClasses(enemyRollSeed);
+
+            var slots = new SlotConfig[Slots.Length];
+            for (int i = 0; i < Slots.Length; i++)
+                slots[i] = new SlotConfig
+                {
+                    unitId = Slots[i].unitId,
+                    team = Slots[i].team,
+                    cls = Slots[i].cls,
+                    callsign = Slots[i].callsign,
+                    owner = Slots[i].owner,
+                    ownerClientId = Slots[i].clientId
+                };
+            var setup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = enemyRollSeed, slots = slots };
+
+            using var w = new FastBufferWriter(1024, Allocator.Temp);
+            w.WriteValueSafe(mapIndex);
+            w.WriteValueSafe(enemyRollSeed);
+            w.WriteValueSafe(slots.Length);
+            foreach (var s in slots)
+            {
+                w.WriteValueSafe(s.unitId);
+                w.WriteValueSafe(s.team);
+                w.WriteValueSafe((int)s.cls);
+                w.WriteValueSafe((byte)s.owner);
+                w.WriteValueSafe(s.ownerClientId);
+                w.WriteValueSafe(s.callsign);
+            }
+            nm.CustomMessagingManager.SendNamedMessageToAll(MsgStart, w);
+
+            ReceivedSetup = setup; // 호스트 자신도 같은 경로
+            OnMatchStart?.Invoke();
+        }
+
+        /// <summary>봇 슬롯 클래스 랜덤 — 팀 내 중복 없음, 인간 픽과도 안 겹침 (싱글 롤 규칙 계승).</summary>
+        static void RollBotClasses(int seed)
+        {
+            var rng = new System.Random(seed);
+            for (int team = 0; team < 2; team++)
+            {
+                var pool = new System.Collections.Generic.List<UnitClass>
+                    { UnitClass.Tank, UnitClass.Balance, UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
+                for (int i = 0; i < Slots.Length; i++)
+                    if (Slots[i].team == team && Slots[i].owner != SlotOwner.Bot)
+                        pool.Remove(Slots[i].cls);
+                for (int i = 0; i < Slots.Length; i++)
+                    if (Slots[i].team == team && Slots[i].owner == SlotOwner.Bot)
+                    {
+                        int pick = rng.Next(pool.Count);
+                        Slots[i].cls = pool[pick];
+                        pool.RemoveAt(pick);
+                    }
+            }
+        }
+
+        // ── 호스트 내부 처리 ─────────────────────────────
+
+        static void OnClientConnected(ulong clientId)
+        {
+            var nm = NetworkManager.Singleton;
+            if (!nm.IsHost || clientId == nm.LocalClientId) return;
+
+            int idx = FindFree(0);
+            if (idx < 0) idx = FindFree(1);
+            if (idx < 0) { nm.DisconnectClient(clientId); return; } // 만석
+
+            Occupy(idx, clientId, SlotOwner.RemoteHuman);
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        static void OnClientDisconnected(ulong clientId)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsHost || Slots == null) return;
+
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].owner == SlotOwner.RemoteHuman && Slots[i].clientId == clientId)
+                {
+                    Slots[i].owner = SlotOwner.Bot; // 이탈 → 봇 승격, 게임 안 깨짐
+                    Slots[i].clientId = 0;
+                }
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        static void MoveTo(ulong clientId, int unitId)
+        {
+            int dst = IndexOf(unitId);
+            if (dst < 0 || Slots[dst].owner != SlotOwner.Bot) return; // 점유된 자리 불가
+
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].owner != SlotOwner.Bot && Slots[i].clientId == clientId)
+                {
+                    var owner = Slots[i].owner;
+                    var cls = Slots[i].cls;
+                    Slots[i].owner = SlotOwner.Bot;
+                    Slots[i].clientId = 0;
+                    Slots[dst].owner = owner;
+                    Slots[dst].clientId = clientId;
+                    Slots[dst].cls = cls;
+                    break;
+                }
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        static void SetClass(ulong clientId, UnitClass cls)
+        {
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].owner != SlotOwner.Bot && Slots[i].clientId == clientId)
+                    Slots[i].cls = cls;
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        static int FindFree(int team)
+        {
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].team == team && Slots[i].owner == SlotOwner.Bot) return i;
+            return -1;
+        }
+
+        static int IndexOf(int unitId)
+        {
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].unitId == unitId) return i;
+            return -1;
+        }
+
+        static void Occupy(int idx, ulong clientId, SlotOwner owner)
+        {
+            if (idx < 0) return;
+            Slots[idx].owner = owner;
+            Slots[idx].clientId = clientId;
+        }
+
+        // ── 직렬화 ─────────────────────────────
+
+        static void Broadcast()
+        {
+            var nm = NetworkManager.Singleton;
+            if (!nm.IsHost) return;
+
+            using var w = new FastBufferWriter(1024, Allocator.Temp);
+            w.WriteValueSafe(Slots.Length);
+            foreach (var s in Slots)
+            {
+                w.WriteValueSafe(s.unitId);
+                w.WriteValueSafe(s.team);
+                w.WriteValueSafe(s.callsign);
+                w.WriteValueSafe((int)s.cls);
+                w.WriteValueSafe((byte)s.owner);
+                w.WriteValueSafe(s.clientId);
+            }
+            nm.CustomMessagingManager.SendNamedMessageToAll(MsgLobby, w);
+        }
+
+        static void OnLobbyMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost) return; // 호스트 상태가 원본
+
+            r.ReadValueSafe(out int count);
+            var slots = new LobbySlot[count];
+            for (int i = 0; i < count; i++)
+            {
+                r.ReadValueSafe(out slots[i].unitId);
+                r.ReadValueSafe(out slots[i].team);
+                r.ReadValueSafe(out slots[i].callsign);
+                r.ReadValueSafe(out int cls);
+                slots[i].cls = (UnitClass)cls;
+                r.ReadValueSafe(out byte owner);
+                slots[i].owner = (SlotOwner)owner;
+                r.ReadValueSafe(out slots[i].clientId);
+            }
+            Slots = slots;
+            OnChanged?.Invoke();
+        }
+
+        static void OnSlotMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out int unitId);
+            MoveTo(sender, unitId);
+        }
+
+        static void OnClassMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out int cls);
+            SetClass(sender, (UnitClass)cls);
+        }
+
+        static void OnStartMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost) return;
+            if (sender != NetworkManager.ServerClientId) return; // 호스트만 시작 가능
+
+            r.ReadValueSafe(out int mapIndex);
+            r.ReadValueSafe(out int seed);
+            r.ReadValueSafe(out int count);
+            var slots = new SlotConfig[count];
+            for (int i = 0; i < count; i++)
+            {
+                r.ReadValueSafe(out slots[i].unitId);
+                r.ReadValueSafe(out slots[i].team);
+                r.ReadValueSafe(out int cls);
+                slots[i].cls = (UnitClass)cls;
+                r.ReadValueSafe(out byte owner);
+                slots[i].owner = (SlotOwner)owner;
+                r.ReadValueSafe(out slots[i].ownerClientId);
+                r.ReadValueSafe(out slots[i].callsign);
+            }
+            ReceivedSetup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = seed, slots = slots };
+            OnMatchStart?.Invoke();
+        }
+
+        /// <summary>내 클라이언트가 점유한 슬롯의 unitId. 없으면 -1.</summary>
+        public static int MyUnitId()
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || Slots == null) return -1;
+            foreach (var s in Slots)
+                if (s.owner != SlotOwner.Bot && s.clientId == nm.LocalClientId) return s.unitId;
+            return -1;
+        }
+    }
+}

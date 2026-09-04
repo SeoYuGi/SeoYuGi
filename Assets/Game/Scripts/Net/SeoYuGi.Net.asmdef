@@ -1,0 +1,27 @@
+{
+    "name": "SeoYuGi.Net",
+    "rootNamespace": "SeoYuGi.Net",
+    "references": [
+        "SeoYuGi.Battle.Core",
+        "Unity.Netcode.Runtime",
+        "Unity.Networking.Transport",
+        "Unity.Services.Core",
+        "Unity.Services.Authentication",
+        "Unity.Services.Relay"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.services.relay",
+            "expression": "1.0.0",
+            "define": "SEOYUGI_RELAY"
+        }
+    ],
+    "noEngineReferences": false
+}

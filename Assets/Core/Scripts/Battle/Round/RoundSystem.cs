@@ -97,6 +97,10 @@ namespace SeoYuGi.Battle
         {
             foreach (var z in zones)
             {
+                // 이 거점이 쓸 진행량. 아래 '중화 후 이월'이 깎아도 다음 거점에 새면 안 되므로
+                // deltaTime(프레임 전체 몫)을 건드리지 않고 거점마다 사본을 쓴다.
+                float step = deltaTime;
+
                 // 패치 위 팀별 주둔 여부
                 bool team0 = false, team1 = false;
                 foreach (var cell in z.cells)
@@ -111,30 +115,30 @@ namespace SeoYuGi.Battle
 
                 if (!team0 && !team1)
                 {
-                    Decay(z, deltaTime); // 비우면 즉시 리셋이 아니라 서서히 감소
+                    Decay(z, step); // 비우면 즉시 리셋이 아니라 서서히 감소
                     continue;
                 }
 
                 int team = team0 ? 0 : 1;
                 if (team == z.owner)
                 {
-                    Decay(z, deltaTime); // 주인이 지키면 적의 잔여 게이지가 빠진다
+                    Decay(z, step); // 주인이 지키면 적의 잔여 게이지가 빠진다
                     continue;
                 }
 
                 // 상대 잔여 게이지가 남아 있으면 먼저 중화 — 0이 된 뒤 내 게이지가 찬다
                 if (z.capturingTeam != team && z.progress > 0f)
                 {
-                    z.progress -= deltaTime;
+                    z.progress -= step;
                     if (z.progress > 0f) continue;
-                    deltaTime = -z.progress; // 남은 시간만큼 내 게이지로 이월
+                    step = -z.progress; // 남은 시간만큼 내 게이지로 이월
                 }
                 if (z.capturingTeam != team)
                 {
                     z.capturingTeam = team;
                     z.progress = 0f;
                 }
-                z.progress += deltaTime;
+                z.progress += step;
 
                 if (z.progress >= Config.captureSeconds)
                 {

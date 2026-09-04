@@ -11,7 +11,7 @@ namespace SeoYuGi.Battle
     {
         public int freeRange = 2;                 // 게이지 최대 = 파랑 이동 한도(칸)
         public int maxRange = 4;                  // 클릭 한 번에 갈 수 있는 최대 거리(칸)
-        public float gaugeRegenPerSecond = 0.5f;  // 게이지 초당 회복량
+        public float gaugeRegenPerSecond = 0.7f;  // 게이지 초당 회복량 (2026-09-05 이동 템포 상향)
         public float regenDelaySeconds = 1f;      // 이동 직후 게이지 회복 정지 시간 (홉 스팸 방지)
         public float yellowCooldownSeconds = 3f;  // 노랑 이동 후 이동 불가 시간
     }

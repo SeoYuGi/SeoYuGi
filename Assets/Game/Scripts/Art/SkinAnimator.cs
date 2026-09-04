@@ -163,43 +163,6 @@ namespace SeoYuGi.Art
     }
 
     /// <summary>
-    /// 비둘기 폭탄 배달 비행 연출 — 리깅 불가라 코드로:
-    /// 캐스팅 1초 동안 포물선 상승·하강 + 빠른 회전. 스킨 로컬 공간이라 위치 동기화와 안 싸운다.
-    /// </summary>
-    public class BombHop : MonoBehaviour
-    {
-        const float Height = 1.6f;
-        Vector3 basePos;
-        Quaternion baseRot;
-        float t = -1f, duration;
-
-        public void Play(float seconds)
-        {
-            basePos = transform.localPosition;
-            baseRot = transform.localRotation;
-            duration = Mathf.Max(0.2f, seconds);
-            t = 0f;
-        }
-
-        void Update()
-        {
-            if (t < 0f) return;
-            t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / duration);
-            var p = basePos;
-            p.y += Height * 4f * k * (1f - k); // 포물선
-            transform.localPosition = p;
-            transform.localRotation = baseRot * Quaternion.Euler(0f, k * 720f, Mathf.Sin(k * Mathf.PI) * 20f);
-            if (k >= 1f)
-            {
-                transform.localPosition = basePos;
-                transform.localRotation = baseRot;
-                t = -1f;
-            }
-        }
-    }
-
-    /// <summary>
     /// 리깅이 불가능한 캐릭터(비둘기)용 절차적 이동 연출 —
     /// 빠른 스쿼시&스트레치 + 뒤뚱 롤로 "파닥이며 통통 뛰는" 느낌을 낸다.
     /// </summary>

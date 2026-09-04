@@ -15,6 +15,7 @@ namespace SeoYuGi.BattleView
 
         // ── ToonFX (동물 팀 톤) ──
         public const string ToonPunchNormal = "Punches/PunchNormal";           // 고라니 주먹·공통 타격
+        public const string ToonPunchSmooth = "Punches/PunchSmooth";           // 가벼운 타격 리액션
         public const string ToonPunchCritical = "Punches/PunchCritical";       // 너구리 강타
         public const string ToonPunchSpikyCrit = "Punches/PunchSpikyCritical"; // 크리티컬 계열
         public const string ToonExplosion = "Explosions/Explosion";            // 폭탄 폭발 (공용)

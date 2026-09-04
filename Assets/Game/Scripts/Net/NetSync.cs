@@ -17,6 +17,11 @@ namespace SeoYuGi.Net
         const string MsgSnap = "sy_sn";
         const string MsgRound = "sy_rd";
         const string MsgEnd = "sy_ed";
+        const string MsgIntent = "sy_it";
+        const string MsgChatReq = "sy_cq";
+        const string MsgChatShow = "sy_cs";
+        const string MsgMoved = "sy_mv";
+        const string MsgHacked = "sy_hk";
         const float SnapInterval = 1f / 12f;
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
@@ -25,12 +30,31 @@ namespace SeoYuGi.Net
         public static event Action<int, int> OnClientDamage;             // unitId, dmg — 스냅샷 차분
         public static event Action<int> OnClientDeath;                   // unitId
         public static event Action<int, int> OnClientZoneOwner;          // zoneIdx, newOwner
+        public static event Action<int, int> OnChatShow;                 // unitId, lineId — 호스트 검증 통과분
+        public static event Action<int, Coord[], bool> OnMoved;          // unitId, path, isYellow — 홉 연출용
+        public static event Action<int> OnHacked;                        // unitId — 해킹 연출 릴레이
+
+        // ── 호스트 수신 이벤트 ─────────────────
+        public static event Action<ulong, BattleIntent> OnIntentRequest; // sender, intent — 소유권 검증은 러너
+        public static event Action<ulong, int, int> OnChatRequest;       // sender, unitId, lineId
 
         static BattleState battle;
         static RoundSystem round;
         static PickupSystem pickup;
         static int boundRound = -1; // 라운드 게이트 — 이전 라운드 스냅샷 드롭
         static float sendTimer;
+
+        // 낙관 이동 예측 창 — 이 동안 해당 유닛의 위치·게이지 스냅샷을 무시해 고무줄 방지.
+        // 창이 끝나면 호스트 값이 무조건 이긴다 (오예측 자동 교정).
+        static int predictedUnit = -1;
+        static float predictedUntil;
+
+        /// <summary>클라 — 낙관 이동 직후 호출. seconds ≈ RTT + 스냅샷 주기.</summary>
+        public static void MarkPredicted(int unitId, float seconds)
+        {
+            predictedUnit = unitId;
+            predictedUntil = UnityEngine.Time.realtimeSinceStartup + seconds;
+        }
 
         /// <summary>접속 직후 1회 — NetLobby.Begin에서 호출.</summary>
         public static void Register()
@@ -39,6 +63,124 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgSnap, OnSnapMsg);
             mm.RegisterNamedMessageHandler(MsgRound, OnRoundMsg);
             mm.RegisterNamedMessageHandler(MsgEnd, OnEndMsg);
+            mm.RegisterNamedMessageHandler(MsgIntent, OnIntentMsg);
+            mm.RegisterNamedMessageHandler(MsgChatReq, OnChatReqMsg);
+            mm.RegisterNamedMessageHandler(MsgChatShow, OnChatShowMsg);
+            mm.RegisterNamedMessageHandler(MsgMoved, OnMovedMsg);
+            mm.RegisterNamedMessageHandler(MsgHacked, OnHackedMsg);
+        }
+
+        /// <summary>호스트 — 이동 경로 릴레이. 클라가 슬라이드 대신 홉 애니메이션을 재생하게.</summary>
+        public static void HostSendMoved(int unitId, System.Collections.Generic.IReadOnlyList<Coord> path, bool yellow)
+        {
+            using var w = new FastBufferWriter(16 + path.Count * 8, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(yellow);
+            w.WriteValueSafe((byte)path.Count);
+            foreach (var c in path)
+            {
+                w.WriteValueSafe((byte)c.x);
+                w.WriteValueSafe((byte)c.y);
+            }
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgMoved, w);
+        }
+
+        /// <summary>호스트 — 해킹 발동 릴레이 (글리치·자막이 클라에도 뜨게).</summary>
+        public static void HostSendHacked(int unitId)
+        {
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgHacked, w);
+        }
+
+        static void OnMovedMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out bool yellow);
+            r.ReadValueSafe(out byte count);
+            var path = new Coord[count];
+            for (int i = 0; i < count; i++)
+            {
+                r.ReadValueSafe(out byte x);
+                r.ReadValueSafe(out byte y);
+                path[i] = new Coord(x, y);
+            }
+            OnMoved?.Invoke(unitId, path, yellow);
+        }
+
+        static void OnHackedMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int unitId);
+            OnHacked?.Invoke(unitId);
+        }
+
+        // ── 클라 → 호스트 ─────────────────────────────
+
+        /// <summary>클라 — 행동 인텐트 제출. 실행·검증은 전부 호스트.</summary>
+        public static void ClientSendIntent(in BattleIntent intent)
+        {
+            using var w = new FastBufferWriter(32, Allocator.Temp);
+            w.WriteValueSafe((byte)intent.kind);
+            w.WriteValueSafe(intent.unitId);
+            w.WriteValueSafe(intent.target.x);
+            w.WriteValueSafe(intent.target.y);
+            w.WriteValueSafe(intent.skillIndex);
+            NetworkManager.Singleton.CustomMessagingManager
+                .SendNamedMessage(MsgIntent, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>클라 — 빠른채팅 요청. 쿨다운·팀 필터는 호스트가 판정.</summary>
+        public static void ClientSendChat(int unitId, int lineId)
+        {
+            using var w = new FastBufferWriter(16, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(lineId);
+            NetworkManager.Singleton.CustomMessagingManager
+                .SendNamedMessage(MsgChatReq, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>호스트 — 검증 통과한 채팅을 같은 팀 클라에게 표시 지시.</summary>
+        public static void HostSendChatShow(ulong clientId, int unitId, int lineId)
+        {
+            using var w = new FastBufferWriter(16, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(lineId);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgChatShow, clientId, w);
+        }
+
+        static void OnIntentMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out byte kind);
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int x);
+            r.ReadValueSafe(out int y);
+            r.ReadValueSafe(out byte skillIndex);
+            OnIntentRequest?.Invoke(sender, new BattleIntent
+            {
+                kind = (IntentKind)kind,
+                unitId = unitId,
+                target = new Coord(x, y),
+                skillIndex = skillIndex
+            });
+        }
+
+        static void OnChatReqMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int lineId);
+            OnChatRequest?.Invoke(sender, unitId, lineId);
+        }
+
+        static void OnChatShowMsg(ulong sender, FastBufferReader r)
+        {
+            if (sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int lineId);
+            OnChatShow?.Invoke(unitId, lineId);
         }
 
         /// <summary>클라 — BuildRound 직후 코어 참조 바인딩. 이걸 해야 스냅샷이 적용된다.</summary>
@@ -183,8 +325,12 @@ namespace SeoYuGi.Net
                 if (hp < u.hp && alive) OnClientDamage?.Invoke(id, u.hp - hp);
                 if (!alive && u.alive) OnClientDeath?.Invoke(id);
 
+                // 낙관 이동 예측 창 — 내 유닛의 운동 상태(위치·게이지)는 잠시 로컬이 이긴다
+                bool predicted = id == predictedUnit &&
+                                 UnityEngine.Time.realtimeSinceStartup < predictedUntil;
+
                 var newPos = new Coord(x, y);
-                if (!u.pos.Equals(newPos))
+                if (!predicted && !u.pos.Equals(newPos))
                 {
                     if (u.alive) battle.Grid.MoveOccupant(u.pos, newPos); // 점유 맵 동기 — 시야 계산 입력
                     u.pos = newPos;
@@ -193,9 +339,12 @@ namespace SeoYuGi.Net
                 u.hp = hp;
                 u.alive = alive;
                 u.ap = ap;
-                u.moveGauge = gauge;
-                u.moveCooldown = cooldown;
-                u.regenDelay = regen;
+                if (!predicted)
+                {
+                    u.moveGauge = gauge;
+                    u.moveCooldown = cooldown;
+                    u.regenDelay = regen;
+                }
                 u.attackBuffUntil = buffUntil;
                 u.stunnedUntil = stunnedUntil;
                 u.flyingUntil = flyingUntil;

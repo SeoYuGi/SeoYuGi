@@ -22,11 +22,14 @@ public class UIJoinCodePopup : UIPopup
         {
             if (codeInput != null) codeInput.text = GUIUtility.systemCopyBuffer?.Trim() ?? "";
         });
-        BindEvent(Get<GameObject>((int)Buttons.BtnBack), _ =>
-        {
-            UIManager.Instance.ClosePopupUI(this);
-            OnBack?.Invoke();
-        });
+        BindEvent(Get<GameObject>((int)Buttons.BtnBack), _ => Back());
+        OnEscape = Back; // ESC = 뒤로
+    }
+
+    void Back()
+    {
+        UIManager.Instance.ClosePopupUI(this);
+        OnBack?.Invoke();
     }
 
     void Submit()

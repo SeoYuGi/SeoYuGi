@@ -121,20 +121,22 @@ public static class UINetPopupBuilders
         code.sizeDelta = new Vector2(700f, 44f);
         code.GetComponent<Text>().color = new Color(0.55f, 0.95f, 1f);
 
+        // 상태 문구 — 두 슬롯 기둥 사이 중앙 (폭 480 < 기둥 안쪽 간격 530 — 어느 높이든 안 겹침)
         var status = NewText("StatusText", root, "", 26, FontStyle.Normal);
-        status.anchorMin = status.anchorMax = new Vector2(0.5f, 0f);
-        status.anchoredPosition = new Vector2(0f, 170f);
-        status.sizeDelta = new Vector2(800f, 40f);
+        status.anchorMin = status.anchorMax = new Vector2(0.5f, 0.5f);
+        status.anchoredPosition = Vector2.zero;
+        status.sizeDelta = new Vector2(480f, 80f);
 
-        // 슬롯 6칸 — 좌 3칸 팀0(파랑 틴트), 우 3칸 팀1(빨강 틴트)
+        // 슬롯 6칸 — 좌 3칸 팀0(파랑 틴트), 우 3칸 팀1(빨강 틴트). 3:4 프레임 비율.
+        // 세로 예산: 위 = 타이틀/코드(맨위 ~-130), 아래 = 버튼(바닥 y55, 상단 -455).
+        // 행 y 230/-30/-290, 높이 240 → 하단 행 바닥 -410, 버튼과 45px 여유.
         for (int i = 0; i < 6; i++)
         {
             int team = i < 3 ? 0 : 1;
             var slot = NewRect($"Slot{i + 1}", root);
             slot.anchorMin = slot.anchorMax = new Vector2(0.5f, 0.5f);
-            slot.sizeDelta = new Vector2(220f, 200f);
-            float x = team == 0 ? -420f + (i % 3) * 0f : 420f;
-            slot.anchoredPosition = new Vector2(team == 0 ? -360f : 360f, 120f - (i % 3) * 150f);
+            slot.sizeDelta = new Vector2(190f, 240f);
+            slot.anchoredPosition = new Vector2(team == 0 ? -360f : 360f, 230f - (i % 3) * 260f);
 
             var img = slot.gameObject.AddComponent<Image>();
             img.color = team == 0
@@ -153,7 +155,7 @@ public static class UINetPopupBuilders
         {
             var btn = MakeButton(root, names[i], labels[i], new Vector2(220f, 60f));
             btn.anchorMin = btn.anchorMax = new Vector2(0.5f, 0f);
-            btn.anchoredPosition = new Vector2((i - 1.5f) * 240f, 90f);
+            btn.anchoredPosition = new Vector2((i - 1.5f) * 240f, 55f);
         }
 
         Save(root, "UILobbyPopup");

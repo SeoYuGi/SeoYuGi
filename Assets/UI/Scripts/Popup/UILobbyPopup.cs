@@ -32,6 +32,7 @@ public class UILobbyPopup : UIPopup
         {
             var popup = UIManager.Instance.ShowPopupUI<UIClassSelectPopup>(); // 기존 팝업 재사용
             popup.OnPicked = cls => NetLobby.RequestClass(cls);
+            popup.OnEscape = () => UIManager.Instance.ClosePopupUI(popup); // ESC = 로비로 (스택 복귀)
         });
         BindEvent(Get<GameObject>((int)Buttons.BtnCopyCode), _ =>
         {
@@ -44,11 +45,8 @@ public class UILobbyPopup : UIPopup
             UIManager.Instance.ClosePopupUI(this);
             OnStart?.Invoke();
         });
-        BindEvent(Get<GameObject>((int)Buttons.BtnLeave), _ =>
-        {
-            UIManager.Instance.ClosePopupUI(this);
-            OnLeave?.Invoke();
-        });
+        BindEvent(Get<GameObject>((int)Buttons.BtnLeave), _ => Leave());
+        OnEscape = Leave; // ESC = 나가기 (뒤로)
 
         codeText = transform.Find("CodeText")?.GetComponent<Text>();
         statusText = transform.Find("StatusText")?.GetComponent<Text>();
@@ -70,10 +68,8 @@ public class UILobbyPopup : UIPopup
             dim.color = new Color(0.75f, 0.75f, 0.75f, 1f); // 배경 위 살짝 어둡게 — 텍스트 가독
         }
 
-        var slotTex = Resources.Load<Texture2D>("UI/Frame_LobbySlot");
-        if (slotTex != null)
-        {
-            var slotSprite = Sprite.Create(slotTex, new Rect(0, 0, slotTex.width, slotTex.height), new Vector2(0.5f, 0.5f));
+        var slotSprite = UISkin.SlotFrame();
+        if (slotSprite != null)
             for (int i = 0; i < 6; i++)
             {
                 var img = Get<GameObject>(i).GetComponent<Image>();
@@ -81,22 +77,24 @@ public class UILobbyPopup : UIPopup
                 // 텍스처 곱연산 틴트 — 팀 색을 밝게 끌어올려야 프레임 디테일이 살아남는다
                 img.color = Color.Lerp(i < 3 ? new Color(0.45f, 0.6f, 1f) : new Color(1f, 0.5f, 0.45f), Color.white, 0.45f);
             }
-        }
 
-        var btnTex = Resources.Load<Texture2D>("UI/Frame_ButtonWide");
-        if (btnTex != null)
-        {
-            var btnSprite = Sprite.Create(btnTex, new Rect(0, 0, btnTex.width, btnTex.height), new Vector2(0.5f, 0.5f));
+        var btnSprite = UISkin.ButtonPlate();
+        if (btnSprite != null)
             foreach (var b in new[] { Buttons.BtnClass, Buttons.BtnCopyCode, Buttons.BtnStart, Buttons.BtnLeave })
             {
                 var img = Get<GameObject>((int)b).GetComponent<Image>();
                 img.sprite = btnSprite;
                 img.color = Color.white;
             }
-        }
     }
 
     void OnDestroy() => NetLobby.OnChanged -= Refresh;
+
+    void Leave()
+    {
+        UIManager.Instance.ClosePopupUI(this);
+        OnLeave?.Invoke();
+    }
 
     /// <summary>클라 대기 중 안내 (관전 동기화 전 단계 등).</summary>
     public void SetStatus(string text)

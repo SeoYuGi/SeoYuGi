@@ -138,15 +138,17 @@ namespace SeoYuGi.BattleView
             quickChat = new QuickChat();
             quickChat.OnMessage += (unitId, lineId) =>
             {
-                var u = Battle?.GetUnit(unitId);
-                if (u == null || u.team != playerTeam) return;
+                ShowChatVisual(unitId, lineId);
 
-                string text = QuickChat.TextOf(lineId);
-                var view = viewRegistry.Get(unitId);
-                if (view != null && view.gameObject.activeInHierarchy)
-                    ChatBubble.Show(unitId, view.transform, text, Color.white);
-                hud.AddChatLine(FindSlot(unitId).callsign, text, Color.Lerp(teamColors[u.team], Color.white, 0.55f));
-                battleAudio.PlaySfx("S22_DetectPing", 0.4f); // 전용 무전음 나오기 전까지 핑 재사용
+                // 온라인 호스트 — 같은 팀 원격 인간에게만 전달 (적팀 무전 차단)
+                if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
+                {
+                    var u = Battle?.GetUnit(unitId);
+                    if (u == null) return;
+                    foreach (var s in NetLobby.Slots)
+                        if (s.owner == SlotOwner.RemoteHuman && s.team == u.team)
+                            NetSync.HostSendChatShow(s.clientId, unitId, lineId);
+                }
             };
 
             // 카메라 셰이커 — 추적/전술 캠 위에 얹는 타격감 레이어
@@ -162,7 +164,33 @@ namespace SeoYuGi.BattleView
             NetSync.OnClientDamage += OnNetDamage;
             NetSync.OnClientDeath += OnNetDeath;
             NetSync.OnClientZoneOwner += OnNetZoneOwner;
+            NetSync.OnIntentRequest += HostOnRemoteIntent;
+            NetSync.OnChatRequest += HostOnRemoteChat;
+            NetSync.OnChatShow += ShowChatVisual;
+            NetSync.OnMoved += OnNetMoved;
+            NetSync.OnHacked += OnNetHacked;
             ShowTitle();
+        }
+
+        /// <summary>클라 — 호스트 이동 릴레이. 내 유닛은 낙관 적용으로 이미 재생 — 중복 방지.</summary>
+        void OnNetMoved(int unitId, Coord[] path, bool yellow)
+        {
+            if (!IsNetClient || Battle == null || unitId == playerUnitId) return;
+            var view = viewRegistry.Get(unitId);
+            if (view != null && view.gameObject.activeInHierarchy)
+                view.PlayPath(path, moveConfig.hopDuration);
+        }
+
+        /// <summary>클라 — 해킹 발동 릴레이. 글리치·자막을 호스트와 동일하게.</summary>
+        void OnNetHacked(int unitId)
+        {
+            if (!IsNetClient || Battle == null) return;
+            var u = Battle.GetUnit(unitId);
+            var origin = u != null ? gridView.CoordToWorld(u.pos) : Vector3.zero;
+            HackVfx.Play(this, origin, HackSystem.Duration);
+            battleAudio.PlaySfx("S18_Blink", 1.3f);
+            hud.ShowSubtitle(u != null && u.team == playerTeam
+                ? "해킹 — 적 예측 마비" : "해킹 감지 — 예측 교란", 2.4f);
         }
 
         void OnDestroy()
@@ -173,6 +201,50 @@ namespace SeoYuGi.BattleView
             NetSync.OnClientDamage -= OnNetDamage;
             NetSync.OnClientDeath -= OnNetDeath;
             NetSync.OnClientZoneOwner -= OnNetZoneOwner;
+            NetSync.OnIntentRequest -= HostOnRemoteIntent;
+            NetSync.OnChatRequest -= HostOnRemoteChat;
+            NetSync.OnChatShow -= ShowChatVisual;
+            NetSync.OnMoved -= OnNetMoved;
+            NetSync.OnHacked -= OnNetHacked;
+        }
+
+        /// <summary>내 팀 무전만 표시 — 말풍선 + HUD 로그 + 핑. 호스트/클라 공용 시각화.</summary>
+        void ShowChatVisual(int unitId, int lineId)
+        {
+            var u = Battle?.GetUnit(unitId);
+            if (u == null || u.team != playerTeam) return;
+
+            string text = QuickChat.TextOf(lineId);
+            var view = viewRegistry.Get(unitId);
+            if (view != null && view.gameObject.activeInHierarchy)
+                ChatBubble.Show(unitId, view.transform, text, Color.white);
+            hud.AddChatLine(FindSlot(unitId).callsign, text, Color.Lerp(teamColors[u.team], Color.white, 0.55f));
+            battleAudio.PlaySfx("S22_DetectPing", 0.4f); // 전용 무전음 나오기 전까지 핑 재사용
+        }
+
+        /// <summary>호스트 — 원격 인텐트. 소유권(보낸 클라 = 그 유닛 주인)만 검증, 나머지는 코어 TryX가 판정.</summary>
+        void HostOnRemoteIntent(ulong sender, BattleIntent intent)
+        {
+            if (!NetBoot.IsHost || phase != Phase.Playing) return;
+            if (!OwnsUnit(sender, intent.unitId)) return;
+            intentSink.Submit(intent);
+        }
+
+        /// <summary>호스트 — 원격 채팅 요청. 쿨다운은 quickChat이, 팀 배달은 OnMessage 핸들러가.</summary>
+        void HostOnRemoteChat(ulong sender, int unitId, int lineId)
+        {
+            if (!NetBoot.IsHost || phase != Phase.Playing) return;
+            if (!OwnsUnit(sender, unitId)) return;
+            quickChat.TrySend(unitId, lineId, Time.time);
+        }
+
+        static bool OwnsUnit(ulong clientId, int unitId)
+        {
+            if (NetLobby.Slots == null) return false;
+            foreach (var s in NetLobby.Slots)
+                if (s.unitId == unitId)
+                    return s.owner == SlotOwner.RemoteHuman && s.clientId == clientId;
+            return false;
         }
 
         /// <summary>온라인 클라이언트 = 시뮬 안 돌림, 스냅샷만 반영.</summary>
@@ -229,6 +301,11 @@ namespace SeoYuGi.BattleView
                 var mapPopup = UIManager.Instance.ShowPopupUI<UIMapSelectPopup>();
                 mapPopup.OnPicked = idx =>
                     NetLobby.HostStart(idx, UnityEngine.Random.Range(int.MinValue, int.MaxValue));
+                mapPopup.OnEscape = () => // ESC = 로비로
+                {
+                    UIManager.Instance.ClosePopupUI(mapPopup);
+                    ShowLobby();
+                };
             };
         }
 
@@ -353,6 +430,11 @@ namespace SeoYuGi.BattleView
                 Debug.Log($"맵 [{map.Name}] ({map.Width}×{map.Height})");
                 ShowClassSelect();
             };
+            popup.OnEscape = () => // ESC = 타이틀로
+            {
+                UIManager.Instance.ClosePopupUI(popup);
+                ShowTitle();
+            };
         }
 
         /// <summary>클래스 선택 팝업 → 픽 적용 + 적팀 랜덤 롤 → 매치 시작.</summary>
@@ -375,6 +457,11 @@ namespace SeoYuGi.BattleView
                 BuildMatchSetup();
                 BuildRound();
                 SetupCamera();
+            };
+            popup.OnEscape = () => // ESC = 맵 선택으로
+            {
+                UIManager.Instance.ClosePopupUI(popup);
+                ShowMapSelect();
             };
         }
 
@@ -461,6 +548,10 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlaySfx("S18_Blink", 1.3f); // 전용 SFX 나오기 전까지 점멸음 재사용
                 hud.ShowSubtitle(u != null && u.team == playerTeam
                     ? "해킹 — 적 예측 마비" : "해킹 감지 — 예측 교란", 2.4f);
+                // 팀 자동 통보 — 성공 지점에서 쏴야 원격 클라·봇 해킹도 커버 (쿨다운 무시 규칙은 QuickChat이)
+                quickChat.TrySend(unitId, QuickChat.HackLine, Time.time);
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendHacked(unitId); // 클라에도 글리치·자막
             };
             return hs;
         }
@@ -602,7 +693,10 @@ namespace SeoYuGi.BattleView
             };
 
             // 슬롯: MatchSetup 기준 — Bot 슬롯만 AI 뇌, 인간 반대팀 뇌에만 Predictor 주입 (기획서 §05).
-            intentSink = new LocalIntentSink(Battle, Move, Combat, hackSystem);
+            // 클라는 인텐트를 호스트로 쏘고(Pending), 호스트/싱글은 즉시 실행.
+            intentSink = IsNetClient
+                ? (IIntentSink)new NetIntentSink(Move) // 미러 주입 = 이동 낙관 적용
+                : new LocalIntentSink(Battle, Move, Combat, hackSystem);
             input.Init(Move, Combat, gridView, viewRegistry, playerUnitId, intentSink, playerVisibleFn);
             worldView = new CoreWorldView(Battle, Combat, Round, vision, humanUnitIds, Match.CurrentRound,
                 hackSystem, Pickup);
@@ -646,13 +740,15 @@ namespace SeoYuGi.BattleView
                 var movedView = viewRegistry.Get(unitId);
                 if (movedView != null && movedView.gameObject.activeInHierarchy)
                     movedView.PlayPath(path, moveConfig.hopDuration);
-                if (humanUnitIds.Contains(unitId))
-                    ObserveHumanPath(unitId, path); // 인간 슬롯 전원 학습 — 멀티에서 여러 명
+                if (!IsNetClient && humanUnitIds.Contains(unitId))
+                    ObserveHumanPath(unitId, path); // 인간 슬롯 전원 학습 — 호스트/싱글만 (Predictor 호스트 전용)
                 if (unitId == playerUnitId)
                 {
                     battleAudio.PlaySfx(yellow ? "S7_YellowMove" : "S6_Hop", yellow ? 1f : 0.4f);
                     if (yellow) CameraShaker.Shake(0.12f); // 과부하 점프 — 미세한 무게
                 }
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendMoved(unitId, path, yellow); // 클라 홉 애니용 경로 릴레이
             };
 
             Combat.OnTelegraph += strike =>
@@ -825,7 +921,7 @@ namespace SeoYuGi.BattleView
                 humanPrevPos[id] = Battle.GetUnit(id).pos;
             audioVisibleEnemies.Clear();
             ImpactFx.SetSuddenDeath(false); // 새 라운드 — 이전 라운드의 적색 맥동·잔여 글리치 제거
-            input.enabled = !IsNetClient; // 클라 조작은 다음 단계(인텐트 RPC) — 지금은 관전
+            input.enabled = true; // 클라도 조작 — 인텐트는 NetIntentSink가 호스트로 전송
             phase = Phase.Playing;
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
@@ -1065,32 +1161,30 @@ namespace SeoYuGi.BattleView
                 return;
             }
 
-            // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
-            if (IsNetClient)
-            {
-                vision.Tick(); // 유닛 위치는 스냅샷이 갱신 — 시야는 완전 결정론이라 로컬 재계산
-                SyncPresentation();
-                return;
-            }
-
-            // 해킹 (H) — 매치 1회, 5초간 적 예측 AI 교란 (기획서 '해킹', 구 디코이)
-            if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame &&
-                intentSink.Submit(BattleIntent.Hack(playerUnitId)).accepted)
-            {
-                Debug.Log("해킹 성공! 5초간 적 AI의 예측이 마비됩니다");
-                quickChat.TrySend(playerUnitId, QuickChat.HackLine, Time.time); // 팀에 자동 통보
-            }
+            // 해킹 (H) — 매치 1회, 5초간 적 예측 AI 교란. 클라는 Pending — 성공 통보는 호스트 채팅 에코로.
+            if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
+                intentSink.Submit(BattleIntent.Hack(playerUnitId));
 
             // 빠른채팅 — 숫자키 1~8 즉시 전송. Tab 홀드는 읽기 전용 치트시트(조작 안 뺏음).
+            // 쿨다운·팀 배달은 호스트 권위 — 클라는 요청만 쏜다.
             if (Keyboard.current != null)
             {
                 hud.ShowChatCheatsheet = Keyboard.current.tabKey.isPressed;
                 for (int i = 0; i < ChatKeys.Length; i++)
                     if (Keyboard.current[ChatKeys[i]].wasPressedThisFrame)
                     {
-                        quickChat.TrySend(playerUnitId, i, Time.time);
+                        if (IsNetClient) NetSync.ClientSendChat(playerUnitId, i);
+                        else quickChat.TrySend(playerUnitId, i, Time.time);
                         break;
                     }
+            }
+
+            // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
+            if (IsNetClient)
+            {
+                vision.Tick(); // 유닛 위치는 스냅샷이 갱신 — 시야는 완전 결정론이라 로컬 재계산
+                SyncPresentation();
+                return;
             }
 
             Move.Tick(Time.deltaTime);

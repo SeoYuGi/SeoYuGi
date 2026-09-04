@@ -100,6 +100,10 @@ public class UIManager : Singleton<UIManager>
         return popup;
     }
 
+    /// <summary>ESC 뒤로가기용 — 이 팝업이 스택 최상단인가 (겹친 팝업 중 위만 반응).</summary>
+    public bool IsTopPopup(UIPopup popup) =>
+        _popupStack.Count > 0 && _popupStack.Peek() == popup;
+
     public void ClosePopupUI(UIPopup popup)
     {
         if (_popupStack.Count > 0 && _popupStack.Peek() == popup)

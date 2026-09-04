@@ -21,17 +21,14 @@ public class UITitlePopup : UIPopup
         var dim = transform.Find("Dim")?.GetComponent<UnityEngine.UI.Image>();
         if (dim != null) dim.color = new Color(0f, 0f, 0f, 0.35f);
 
-        var btnTex = Resources.Load<Texture2D>("UI/Frame_ButtonWide");
-        if (btnTex != null)
-        {
-            var sprite = Sprite.Create(btnTex, new Rect(0, 0, btnTex.width, btnTex.height), new Vector2(0.5f, 0.5f));
+        var sprite = UISkin.ButtonPlate();
+        if (sprite != null)
             for (int i = 0; i < 3; i++)
             {
                 var img = Get<GameObject>(i).GetComponent<UnityEngine.UI.Image>();
                 img.sprite = sprite;
                 img.color = Color.white;
             }
-        }
     }
 
     void Pick(Action cb)

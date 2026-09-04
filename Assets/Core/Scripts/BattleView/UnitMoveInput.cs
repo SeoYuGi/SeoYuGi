@@ -18,6 +18,7 @@ namespace SeoYuGi.BattleView
         [SerializeField] Color telegraphColor = new Color(0.91f, 0.25f, 0.12f); // 설치 공격 예고
         [SerializeField] Color aimRangeColor = new Color(1f, 0.6f, 0.15f);      // 조준 가능 칸 (주황)
         [SerializeField] Color aimImpactColor = new Color(1f, 0.12f, 0.08f);    // 발사 시 맞는 칸 (진빨강)
+        [SerializeField] Color aimInvalidColor = new Color(0.45f, 0.45f, 0.5f); // 못 쏘는 호버 칸 (회색)
 
         Camera rayCamera; // Camera.main 자동 연결
 
@@ -26,17 +27,22 @@ namespace SeoYuGi.BattleView
         GridView gridView;
         UnitViewRegistry views;
 
-        enum AimMode { None, Attack, Skill }
+        public enum AimMode { None, Attack, Skill }
 
         int selectedUnitId = -1;
         AimMode aim;
 
         /// <summary>HUD용 — 내 유닛이 선택돼 조작 가능한 상태인가.</summary>
         public bool HasSelection => selectedUnitId != -1;
+        /// <summary>HUD용 — 현재 조준 모드 (배너·슬롯 하이라이트).</summary>
+        public AimMode CurrentAim => aim;
         readonly List<Coord> blue = new List<Coord>();
         readonly List<Coord> yellow = new List<Coord>();
         readonly List<Coord> aimRange = new List<Coord>();
         readonly List<Coord> aimImpact = new List<Coord>();
+        readonly List<Transform> markers = new List<Transform>(); // 조준 마커 쿼드 풀
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        MaterialPropertyBlock markerMpb;
         readonly List<Coord> cells = new List<Coord>();
         readonly List<Color> colors = new List<Color>();
 
@@ -185,14 +191,35 @@ namespace SeoYuGi.BattleView
                         ? combat.GetAttackImpact(selectedUnitId, hover, aimImpact)
                         : combat.GetSkillImpact(selectedUnitId, hover, aimImpact);
                     if (valid)
+                    {
                         foreach (var c in aimImpact) { cells.Add(c); colors.Add(aimImpactColor); }
+                        UpdateMarkers(aimImpact, aimImpactColor);
+                    }
+                    else
+                    {
+                        // 못 쏘는 곳 — 호버 칸에 회색 마커로 "여긴 안 됨" 표시
+                        aimImpact.Clear();
+                        aimImpact.Add(hover);
+                        UpdateMarkers(aimImpact, aimInvalidColor);
+                    }
+                }
+                else
+                {
+                    aimImpact.Clear();
+                    UpdateMarkers(aimImpact, aimImpactColor);
                 }
             }
-            else if (selectedUnitId != -1)
+            else
             {
-                moveSystem.GetRanges(selectedUnitId, blue, yellow);
-                foreach (var c in blue) { cells.Add(c); colors.Add(blueRangeColor); }
-                foreach (var c in yellow) { cells.Add(c); colors.Add(yellowRangeColor); }
+                aimImpact.Clear();
+                UpdateMarkers(aimImpact, aimImpactColor); // 비조준 — 마커 전부 숨김
+
+                if (selectedUnitId != -1)
+                {
+                    moveSystem.GetRanges(selectedUnitId, blue, yellow);
+                    foreach (var c in blue) { cells.Add(c); colors.Add(blueRangeColor); }
+                    foreach (var c in yellow) { cells.Add(c); colors.Add(yellowRangeColor); }
+                }
             }
 
             // 설치 공격 예고 표시 — 같은 칸이면 빨강이 이김 (나중 쓰기 우선). 펄스로 깜빡임.
@@ -210,6 +237,45 @@ namespace SeoYuGi.BattleView
             }
 
             gridView.SetHighlights(cells, colors);
+        }
+
+        // ── 조준 마커 (틴트 위에 뜬 밝은 쿼드 — 풀 재사용) ─────────
+
+        /// <summary>마커를 cellList에 맞춰 배치. 빈 리스트면 전부 숨김. 펄스로 두근거림.</summary>
+        void UpdateMarkers(List<Coord> cellList, Color color)
+        {
+            if (markerMpb == null) markerMpb = new MaterialPropertyBlock();
+            while (markers.Count < cellList.Count) markers.Add(CreateMarker());
+
+            float s = 0.6f + Mathf.PingPong(Time.time * 1.8f, 0.18f);
+            for (int i = 0; i < markers.Count; i++)
+            {
+                bool on = i < cellList.Count;
+                if (markers[i].gameObject.activeSelf != on) markers[i].gameObject.SetActive(on);
+                if (!on) continue;
+                markers[i].position = gridView.CoordToWorld(cellList[i]) + Vector3.up * 0.14f;
+                markers[i].localScale = Vector3.one * s;
+                markerMpb.SetColor(BaseColorId, color);
+                markers[i].GetComponent<Renderer>().SetPropertyBlock(markerMpb);
+            }
+        }
+
+        Transform CreateMarker()
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "AimMarker";
+            Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
+            go.transform.SetParent(transform);
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥에 눕힘
+            go.SetActive(false);
+            return go.transform;
+        }
+
+        void OnDisable()
+        {
+            // 라운드 종료(브리핑 중) 입력 꺼짐 — 마커가 화면에 남지 않게
+            foreach (var m in markers)
+                if (m != null) m.gameObject.SetActive(false);
         }
     }
 }

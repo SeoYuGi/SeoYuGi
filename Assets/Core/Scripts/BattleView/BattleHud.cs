@@ -183,13 +183,24 @@ namespace SeoYuGi.BattleView
         {
             var u = battle.GetUnit(playerUnitId);
             string msg;
+            var bannerColor = new Color(0.2f, 0.75f, 0.85f, 0.85f); // 기본 = 탱고파이브 시안
             if (u == null || !u.alive) msg = "격파됨 — 팀원 AI가 계속 싸웁니다.";
             else if (moveInput == null || !moveInput.HasSelection) msg = $"{DisplayName()}(내 유닛)를 클릭해 선택하세요.";
+            else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Attack)
+            {
+                msg = "◎ 일반공격 조준 — 빨간 칸 좌클릭 = 발사 · 우클릭 = 취소";
+                bannerColor = new Color(1f, 0.6f, 0.15f, 0.9f);
+            }
+            else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Skill)
+            {
+                msg = $"◎ {SkillName(u.unitClass)} 조준 — 빨간 칸 좌클릭 = 발사 · 우클릭 = 취소";
+                bannerColor = new Color(1f, 0.3f, 0.2f, 0.9f);
+            }
             else if (u.moveCooldown > 0f) msg = $"이동 쿨타임 {u.moveCooldown:0.0}s — 공격/방어는 가능합니다.";
-            else msg = "타일 클릭 = 이동  ·  A 공격 / S 스킬 / D 방어 = 마우스 칸에 설치";
+            else msg = "타일 클릭 = 이동  ·  A 공격 조준 / S 스킬 조준 / D 방어";
 
             var box = new Rect(W / 2f - 210, 108, 420, 26);
-            GUI.color = new Color(0.2f, 0.75f, 0.85f, 0.85f); // 탱고파이브 시안 배너
+            GUI.color = bannerColor;
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             GUI.color = new Color(0.05f, 0.15f, 0.2f);
             GUI.Label(box, msg, bannerTextStyle);
@@ -228,11 +239,14 @@ namespace SeoYuGi.BattleView
             DrawSlot(new Rect(sx, y, slotW, slotH), "좌클릭", "이동",
                 $"게이지 {(int)u.moveGauge}", u.moveCooldown <= 0f, u.moveCooldown, moveCoolFrac);
 
+            var aim = moveInput != null ? moveInput.CurrentAim : UnitMoveInput.AimMode.None;
             DrawSlot(new Rect(sx + (slotW + gap), y, slotW, slotH), "A", "일반공격",
-                $"AP {combatConfig.costAttack:0}", u.ap >= combatConfig.costAttack, 0f, 0f);
+                $"AP {combatConfig.costAttack:0}", u.ap >= combatConfig.costAttack, 0f, 0f,
+                aim == UnitMoveInput.AimMode.Attack);
 
             DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass),
-                $"AP {combatConfig.costSkill:0}", u.ap >= combatConfig.costSkill, 0f, 0f);
+                $"AP {combatConfig.costSkill:0}", u.ap >= combatConfig.costSkill, 0f, 0f,
+                aim == UnitMoveInput.AimMode.Skill);
 
             float guardRemain = Mathf.Max(0f, u.guardUntil - battle.time);
             float guardFrac = combatConfig.guardDurationSeconds > 0f
@@ -249,8 +263,14 @@ namespace SeoYuGi.BattleView
             Bar(new Rect(apSeg.x + 14, apSeg.y + 48, apSeg.width - 28, 8), u.ap / combatConfig.apMax, new Color(0.35f, 0.75f, 1f));
         }
 
-        void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac)
+        void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac, bool active = false)
         {
+            if (active)
+            {
+                // 조준 중인 슬롯 — 노란 프레임으로 "지금 이거 조준 중" 표시
+                GUI.color = new Color(1f, 0.85f, 0.25f);
+                GUI.DrawTexture(new Rect(r.x - 3, r.y - 3, r.width + 6, r.height + 6), Texture2D.whiteTexture);
+            }
             GUI.color = enabled ? Color.white : new Color(1f, 1f, 1f, 0.4f);
             GUI.Box(r, "");
             GUI.Box(new Rect(r.x + 5, r.y + 5, key.Length > 2 ? 46 : 22, 18), key, keyStyle);

@@ -83,11 +83,11 @@ namespace SeoYuGi.Art
         {
             switch (mapName)
             {
-                case "꺾인 골목": return (0.45f, 0.15f, 0.5f);
-                case "옥상 정원": return (0.15f, 0.6f, 0.55f);
+                case "막다른 골목": return (0.55f, 0.1f, 0.7f);   // 초소형 난투장 — 쓰레기통 빽빽
+                case "옥상 종주": return (0.1f, 0.65f, 0.5f);     // 옥상 정원 느낌 — 덤불 위주
                 case "뒷골목 미로": return (0.5f, 0.15f, 0.35f);
                 case "공사장 섬": return (0.2f, 0.1f, 0.6f);
-                case "수직 상가": return (0.4f, 0.25f, 0.5f);
+                case "청계 물류단지": return (0.2f, 0.05f, 0.65f); // 물류장 — 바리케이드(컨테이너 대역) 위주
                 default: return (0.35f, 0.3f, 0.45f);
             }
         }

@@ -8,7 +8,7 @@ using UnityEngine.UI;
 public class UIMapSelectPopup : UIPopup
 {
     // BattleMaps 인덱스 순서 — 맵이 카드보다 적으면 남는 카드는 숨김
-    enum Buttons { BtnMap0, BtnMap1, BtnMap2, BtnMap3, BtnMap4 }
+    enum Buttons { BtnMap0, BtnMap1, BtnMap2, BtnMap3, BtnMap4, BtnMap5 }
 
     public Action<int> OnPicked;
 
@@ -32,7 +32,7 @@ public class UIMapSelectPopup : UIPopup
             // Name/Desc는 카드마다 중복되는 이름 — Bind 대신 카드 기준 직계 탐색
             card.transform.Find("Name").GetComponent<Text>().text = map.Name;
             card.transform.Find("Desc").GetComponent<Text>().text =
-                $"{map.Width}×{map.Height} · 벽 {map.Walls.Count}개";
+                $"{map.Width}×{map.Height} · 거점 {map.Zones.Count}개";
 
             var raw = card.transform.Find("MapView").GetComponent<RawImage>();
             raw.texture = tex;

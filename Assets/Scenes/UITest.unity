@@ -473,8 +473,8 @@ MonoBehaviour:
     defaultProfile:
       freeRange: 2
       maxRange: 4
-      gaugeRegenPerSecond: 0.5
-      regenDelaySeconds: 1
+      gaugeRegenPerSecond: 0.8
+      regenDelaySeconds: 0
       yellowCooldownSeconds: 3
     hopDuration: 0.15
   mapSeed: 20260904

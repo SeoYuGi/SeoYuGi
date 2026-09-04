@@ -24,6 +24,7 @@ namespace SeoYuGi.Integration
         readonly List<ActorState> actors = new List<ActorState>();
         readonly List<ZoneState> zones = new List<ZoneState>();
         readonly List<Telegraph> telegraphs = new List<Telegraph>();
+        AiCell[][] zoneCellCache; // 거점 칸은 라운드 내 불변 — 1회 변환
 
         public CoreWorldView(BattleState state, CombatSystem combat, RoundSystem round,
             VisionSystem vision, int humanUnitId, int matchRound)
@@ -53,13 +54,25 @@ namespace SeoYuGi.Integration
                 });
 
             zones.Clear();
-            foreach (var z in round.Zones)
+            for (int i = 0; i < round.Zones.Count; i++)
+            {
+                var z = round.Zones[i];
+                if (zoneCellCache == null || zoneCellCache.Length != round.Zones.Count)
+                    zoneCellCache = new AiCell[round.Zones.Count][];
+                if (zoneCellCache[i] == null)
+                {
+                    zoneCellCache[i] = new AiCell[z.cells.Count];
+                    for (int j = 0; j < z.cells.Count; j++)
+                        zoneCellCache[i][j] = new AiCell(z.cells[j].x, z.cells[j].y);
+                }
                 zones.Add(new ZoneState
                 {
-                    Cell = new AiCell(z.Center.x, z.Center.y), // AI 목표는 패치 중심
+                    Cell = new AiCell(z.Center.x, z.Center.y),
+                    Cells = zoneCellCache[i], // 패치 전체 — AI가 빈 칸으로 분산 진입
                     HasOwner = z.owner >= 0,
                     Owner = z.owner >= 0 ? (TeamId)z.owner : default
                 });
+            }
 
             telegraphs.Clear();
             foreach (var strike in combat.ActiveStrikes)

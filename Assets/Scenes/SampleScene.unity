@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
+  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -256,6 +257,23 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &330585548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f5c4ef7fbde548c9a2a3d8b947b65484, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.QuarterViewCamera
+  runner: {fileID: 682819980}
+  pitch: 60
+  yaw: -45
+  distance: 10
+  smoothTime: 0.2
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -432,6 +450,7 @@ MonoBehaviour:
   tileSize: 1
   tileFill: 0.92
   wallHeight: 0.6
+  fogColor: {r: 0.22, g: 0.24, b: 0.3, a: 1}
   floorTextureA: {fileID: 2800000, guid: aaf62b519764d8248a66d43d8efd2436, type: 3}
   floorTextureB: {fileID: 2800000, guid: 969d882d524bb304fb5a7e07a6b7c785, type: 3}
   obstacleTexture: {fileID: 2800000, guid: 8d9736e16b34e2a4fb013daf88d005c4, type: 3}
@@ -448,9 +467,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 92c86b81767cd974d9109d8d3a5d762c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.BattleRunner
-  gridConfig:
-    width: 9
-    height: 9
   moveConfig:
     defaultProfile:
       freeRange: 2
@@ -472,51 +488,16 @@ MonoBehaviour:
     blinkBuffSeconds: 3
     blinkBuffBonus: 1
   roundConfig:
-    captureSeconds: 2
+    captureSeconds: 5
+    decaySeconds: 4
     roundSeconds: 120
-  mapSeed: 20260904
-  wallTiles: 8
-  spawns:
-  - id: 1
-    team: 0
-    pos:
-      x: 2
-      y: 1
-    cls: 0
-  - id: 2
-    team: 0
-    pos:
-      x: 4
-      y: 1
-    cls: 1
-  - id: 3
-    team: 0
-    pos:
-      x: 6
-      y: 1
-    cls: 4
-  - id: 4
-    team: 1
-    pos:
-      x: 2
-      y: 7
-    cls: 0
-  - id: 5
-    team: 1
-    pos:
-      x: 4
-      y: 7
-    cls: 1
-  - id: 6
-    team: 1
-    pos:
-      x: 6
-      y: 7
-    cls: 4
+  mapIndex: 0
+  cameraPitch: 55
+  cameraDistanceScale: 0.95
+  playerUnitId: 2
   teamColors:
   - {r: 0.25, g: 0.5, b: 1, a: 1}
   - {r: 1, g: 0.3, b: 0.25, a: 1}
-  playerUnitId: 2
   unitPrefab: {fileID: 0}
 --- !u!114 &682819981
 MonoBehaviour:

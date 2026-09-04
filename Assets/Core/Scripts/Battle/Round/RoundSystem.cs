@@ -6,7 +6,8 @@ namespace SeoYuGi.Battle
     [Serializable]
     public class RoundConfig
     {
-        public float captureSeconds = 2f;  // 거점 칸 점거 유지 시간
+        public float captureSeconds = 5f;  // 거점 점거 완료까지 시간
+        public float decaySeconds = 4f;    // 비웠을 때 풀 게이지가 전부 빠지는 시간
         public float roundSeconds = 120f;  // 라운드 제한 (초과 시 판정)
     }
 
@@ -106,22 +107,28 @@ namespace SeoYuGi.Battle
                     else team1 = true;
                 }
 
+                if (team0 && team1) continue; // 경합 — 진행 동결 (탱고파이브식)
+
                 if (!team0 && !team1)
                 {
-                    z.capturingTeam = -1; // 비우면 진행 리셋
-                    z.progress = 0f;
+                    Decay(z, deltaTime); // 비우면 즉시 리셋이 아니라 서서히 감소
                     continue;
                 }
-                if (team0 && team1) continue; // 경합 — 진행 일시정지 (탱고파이브식)
 
                 int team = team0 ? 0 : 1;
                 if (team == z.owner)
                 {
-                    z.capturingTeam = -1;
-                    z.progress = 0f;
+                    Decay(z, deltaTime); // 주인이 지키면 적의 잔여 게이지가 빠진다
                     continue;
                 }
 
+                // 상대 잔여 게이지가 남아 있으면 먼저 중화 — 0이 된 뒤 내 게이지가 찬다
+                if (z.capturingTeam != team && z.progress > 0f)
+                {
+                    z.progress -= deltaTime;
+                    if (z.progress > 0f) continue;
+                    deltaTime = -z.progress; // 남은 시간만큼 내 게이지로 이월
+                }
                 if (z.capturingTeam != team)
                 {
                     z.capturingTeam = team;
@@ -137,6 +144,19 @@ namespace SeoYuGi.Battle
                     OnZoneCaptured?.Invoke(z);
                     if (SuddenDeath) { EndRound(team); return; }
                 }
+            }
+        }
+
+        /// <summary>주둔자 없음/주인 방어 시 게이지 감소. 0이 되면 점거 팀 표시 해제.</summary>
+        void Decay(Zone z, float deltaTime)
+        {
+            if (z.progress <= 0f) return;
+            float rate = Config.decaySeconds > 0f ? Config.captureSeconds / Config.decaySeconds : float.MaxValue;
+            z.progress -= deltaTime * rate;
+            if (z.progress <= 0f)
+            {
+                z.progress = 0f;
+                z.capturingTeam = -1;
             }
         }
 

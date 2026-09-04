@@ -45,6 +45,7 @@ namespace SeoYuGi.Battle
         public event Action<int, int, Coord> OnUnitDamaged;          // (unitId, damage, hitDir — Zero면 방향 없음)
         public event Action<int, int> OnDamageDealt;                 // (attackerId, 가한 피해 합) — 적중 = 예측 성공 보상 훅
         public event Action<int> OnUnitDied;
+        public event Action<int, int> OnUnitKilled;                  // (deadId, killerId — NoUnit이면 환경사) — 킬로그용
         public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
         public event Action<int, float> OnStunned;       // (unitId, seconds)
         public event Action<int> OnWallCrash;            // 밀침으로 벽/맵 경계 충돌
@@ -221,7 +222,7 @@ namespace SeoYuGi.Battle
                     if (occupant.team != unit.team && !hitIds.Contains(occupantId) && !IsFlying(occupant))
                     {
                         hitIds.Add(occupantId);
-                        Damage(occupant, skill.damage, dir);
+                        Damage(occupant, skill.damage, dir, unit.id);
                         dealt += skill.damage;
                         if (occupant.alive) Push(occupant, dir, 1, 0);
                     }
@@ -305,12 +306,11 @@ namespace SeoYuGi.Battle
 
         ActDenied CastBombDeliver(UnitState unit, Coord target, SkillDef skill)
         {
-            // 맨해튼 4 내 빈 칸으로 비행 이동 + 착지 십자 폭격. 비행 중 무적·행동 불가.
+            // 맨해튼 4 내 칸에 폭탄 배달 후 원위치 복귀 — 시뮬 위치는 출발 칸 그대로
+            // (왕복 비행은 뷰 소관). 비행 중 무적·행동 불가. 적 점유 칸도 지정 가능.
             if (Coord.Manhattan(unit.pos, target) > skill.range || target == unit.pos) return ActDenied.BadTarget;
-            if (!State.Grid.IsWalkable(target)) return ActDenied.BadTarget;
+            if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
-            State.Grid.MoveOccupant(unit.pos, target); // 착지 칸 즉시 점유(충돌 방지) — 비행 연출은 뷰 소관
-            unit.pos = target;
             unit.flyingUntil = State.time + skill.telegraphSeconds;
 
             var strike = new TelegraphStrike
@@ -341,7 +341,7 @@ namespace SeoYuGi.Battle
 
             var d = target - unit.pos;
             var dir = new Coord(Math.Sign(d.x), Math.Sign(d.y));
-            Damage(victim, skill.damage, dir);
+            Damage(victim, skill.damage, dir, unit.id);
             OnDamageDealt?.Invoke(unit.id, skill.damage); // 즉발 명중도 예측 성공 취급
             Push(unit, new Coord(-dir.x, -dir.y), 2, 0); // 셀프 넉백 — Push가 낙하·막힘 처리
             return ActDenied.None;
@@ -450,7 +450,7 @@ namespace SeoYuGi.Battle
                     {
                         if (Math.Abs(dx) + Math.Abs(dy) > skill.range || (dx == 0 && dy == 0)) continue;
                         var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
-                        if (State.Grid.IsWalkable(c)) cells.Add(c);
+                        if (State.Grid.IsWalkableTerrain(c)) cells.Add(c); // 점유 칸도 폭격 가능 — 착지 안 하므로
                     }
                     break;
                 case SkillKind.Snipe:
@@ -520,7 +520,8 @@ namespace SeoYuGi.Battle
                     return true;
                 }
                 case SkillKind.BombDeliver:
-                    if (Coord.Manhattan(unit.pos, hover) > skill.range || !State.Grid.IsWalkable(hover)) return false;
+                    if (Coord.Manhattan(unit.pos, hover) > skill.range || hover == unit.pos ||
+                        !State.Grid.IsWalkableTerrain(hover)) return false;
                     cells.Add(hover);
                     foreach (var dir in Coord.Directions4)
                         if (State.Grid.IsWalkableTerrain(hover + dir)) cells.Add(hover + dir);
@@ -620,7 +621,7 @@ namespace SeoYuGi.Battle
                 var hitDir = attacker != null
                     ? new Coord(Math.Sign(unit.pos.x - attacker.pos.x), Math.Sign(unit.pos.y - attacker.pos.y))
                     : Coord.Zero;
-                Damage(unit, strike.damage, hitDir);
+                Damage(unit, strike.damage, hitDir, strike.attackerId);
                 hit = true;
                 dealt += strike.damage;
                 if (strike.stunSeconds > 0f && unit.alive)
@@ -639,7 +640,7 @@ namespace SeoYuGi.Battle
             OnStrikeResolved?.Invoke(strike, hit);
         }
 
-        void Damage(UnitState unit, int amount, Coord hitDir = default)
+        void Damage(UnitState unit, int amount, Coord hitDir = default, int attackerId = Cell.NoUnit)
         {
             if (amount <= 0) return;
             if (IsFlying(unit)) return; // 비행 중 무적
@@ -650,6 +651,7 @@ namespace SeoYuGi.Battle
                 unit.alive = false;
                 State.Grid.RemoveUnit(unit.pos);
                 OnUnitDied?.Invoke(unit.id);
+                OnUnitKilled?.Invoke(unit.id, attackerId); // 킬러 귀속 (환경사 = NoUnit)
             }
         }
 

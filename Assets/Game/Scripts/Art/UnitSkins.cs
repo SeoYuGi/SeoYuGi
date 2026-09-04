@@ -69,7 +69,6 @@ namespace SeoYuGi.Art
         readonly Dictionary<string, GameObject> cache = new();
         readonly HashSet<UnitView> attempted = new();
         readonly Dictionary<int, MoveSwapSkin> machines = new();
-        readonly Dictionary<int, BombHop> bombHops = new();
 
         void Awake()
         {
@@ -107,8 +106,7 @@ namespace SeoYuGi.Art
                 bool snipe = kind == SkillKind.Snipe || kind == SkillKind.KnockShot;
                 m.PlayAttack(snipe ? 2.2f : 1.2f);
             }
-            if (kind == SkillKind.BombDeliver && bombHops.TryGetValue(unitId, out var hop) && hop != null)
-                hop.Play(1f); // 폭탄 배달 비행 아크 (텔레그래프 1초와 동기)
+            // 폭탄 배달 비행은 UnitView.PlayBombFlight(왕복)가 담당 — 구 BombHop 아크 폐기
         }
 
         void Apply(UnitView view)
@@ -167,10 +165,6 @@ namespace SeoYuGi.Art
                 // 리깅 불가 캐릭터(비둘기) — 절차적 파닥·통통 연출로 대체
                 skin.AddComponent<WaddleBounce>().Init(view, idleGo);
             }
-
-            // 비둘기 폭탄 배달 비행 아크 (코드 연출 — 리깅 불필요)
-            if (unit.unitClass == UnitClass.Grenadier)
-                bombHops[unit.id] = skin.AddComponent<BombHop>();
 
             // 드론류 기계는 부유 연출
             if (unit.team == 1 && unit.unitClass != UnitClass.Tank && unit.unitClass != UnitClass.Balance)

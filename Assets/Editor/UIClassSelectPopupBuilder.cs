@@ -13,7 +13,7 @@ public static class UIClassSelectPopupBuilder
     static readonly (string btn, string title, string desc)[] Cards =
     {
         ("BtnTank",      "너구리",      "탱커\nHP 6 · 시야 3\n강타: 밀침 + 벽 충돌"),
-        ("BtnBalance",   "치즈태비",    "밸런스\nHP 4 · 시야 4\n돌파: 직선 2칸 대시"),
+        ("BtnBalance",   "고라니",    "밸런스\nHP 4 · 시야 4\n돌파: 직선 2칸 대시"),
         ("BtnAssassin",  "검은 고양이", "어쌔신\nHP 3 · 시야 4\n도약: 점멸 + 공격 버프"),
         ("BtnGrenadier", "비둘기",      "그레네이더\nHP 3 · 시야 4\n파열탄: 십자 5칸"),
         ("BtnSniper",    "까치",        "스나이퍼\nHP 2 · 시야 5\n저격: 1열 관통"),

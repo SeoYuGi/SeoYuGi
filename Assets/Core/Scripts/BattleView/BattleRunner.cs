@@ -109,6 +109,7 @@ namespace SeoYuGi.BattleView
         readonly List<GameObject> roundObjects = new List<GameObject>();
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
         readonly HashSet<int> blinkSnapIds = new HashSet<int>(); // 점멸 직후 — 슬라이드 대신 번쩍+스냅
+        readonly Dictionary<int, GameObject> strikeTelegraphFx = new Dictionary<int, GameObject>(); // 예고 마커·레이저·투사체 — 판정 시 파괴
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
         readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
 
@@ -182,6 +183,7 @@ namespace SeoYuGi.BattleView
             NetSync.OnMoved += OnNetMoved;
             NetSync.OnHacked += OnNetHacked;
             NetSync.OnClientHackCharge += OnNetHackCharge;
+            NetSync.OnKilled += OnNetKilled;
             NetSync.OnTelegraph += OnNetTelegraph;
             NetSync.OnTelegraphEnd += OnNetTelegraphEnd;
             NetSync.OnSkillCast += OnNetSkillCast;
@@ -199,7 +201,19 @@ namespace SeoYuGi.BattleView
             var v = viewRegistry.Get(unitId);
             if (v != null && v.gameObject.activeInHierarchy)
                 FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
-            if (kind == SkillKind.Blink) blinkSnapIds.Add(unitId); // 점멸 스냅 규칙 유지
+            if (kind == SkillKind.Blink)
+            {
+                // 출발지 사라짐 연출 — 위치 동기는 스냅샷 도착 시 SyncPresentation이 스냅
+                if (v != null && v.gameObject.activeInHierarchy)
+                {
+                    var from = v.transform.position;
+                    GhostTrail.SpawnAt(v.gameObject, from, new Color(0.12f, 0.06f, 0.2f, 0.85f));
+                    if (VfxLibrary.Spawn(VfxLibrary.HcfxAppearStart, new Vector3(from.x, 0.1f, from.z), 1.5f, 0.8f) == null)
+                        VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f);
+                    v.CancelMove();
+                }
+                blinkSnapIds.Add(unitId); // 점멸 스냅 규칙 유지
+            }
         }
 
         /// <summary>클라 — 호스트 예고를 미러 CombatSystem에 주입.
@@ -258,6 +272,7 @@ namespace SeoYuGi.BattleView
             NetSync.OnMoved -= OnNetMoved;
             NetSync.OnHacked -= OnNetHacked;
             NetSync.OnClientHackCharge -= OnNetHackCharge;
+            NetSync.OnKilled -= OnNetKilled;
             NetSync.OnTelegraph -= OnNetTelegraph;
             NetSync.OnTelegraphEnd -= OnNetTelegraphEnd;
             NetSync.OnSkillCast -= OnNetSkillCast;
@@ -452,6 +467,13 @@ namespace SeoYuGi.BattleView
                 gridView.SetBaseTint(c, tint);
             bool ours = owner == playerTeam;
             battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
+
+            // 중앙 큰 공지 — 호스트와 동일하게 (클라도 "누가 어느 거점 먹었는지" 봄)
+            string letter = zoneIdx < ZoneLetters.Length ? ZoneLetters[zoneIdx] : "";
+            hud.ShowAnnounce(ours
+                ? $"아군이 {letter} 거점을 점령했습니다"
+                : $"상대팀이 {letter} 거점을 점령했습니다", teamColors[owner], 2.8f);
+
             var center = gridView.CoordToWorld(zone.Center);
             RingWave.Spawn(center, teamColors[owner], 5f, 0.7f);
             ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f));
@@ -740,8 +762,17 @@ namespace SeoYuGi.BattleView
 
                 bool ours = zone.owner == playerTeam;
                 battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
-                if (ours) PlayVoiceLine("Voice_ZoneCaptured", "구역 확보");
-                else PlayVoiceLine("Voice_ZoneLost", "구역 상실");
+
+                // 거점 글자(A/B/C) 찾기 + 중앙 멘트
+                int zi = -1;
+                for (int i = 0; i < Round.Zones.Count; i++)
+                    if (ReferenceEquals(Round.Zones[i], zone)) { zi = i; break; }
+                string letter = zi >= 0 && zi < ZoneLetters.Length ? ZoneLetters[zi] : "";
+                string ment = ours
+                    ? $"아군이 {letter} 거점을 점령했습니다"
+                    : $"상대팀이 {letter} 거점을 점령했습니다";
+                hud.ShowAnnounce(ment, teamColors[zone.owner], 2.8f); // 상단 중앙 큰 공지
+                battleAudio.PlayVoice(ours ? "Voice_ZoneCaptured" : "Voice_ZoneLost"); // 음성만 (자막은 배너가)
 
                 // 탈환 완료 순간 — 팀 색 충격파가 패치 밖으로 퍼진다
                 var center = gridView.CoordToWorld(zone.Center);
@@ -854,6 +885,28 @@ namespace SeoYuGi.BattleView
                     RingWave.Reticle(gridView.CoordToWorld(focus),
                         mineStrike ? new Color(1f, 0.6f, 0.1f, 0.8f) : new Color(0.95f, 0.25f, 0.12f, 0.9f),
                         1.6f, 0.45f, strike.impactTime - Battle.time);
+                }
+
+                // 클래스별 예고 연출 — 까치 조준경+레이저, 기계 록온, 비둘기 폭탄 투사체
+                var telegraphAttacker = Battle.GetUnit(strike.attackerId);
+                if (telegraphAttacker != null && strike.cells.Count > 0 && (mineStrike || AnyCellVisible(strike)))
+                {
+                    var visCells = new List<Vector3>();
+                    foreach (var c in strike.cells)
+                        if (mineStrike || playerVisibleFn(c)) visCells.Add(gridView.CoordToWorld(c));
+                    var fx = StrikeVfx.Telegraph(strike, telegraphAttacker.unitClass, Combat.IsFlying(telegraphAttacker),
+                        gridView.CoordToWorld(telegraphAttacker.pos), visCells, strike.impactTime - Battle.time);
+                    if (fx != null) strikeTelegraphFx[strike.id] = fx;
+
+                    // 폭탄 배달 — 왕복 비행 (시뮬 위치는 출발 칸 그대로, 연출만 난다)
+                    if (telegraphAttacker.unitClass == UnitClass.Grenadier && Combat.IsFlying(telegraphAttacker)
+                        && strike.cells.Count > 1)
+                    {
+                        var flier = viewRegistry.Get(strike.attackerId);
+                        if (flier != null && flier.gameObject.activeInHierarchy)
+                            flier.PlayBombFlight(gridView.CoordToWorld(strike.cells[0]),
+                                Mathf.Max(0.2f, strike.impactTime - Battle.time), 0.7f);
+                    }
                 }
 
                 // 예측 사격 매칭 — 직전 제출과 같은 공격자·목표 칸이면 표식 (G)
@@ -972,6 +1025,7 @@ namespace SeoYuGi.BattleView
                     HitStop.Do(0.05f);
                     ImpactFx.Punch(0.5f);
                     ImpactVfx.Sparks(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
+                    StrikeVfx.HitReaction(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
                     battleAudio.PlayThump(big: false);
                 }
             };
@@ -980,19 +1034,56 @@ namespace SeoYuGi.BattleView
             Combat.OnSkillCast += (unitId, kind) =>
             {
                 var v = viewRegistry.Get(unitId);
-                if (v != null && v.gameObject.activeInHierarchy)
+                bool viewActive = v != null && v.gameObject.activeInHierarchy;
+                if (viewActive)
                     FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
+
                 if (kind == SkillKind.Blink)
-                    blinkSnapIds.Add(unitId); // 점멸은 슬라이드 대신 번쩍+스냅 (SyncPresentation)
+                {
+                    // 순간이동이 정체성 — 걷기·슬라이드 없이 그 즉시 사라졌다 나타난다.
+                    // 출발지: 검은 잔상 + 연기 / 도착지: 등장 이펙트 (SkillVfx.Cast가 도착지 담당)
+                    var unit = Battle.GetUnit(unitId);
+                    if (viewActive)
+                    {
+                        var from = v.transform.position;
+                        GhostTrail.SpawnAt(v.gameObject, from, new Color(0.12f, 0.06f, 0.2f, 0.85f));
+                        if (VfxLibrary.Spawn(VfxLibrary.HcfxAppearStart, new Vector3(from.x, 0.1f, from.z), 1.5f, 0.8f) == null)
+                            VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f);
+                        CellFlash.Spawn(new Vector3(from.x, 0f, from.z), new Color(0.7f, 0.4f, 1f));
+                        v.CancelMove();
+                        v.SnapTo(unit.pos);
+                        CellFlash.Spawn(gridView.CoordToWorld(unit.pos), new Color(0.7f, 0.4f, 1f));
+                    }
+                    else blinkSnapIds.Add(unitId); // 시야 밖 — 다시 보일 때 스냅 (SyncPresentation)
+                }
+
+                if (kind == SkillKind.Dash && viewActive)
+                {
+                    // 돌파 잔상 — 출발지→도착지 경로에 슈슈슉 (시뮬은 이미 도착해 있다)
+                    var unit = Battle.GetUnit(unitId);
+                    var to = gridView.CoordToWorld(unit.pos);
+                    to.y = v.transform.position.y;
+                    GhostTrail.Spawn(v.gameObject, v.transform.position, to, 3,
+                        new Color(1f, 0.85f, 0.5f, 0.55f));
+                }
             };
 
             // 타격 연출 — 시야 밖 칸은 예고 필터와 같은 규칙으로 숨긴다 (정보 누출 방지)
             Combat.OnStrikeResolved += (strike, hit) =>
             {
+                // 예고 마커·레이저·투사체 정리 — 판정 순간이 곧 수명 종료
+                if (strikeTelegraphFx.TryGetValue(strike.id, out var telFx))
+                {
+                    strikeTelegraphFx.Remove(strike.id);
+                    if (telFx != null) Destroy(telFx);
+                }
+
                 int pillars = 0;
+                var visCells = new List<Vector3>();
                 foreach (var c in strike.cells)
                     if (strike.team == playerTeam || playerVisibleFn(c))
                     {
+                        visCells.Add(gridView.CoordToWorld(c));
                         CellFlash.Spawn(gridView.CoordToWorld(c), Color.white);
                         if (hit && pillars < 5) // 명중 판정 — 섬광 기둥 (예고→해소)
                         {
@@ -1000,6 +1091,11 @@ namespace SeoYuGi.BattleView
                             pillars++;
                         }
                     }
+
+                // 클래스별 임팩트 — 베기·주먹·발톱·폭발·트레이서·광선검 (기획: 캐릭터별 이펙트)
+                var striker = Battle.GetUnit(strike.attackerId);
+                if (striker != null && visCells.Count > 0)
+                    StrikeVfx.Resolve(strike, striker.unitClass, visCells, hit);
             };
 
             Combat.OnUnitDied += unitId =>
@@ -1010,6 +1106,14 @@ namespace SeoYuGi.BattleView
                     CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(1f, 0.2f, 0.15f), 0.6f, 1.1f);
                     FloatingText.Spawn(gridView.CoordToWorld(u.pos), "격파!", new Color(1f, 0.3f, 0.2f), 1.4f, 1.1f);
                 }
+            };
+
+            // 킬피드(우상단) + 음성 콜아웃 — 호스트/싱글에서 발생, 온라인이면 전 클라에 브로드캐스트
+            Combat.OnUnitKilled += (deadId, killerId) =>
+            {
+                ShowKill(deadId, killerId);
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendKill(deadId, killerId); // 클라 킬피드도 뜨게
             };
 
             Combat.OnStunned += (unitId, _) =>
@@ -1053,6 +1157,9 @@ namespace SeoYuGi.BattleView
             zoneDiscs.Clear();
             healPackViews.Clear();
             blinkSnapIds.Clear();
+            foreach (var kv in strikeTelegraphFx)
+                if (kv.Value != null) Destroy(kv.Value);
+            strikeTelegraphFx.Clear();
             viewRegistry.Clear();
         }
 
@@ -1096,6 +1203,30 @@ namespace SeoYuGi.BattleView
         {
             float length = battleAudio.PlayVoice(clip);
             hud.ShowSubtitle(subtitle, Mathf.Max(2.5f, length));
+        }
+
+        /// <summary>킬피드 한 줄 + 음성 콜아웃. 호스트·싱글·클라 공용 (클라는 NetSync.OnKilled 경유).</summary>
+        void ShowKill(int deadId, int killerId)
+        {
+            var dead = Battle?.GetUnit(deadId);
+            if (dead == null) return;
+            string victimName = FindSlot(deadId).callsign;
+            string killerName = null;
+            var feedColor = new Color(0.8f, 0.8f, 0.85f); // 환경사 기본 회색
+            var killer = Battle.GetUnit(killerId);
+            if (killer != null)
+            {
+                killerName = FindSlot(killerId).callsign;
+                feedColor = Color.Lerp(teamColors[killer.team], Color.white, 0.35f);
+            }
+            hud.AddKill(killerName, victimName, feedColor);
+            battleAudio.PlayVoice(dead.team == playerTeam ? "Voice_AllyDown" : "Voice_EnemyDown");
+        }
+
+        /// <summary>클라 — 호스트 처치 릴레이 수신. 킬피드·음성 동일하게.</summary>
+        void OnNetKilled(int deadId, int killerId)
+        {
+            if (IsNetClient) ShowKill(deadId, killerId);
         }
 
         bool IsUnitVisibleToPlayer(int unitId)

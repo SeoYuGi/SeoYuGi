@@ -3,7 +3,7 @@ using SeoYuGi.Prediction;
 
 namespace SeoYuGi.Ai
 {
-    // 기획서 v1.3 클래스 5종: 탱커(너구리)/밸런스(치즈태비)/어쌔신(검은고양이)/중거리(비둘기)/장거리(까치)
+    // 기획서 v1.3 클래스 5종: 탱커(너구리)/밸런스(고라니)/어쌔신(검은고양이)/중거리(비둘기)/장거리(까치)
     public enum ClassId { Tank, Balance, Assassin, Grenadier, Sniper }
 
     public enum CommandType { None, Move, Attack, Heavy, Guard, Decoy }

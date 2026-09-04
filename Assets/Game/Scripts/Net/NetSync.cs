@@ -25,6 +25,7 @@ namespace SeoYuGi.Net
         const string MsgTele = "sy_tg";
         const string MsgTeleEnd = "sy_te";
         const string MsgSkill = "sy_sk";
+        const string MsgKill = "sy_kl";
         const float SnapInterval = 1f / 12f;
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
@@ -40,6 +41,7 @@ namespace SeoYuGi.Net
         public static event Action<TelegraphStrike> OnTelegraph;         // 예고 주입 — 클라 미러용
         public static event Action<int, bool> OnTelegraphEnd;            // strikeId, hit — 판정 통보
         public static event Action<int, int> OnSkillCast;                // unitId, (int)SkillKind — 시전 연출
+        public static event Action<int, int> OnKilled;                   // deadId, killerId(-1=환경사) — 킬피드 릴레이
 
         // ── 호스트 수신 이벤트 ─────────────────
         public static event Action<ulong, BattleIntent> OnIntentRequest; // sender, intent — 소유권 검증은 러너
@@ -78,6 +80,7 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgTele, OnTeleMsg);
             mm.RegisterNamedMessageHandler(MsgTeleEnd, OnTeleEndMsg);
             mm.RegisterNamedMessageHandler(MsgSkill, OnSkillMsg);
+            mm.RegisterNamedMessageHandler(MsgKill, OnKillMsg);
         }
 
         /// <summary>호스트 — 스킬 시전 릴레이 (targeted). 즉발기는 예고가 없어 이게 유일한 통보.</summary>
@@ -194,6 +197,23 @@ namespace SeoYuGi.Net
             if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
             r.ReadValueSafe(out int unitId);
             OnHacked?.Invoke(unitId);
+        }
+
+        /// <summary>호스트 — 처치 릴레이 (킬피드가 전 클라에 뜨게). killerId -1 = 환경사.</summary>
+        public static void HostSendKill(int deadId, int killerId)
+        {
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe(deadId);
+            w.WriteValueSafe(killerId);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgKill, w);
+        }
+
+        static void OnKillMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int deadId);
+            r.ReadValueSafe(out int killerId);
+            OnKilled?.Invoke(deadId, killerId);
         }
 
         // ── 클라 → 호스트 ─────────────────────────────

@@ -25,7 +25,7 @@ public class UILobbyPopup : UIPopup
     static readonly string[] QuickLines =
     {
         "내가 탱커 할게요! (너구리)",
-        "내가 서포터 할게요! (치즈태비)",
+        "내가 서포터 할게요! (고라니)",
         "내가 암살자 할게요! (검은 고양이)",
         "내가 폭격수 할게요! (비둘기)",
         "내가 저격수 할게요! (까치)",
@@ -283,7 +283,7 @@ public class UILobbyPopup : UIPopup
         switch (cls)
         {
             case UnitClass.Tank: return "너구리";
-            case UnitClass.Balance: return "치즈태비";
+            case UnitClass.Balance: return "고라니";
             case UnitClass.Assassin: return "검은 고양이";
             case UnitClass.Grenadier: return "비둘기";
             case UnitClass.Sniper: return "까치";

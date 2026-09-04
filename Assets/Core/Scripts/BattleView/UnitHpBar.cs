@@ -4,28 +4,34 @@ using UnityEngine;
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 유닛 머리 위 콜사인 + HP 핍 (임시 — 아트 HUD 붙으면 교체). 코드 생성 쿼드 + 카메라 빌보드.
+    /// 유닛 머리 위 콜사인 + HP 바 (비율제 — 칸 핍은 가시성 문제로 폐기, 2026-09).
+    /// 코드 생성 쿼드 + 카메라 빌보드. 감소는 잔상 바가 따라붙어 "얼마나 깎였나"가 읽힌다.
     /// </summary>
     public class UnitHpBar : MonoBehaviour
     {
-        const float PipSize = 0.14f;
-        const float PipGap = 0.17f;
+        const float BarWidth = 0.62f;
+        const float BarHeight = 0.09f;
         const float Height = 1.05f; // 유닛 위 높이
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         static readonly Color FullColor = new Color(0.3f, 0.9f, 0.4f);
         static readonly Color EmptyColor = new Color(0.13f, 0.13f, 0.16f);
+        static readonly Color ChipColor = new Color(1f, 0.85f, 0.4f); // 감소 잔상 — 깎인 양 강조
 
         UnitState unit;
         Transform follow;
-        Renderer[] pips;
         Color pipColor = FullColor;
         bool alwaysShowPips;
         MaterialPropertyBlock mpb;
         Camera cam;
 
-        /// <param name="pipColor">핍 색 — 아군 초록, 적 빨강 (색 규칙 G). default = 초록.</param>
-        /// <param name="alwaysShowPips">true면 풀피여도 핍 표시 (내 유닛). 나머지는 다쳤을 때만.</param>
+        Renderer backRend, fillRend, chipRend;
+        Transform fillTr, chipTr;
+        float shownFrac = 1f; // 즉시 반영되는 실제 비율
+        float chipFrac = 1f;  // 천천히 따라오는 잔상 비율
+
+        /// <param name="pipColor">바 색 — 아군 초록, 적 빨강 (색 규칙 G). default = 초록.</param>
+        /// <param name="alwaysShowPips">true면 풀피여도 표시 (내 유닛). 나머지는 다쳤을 때만.</param>
         public static UnitHpBar Create(Transform parent, UnitState unit, Transform follow,
             string displayName = null, Color nameColor = default, Color pipColor = default, bool alwaysShowPips = false)
         {
@@ -46,7 +52,7 @@ namespace SeoYuGi.BattleView
         {
             var go = new GameObject("Name");
             go.transform.SetParent(transform);
-            go.transform.localPosition = new Vector3(0f, PipSize * 0.8f, 0f);
+            go.transform.localPosition = new Vector3(0f, BarHeight * 1.2f, 0f);
             var tm = go.AddComponent<TextMesh>();
             tm.text = displayName;
             tm.fontSize = 48;              // 큰 폰트 + 작은 characterSize = 선명
@@ -57,20 +63,50 @@ namespace SeoYuGi.BattleView
             GameFonts.Apply(tm, GameFonts.Hud); // 콜사인 = SUIT
         }
 
+        Renderer MakeQuad(string name, float z)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Destroy(quad.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
+            quad.name = name;
+            quad.transform.SetParent(transform);
+            quad.transform.localPosition = new Vector3(0f, 0f, z);
+            var r = quad.GetComponent<Renderer>();
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            return r;
+        }
+
         void Build()
         {
             mpb = new MaterialPropertyBlock();
             cam = Camera.main;
-            pips = new Renderer[unit.maxHp];
-            for (int i = 0; i < unit.maxHp; i++)
-            {
-                var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                Destroy(quad.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
-                quad.transform.SetParent(transform);
-                quad.transform.localPosition = new Vector3((i - (unit.maxHp - 1) * 0.5f) * PipGap, 0f, 0f);
-                quad.transform.localScale = new Vector3(PipSize, PipSize, 1f);
-                pips[i] = quad.GetComponent<Renderer>();
-            }
+            // z 겹침: 배경(뒤) > 잔상 > 채움(앞) — 카메라 빌보드라 -z가 카메라 쪽
+            backRend = MakeQuad("Back", 0.002f);
+            backRend.transform.localScale = new Vector3(BarWidth + 0.02f, BarHeight + 0.02f, 1f);
+            chipRend = MakeQuad("Chip", 0.001f);
+            chipTr = chipRend.transform;
+            fillRend = MakeQuad("Fill", 0f);
+            fillTr = fillRend.transform;
+            shownFrac = chipFrac = Frac;
+            Paint(backRend, EmptyColor);
+        }
+
+        float Frac => unit.maxHp <= 0 ? 0f : Mathf.Clamp01(unit.hp / (float)unit.maxHp);
+
+        void Paint(Renderer r, Color c)
+        {
+            mpb.SetColor(BaseColorId, c);
+            r.SetPropertyBlock(mpb);
+        }
+
+        /// <summary>왼쪽 고정 채움 — 폭 스케일 + 중심 보정.</summary>
+        static void Layout(Transform tr, float frac)
+        {
+            float w = BarWidth * Mathf.Clamp01(frac);
+            tr.localScale = new Vector3(Mathf.Max(w, 0.0001f), BarHeight, 1f);
+            var p = tr.localPosition;
+            p.x = -BarWidth * 0.5f + w * 0.5f;
+            tr.localPosition = p;
         }
 
         /// <summary>가시성은 러너가 결정 — 사망·시야 밖이면 숨긴다.</summary>
@@ -86,15 +122,30 @@ namespace SeoYuGi.BattleView
             transform.position = follow.position + Vector3.up * Height;
             if (cam != null) transform.rotation = cam.transform.rotation;
 
-            // 풀피는 핍 숨김 (내 유닛 제외) — 머리 위 소음 감소 (가시성 F)
-            bool showPips = alwaysShowPips || unit.hp < unit.maxHp;
-            for (int i = 0; i < pips.Length; i++)
+            // 풀피는 바 숨김 (내 유닛 제외) — 머리 위 소음 감소 (가시성 F)
+            bool show = alwaysShowPips || unit.hp < unit.maxHp;
+            if (backRend.enabled != show)
             {
-                if (pips[i].enabled != showPips) pips[i].enabled = showPips;
-                if (!showPips) continue;
-                mpb.SetColor(BaseColorId, i < unit.hp ? pipColor : EmptyColor);
-                pips[i].SetPropertyBlock(mpb);
+                backRend.enabled = show;
+                fillRend.enabled = show;
+                chipRend.enabled = show;
             }
+            if (!show) return;
+
+            shownFrac = Frac;
+            // 잔상 바 — 깎인 직후 0.5초쯤 노랗게 남았다가 따라 내려온다 (회복은 즉시 동기화)
+            chipFrac = chipFrac < shownFrac ? shownFrac : Mathf.MoveTowards(chipFrac, shownFrac, Time.deltaTime * 0.9f);
+
+            Layout(fillTr, shownFrac);
+            Layout(chipTr, chipFrac);
+
+            // 낮은 체력은 색으로도 경고 — 30% 이하 맥동
+            var c = pipColor;
+            if (shownFrac <= 0.3f)
+                c = Color.Lerp(pipColor, Color.white, 0.35f + 0.35f * Mathf.Sin(Time.time * 7f));
+            Paint(fillRend, c);
+            Paint(chipRend, ChipColor);
+            Paint(backRend, EmptyColor);
         }
     }
 }

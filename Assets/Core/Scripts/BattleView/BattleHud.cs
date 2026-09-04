@@ -36,10 +36,19 @@ namespace SeoYuGi.BattleView
         string subtitleText;
         float subtitleUntil;
 
+        // 큰 중앙 공지 (거점 점령 등) — 자막과 별개, 상단 중앙에 크게
+        string announceText;
+        float announceUntil;
+        Color announceColor = Color.white;
+
         // 빠른채팅 로그 — 좌하단에 최근 3줄. 자막(중앙)과 자리가 겹치지 않는다.
         struct ChatEntry { public string text; public Color color; public float until; }
         readonly List<ChatEntry> chatLog = new List<ChatEntry>();
         const int ChatLogMax = 3;
+
+        // 킬피드 — 우상단에 최근 5줄. "킬러 ⚔ 피해자".
+        readonly List<ChatEntry> killFeed = new List<ChatEntry>();
+        const int KillFeedMax = 5;
 
         /// <summary>Tab 홀드 중 프리셋 치트시트 표시 — BattleRunner가 매 프레임 갱신.</summary>
         public bool ShowChatCheatsheet { get; set; }
@@ -49,7 +58,7 @@ namespace SeoYuGi.BattleView
         bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
 
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
-        GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle;
+        GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle, killStyle, announceStyle;
         GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
         bool stylesReady;
         Texture2D iconMove, iconAttack, iconGuard, iconSkill, panelBriefing; // Resources/UI — 없으면 무시
@@ -212,7 +221,23 @@ namespace SeoYuGi.BattleView
             subtitleUntil = Time.time + seconds;
         }
 
+        /// <summary>큰 중앙 공지 — 거점 점령 등 "지금 이거 봐" 급. 팀 색으로.</summary>
+        public void ShowAnnounce(string text, Color color, float seconds)
+        {
+            announceText = text;
+            announceColor = color;
+            announceUntil = Time.time + seconds;
+        }
+
         /// <summary>빠른채팅 수신 — 좌하단 로그에 한 줄 추가. 팀 필터는 호출부 담당.</summary>
+        /// <summary>킬피드 한 줄 — 우상단. color = 가해자 팀 색. killer=null이면 환경사("처치됨").</summary>
+        public void AddKill(string killer, string victim, Color color)
+        {
+            string text = string.IsNullOrEmpty(killer) ? $"{victim} 처치됨" : $"{killer}  ⚔  {victim}";
+            killFeed.Add(new ChatEntry { text = text, color = color, until = Time.time + 6f });
+            if (killFeed.Count > KillFeedMax) killFeed.RemoveAt(0);
+        }
+
         public void AddChatLine(string callsign, string text, Color color)
         {
             chatLog.Add(new ChatEntry { text = $"[{callsign}] {text}", color = color, until = Time.time + 6f });
@@ -232,7 +257,9 @@ namespace SeoYuGi.BattleView
                 DrawBanner();
                 DrawBottomBar();
                 DrawChatLog();
+                DrawKillFeed();
                 DrawChatPanel();
+                DrawAnnounce();
                 DrawCountdown();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
@@ -253,6 +280,8 @@ namespace SeoYuGi.BattleView
             roundStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
             bannerTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
+            killStyle = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+            announceStyle = new GUIStyle(GUI.skin.label) { fontSize = 30, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             bannerStyle = new GUIStyle(GUI.skin.label) { fontSize = 44, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefLineStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleLeft, wordWrap = true };
@@ -276,6 +305,8 @@ namespace SeoYuGi.BattleView
             GameFonts.Apply(chipStyle, GameFonts.HudHeavy);
             GameFonts.Apply(roundStyle, GameFonts.Hud);
             GameFonts.Apply(labelStyle, GameFonts.Hud);
+            GameFonts.Apply(killStyle, GameFonts.HudHeavy);
+            GameFonts.Apply(announceStyle, GameFonts.Title);
             GameFonts.Apply(briefLineStyle, GameFonts.Hud);
             GameFonts.Apply(keyStyle, GameFonts.Hud);
             GameFonts.Apply(slotNameStyle, GameFonts.Hud);
@@ -560,6 +591,25 @@ namespace SeoYuGi.BattleView
             GUI.color = Color.white;
         }
 
+        /// <summary>상단 중앙 큰 공지 — 거점 점령 등. 등장 팝 + 마지막 0.5초 페이드.</summary>
+        void DrawAnnounce()
+        {
+            if (string.IsNullOrEmpty(announceText) || Time.time >= announceUntil) return;
+
+            float remain = announceUntil - Time.time;
+            float a = Mathf.Clamp01(remain / 0.5f); // 마지막 0.5초 페이드아웃
+
+            var box = new Rect(W / 2f - 320, H * 0.24f, 640, 66);
+            GUI.color = new Color(0f, 0f, 0f, 0.6f * a);
+            GUI.DrawTexture(box, Texture2D.whiteTexture);
+            // 팀 색 상·하 액센트 바
+            GUI.color = new Color(announceColor.r, announceColor.g, announceColor.b, a);
+            GUI.DrawTexture(new Rect(box.x, box.y, box.width, 3f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(box.x, box.y + box.height - 3f, box.width, 3f), Texture2D.whiteTexture);
+            GUI.Label(new Rect(box.x, box.y + 12, box.width, 42), announceText, announceStyle);
+            GUI.color = Color.white;
+        }
+
         void DrawSubtitle()
         {
             if (string.IsNullOrEmpty(subtitleText) || Time.time >= subtitleUntil) return;
@@ -595,6 +645,36 @@ namespace SeoYuGi.BattleView
                 c.a = Mathf.Clamp01(remain);
                 GUI.color = c;
                 GUI.Label(new Rect(20, y + i * lineH, boxW - 16, lineH), chatLog[i].text, labelStyle);
+            }
+            GUI.color = Color.white;
+        }
+
+        /// <summary>킬피드 — 우상단(빠른채팅 토글 아래). 최근 킬 5줄, 가해자 팀 색, 마지막 1초 페이드.</summary>
+        void DrawKillFeed()
+        {
+            for (int i = killFeed.Count - 1; i >= 0; i--)
+                if (Time.time >= killFeed[i].until) killFeed.RemoveAt(i);
+            if (killFeed.Count == 0) return;
+
+            const float lineH = 28f, boxW = 280f;
+            float x = W - boxW - 12f, y0 = 46f; // 빠른채팅 토글(y=12,h=26) 아래
+
+            for (int i = 0; i < killFeed.Count; i++)
+            {
+                float y = y0 + i * lineH;
+                float remain = killFeed[i].until - Time.time;
+                float a = Mathf.Clamp01(remain);
+                var c = killFeed[i].color;
+
+                // 진한 배경 + 우측 팀색 액센트 바 — 어느 맵 위에서도 읽히게
+                GUI.color = new Color(0f, 0f, 0f, 0.72f * a);
+                GUI.DrawTexture(new Rect(x, y, boxW, lineH - 3f), Texture2D.whiteTexture);
+                GUI.color = new Color(c.r, c.g, c.b, a);
+                GUI.DrawTexture(new Rect(x + boxW - 3f, y, 3f, lineH - 3f), Texture2D.whiteTexture);
+
+                c.a = a;
+                GUI.color = c;
+                GUI.Label(new Rect(x + 8f, y, boxW - 18f, lineH - 3f), killFeed[i].text, killStyle);
             }
             GUI.color = Color.white;
         }

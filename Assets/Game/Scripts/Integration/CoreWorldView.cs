@@ -7,35 +7,33 @@ using AiCell = SeoYuGi.Prediction.Cell; // Battle.Cell과 이름 충돌 — 반�
 namespace SeoYuGi.Integration
 {
     /// <summary>
-    /// Core(BattleState/CombatSystem) → IWorldView 어댑터. AiBrain이 읽는 스냅샷.
-    /// 매 프레임 Refresh() 호출 후 브레인들에 넘길 것.
+    /// Core(BattleState/CombatSystem/RoundSystem/VisionSystem) → IWorldView 어댑터. AiBrain이 읽는 스냅샷.
+    /// 매 프레임 Refresh() 호출 후 브레인들에 넘길 것. 라운드마다 새로 만든다(matchRound 고정 주입).
     ///
-    /// 스텁 상태(해당 시스템 구현 시 교체):
-    ///  - Round = 1 (라운드 시스템 전)
-    ///  - IsVisibleTo = 항상 true (시야 시스템 전 — 전장 공개)
-    ///  - HasDecoy = false (디코이 전)
-    ///  - Zones: 거점 3자리(좌/중/우 중앙열)를 미소유로 노출 — 점유 로직 전이지만 AI 기동 목적지로 제공
+    /// 스텁 상태: HasDecoy = false (디코이 장비 구현 전).
     /// </summary>
     public class CoreWorldView : IWorldView
     {
         readonly BattleState state;
         readonly CombatSystem combat;
+        readonly RoundSystem round;
+        readonly VisionSystem vision;
         readonly int humanUnitId;
+        readonly int matchRound;
 
         readonly List<ActorState> actors = new List<ActorState>();
         readonly List<ZoneState> zones = new List<ZoneState>();
         readonly List<Telegraph> telegraphs = new List<Telegraph>();
 
-        public CoreWorldView(BattleState state, CombatSystem combat, int humanUnitId)
+        public CoreWorldView(BattleState state, CombatSystem combat, RoundSystem round,
+            VisionSystem vision, int humanUnitId, int matchRound)
         {
             this.state = state;
             this.combat = combat;
+            this.round = round;
+            this.vision = vision;
             this.humanUnitId = humanUnitId;
-
-            // 거점 3개 — 중앙열 좌/중/우 (기획서 §03. 9×9 기준 (1,4)/(4,4)/(7,4))
-            int midY = state.Grid.Height / 2;
-            foreach (int x in new[] { 1, state.Grid.Width / 2, state.Grid.Width - 2 })
-                zones.Add(new ZoneState { Cell = new AiCell(x, midY), HasOwner = false });
+            this.matchRound = matchRound;
         }
 
         /// <summary>브레인 틱 전에 매 프레임 1회 호출 — 액터/예고 스냅샷 갱신.</summary>
@@ -54,6 +52,15 @@ namespace SeoYuGi.Integration
                     IsHuman = u.id == humanUnitId
                 });
 
+            zones.Clear();
+            foreach (var z in round.Zones)
+                zones.Add(new ZoneState
+                {
+                    Cell = new AiCell(z.cell.x, z.cell.y),
+                    HasOwner = z.owner >= 0,
+                    Owner = z.owner >= 0 ? (TeamId)z.owner : default
+                });
+
             telegraphs.Clear();
             foreach (var strike in combat.ActiveStrikes)
             foreach (var c in strike.cells)
@@ -66,7 +73,7 @@ namespace SeoYuGi.Integration
         }
 
         public float Time => state.time;
-        public int Round => 1;
+        public int Round => matchRound;
         public IReadOnlyList<ActorState> Actors => actors;
         public IReadOnlyList<ZoneState> Zones => zones;
         public IReadOnlyList<Telegraph> Telegraphs => telegraphs;
@@ -75,7 +82,8 @@ namespace SeoYuGi.Integration
 
         public bool IsWalkable(AiCell cell) => state.Grid.IsWalkable(new Coord(cell.X, cell.Y));
 
-        public bool IsVisibleTo(TeamId team, AiCell cell) => true;
+        public bool IsVisibleTo(TeamId team, AiCell cell) =>
+            vision.IsVisibleTo((int)team, new Coord(cell.X, cell.Y));
 
         public bool HasDecoy(int actorId) => false;
     }

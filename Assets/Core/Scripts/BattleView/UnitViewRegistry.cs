@@ -13,5 +13,8 @@ namespace SeoYuGi.BattleView
         public UnitView Get(int unitId) => views.TryGetValue(unitId, out var v) ? v : null;
 
         public IEnumerable<UnitView> All => views.Values;
+
+        /// <summary>라운드 재시작 — 파괴된 뷰 참조 제거.</summary>
+        public void Clear() => views.Clear();
     }
 }

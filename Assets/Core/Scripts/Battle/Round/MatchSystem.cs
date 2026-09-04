@@ -1,0 +1,36 @@
+namespace SeoYuGi.Battle
+{
+    /// <summary>
+    /// 매치 = 라운드 × 3, 2선승 (기획서 §05).
+    /// 라운드 사이 브리핑·Predictor.SetRound는 바깥(러너)이 처리 — 여기는 스코어만.
+    /// </summary>
+    public class MatchSystem
+    {
+        public const int MaxRounds = 3;
+        public const int WinsNeeded = 2;
+
+        /// <summary>진행 중인 라운드 번호 1..3. 라운드 결과 기록 시 자동 전진.</summary>
+        public int CurrentRound { get; private set; } = 1;
+
+        /// <summary>-1 = 진행 중. 0/1 = 매치 승리 팀.</summary>
+        public int MatchWinner { get; private set; } = -1;
+
+        public bool IsOver => MatchWinner != -1;
+
+        readonly int[] wins = new int[2];
+
+        public int GetWins(int team) => wins[team];
+
+        /// <summary>라운드 승리 팀 기록. 매치가 끝났으면 true.</summary>
+        public bool RecordRoundResult(int winnerTeam)
+        {
+            if (IsOver) return true;
+            wins[winnerTeam]++;
+            if (wins[winnerTeam] >= WinsNeeded)
+                MatchWinner = winnerTeam;
+            else
+                CurrentRound++;
+            return IsOver;
+        }
+    }
+}

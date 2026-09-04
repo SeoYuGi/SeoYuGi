@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using SeoYuGi.Battle;
 using UnityEngine;
@@ -16,19 +17,24 @@ namespace SeoYuGi.BattleView
         [Range(0.5f, 1f)]
         [SerializeField] float tileFill = 0.96f;  // 타일이 칸을 채우는 비율. 나머지가 틈 = 그리드 라인
         [SerializeField] float wallHeight = 0.6f; // 장애물 벽 블록 높이
+        [SerializeField] Color fogColor = new Color(0.22f, 0.24f, 0.3f); // 시야 밖 타일 (세부기획 B)
 
         [Header("Textures")]
         [SerializeField] Texture2D floorTextureA;
         [SerializeField] Texture2D floorTextureB;   // 바닥에 드문드문 섞이는 변형 (~20%)
         [SerializeField] Texture2D obstacleTexture;
+        [SerializeField] Texture2D zoneTexture;     // 거점 타일
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP
 
         GridModel grid;
         Renderer[,] tiles;
         readonly List<Coord> highlighted = new List<Coord>();
+        // 하이라이트가 걷힌 뒤에도 유지되는 기본 틴트 (거점 소유 표시 등)
+        readonly Dictionary<Coord, Color> baseTints = new Dictionary<Coord, Color>();
+        readonly HashSet<Coord> fogged = new HashSet<Coord>();
         MaterialPropertyBlock mpb;
-        Material matFloorA, matFloorB, matObstacle;
+        Material matFloorA, matFloorB, matObstacle, matZone;
 
         public void Build(GridModel grid)
         {
@@ -79,6 +85,7 @@ namespace SeoYuGi.BattleView
                 matFloorA = new Material(template) { mainTexture = floorTextureA };
                 matFloorB = new Material(template) { mainTexture = floorTextureB != null ? floorTextureB : floorTextureA };
                 matObstacle = new Material(template) { mainTexture = obstacleTexture != null ? obstacleTexture : floorTextureA };
+                matZone = new Material(template) { mainTexture = zoneTexture != null ? zoneTexture : floorTextureA };
             }
             if (isWall) return matObstacle;
             return FloorVariant(c) ? matFloorB : matFloorA;
@@ -116,8 +123,75 @@ namespace SeoYuGi.BattleView
         public void ClearHighlights()
         {
             foreach (var c in highlighted)
-                tiles[c.x, c.y].SetPropertyBlock(null); // 틴트 제거 → 원본 텍스처 색
+                ResetTile(c);
             highlighted.Clear();
+        }
+
+        /// <summary>거점 칸을 거점 텍스처로 표시. Build 이후 호출.</summary>
+        public void MarkZones(IReadOnlyList<Coord> zoneCells)
+        {
+            if (matZone == null) return; // 텍스처 미사용 모드
+            foreach (var c in zoneCells)
+                tiles[c.x, c.y].sharedMaterial = matZone;
+        }
+
+        /// <summary>하이라이트가 없을 때 유지되는 틴트 (거점 소유 팀 색 등).</summary>
+        public void SetBaseTint(Coord c, Color color)
+        {
+            baseTints[c] = color;
+            if (!highlighted.Contains(c)) ResetTile(c);
+        }
+
+        /// <summary>거점 소유 틴트 전부 해제 — 라운드 재시작용.</summary>
+        public void ClearBaseTints()
+        {
+            baseTints.Clear();
+            RepaintAll();
+        }
+
+        /// <summary>
+        /// 팀 시야로 안개 갱신 — 매 프레임 호출 (세부기획 B).
+        /// 시야 밖 타일은 fogColor로 어둡게. 하이라이트(이동 범위·예고)가 안개보다 우선.
+        /// </summary>
+        public void UpdateFog(Func<Coord, bool> visible)
+        {
+            fogged.Clear();
+            for (int y = 0; y < grid.Height; y++)
+            for (int x = 0; x < grid.Width; x++)
+            {
+                var c = new Coord(x, y);
+                if (!visible(c)) fogged.Add(c);
+            }
+            RepaintAll();
+        }
+
+        void RepaintAll()
+        {
+            if (tiles == null) return;
+            for (int y = 0; y < grid.Height; y++)
+            for (int x = 0; x < grid.Width; x++)
+            {
+                var c = new Coord(x, y);
+                if (!highlighted.Contains(c)) ResetTile(c);
+            }
+        }
+
+        void ResetTile(Coord c)
+        {
+            if (fogged.Contains(c))
+            {
+                mpb.SetColor(BaseColorId, fogColor);
+                tiles[c.x, c.y].SetPropertyBlock(mpb);
+            }
+            else if (baseTints.TryGetValue(c, out var tint))
+            {
+                mpb.SetColor(BaseColorId, tint);
+                tiles[c.x, c.y].SetPropertyBlock(mpb);
+            }
+            else
+            {
+                tiles[c.x, c.y].SetPropertyBlock(null); // 원본 텍스처 색
+            }
         }
     }
 }

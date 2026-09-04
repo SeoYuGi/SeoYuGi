@@ -429,13 +429,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5a9dd0a67192e547a2b066e3bc37cc9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.GridView
-  tilePrefab: {fileID: 0}
   tileSize: 1
   tileFill: 0.92
   wallHeight: 0.6
   floorTextureA: {fileID: 2800000, guid: aaf62b519764d8248a66d43d8efd2436, type: 3}
   floorTextureB: {fileID: 2800000, guid: 969d882d524bb304fb5a7e07a6b7c785, type: 3}
   obstacleTexture: {fileID: 2800000, guid: 8d9736e16b34e2a4fb013daf88d005c4, type: 3}
+  zoneTexture: {fileID: 2800000, guid: 7c10bfd1c60c01448953f0eafbeba087, type: 3}
 --- !u!114 &682819980
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -459,6 +459,21 @@ MonoBehaviour:
       regenDelaySeconds: 1
       yellowCooldownSeconds: 3
     hopDuration: 0.15
+  combatConfig:
+    apMax: 5
+    apRegenPerSecond: 1
+    costAttack: 2
+    costSkill: 3
+    costGuard: 1
+    attackDamage: 1
+    attackTelegraphSeconds: 0.5
+    hitRefund: 1
+    guardDurationSeconds: 0.5
+    blinkBuffSeconds: 3
+    blinkBuffBonus: 1
+  roundConfig:
+    captureSeconds: 2
+    roundSeconds: 120
   mapSeed: 20260904
   wallTiles: 8
   spawns:
@@ -467,35 +482,42 @@ MonoBehaviour:
     pos:
       x: 2
       y: 1
+    cls: 0
   - id: 2
     team: 0
     pos:
       x: 4
       y: 1
+    cls: 1
   - id: 3
     team: 0
     pos:
       x: 6
       y: 1
+    cls: 4
   - id: 4
     team: 1
     pos:
       x: 2
       y: 7
+    cls: 0
   - id: 5
     team: 1
     pos:
       x: 4
       y: 7
+    cls: 1
   - id: 6
     team: 1
     pos:
       x: 6
       y: 7
+    cls: 4
   teamColors:
   - {r: 0.25, g: 0.5, b: 1, a: 1}
   - {r: 1, g: 0.3, b: 0.25, a: 1}
-  unitPrefab: {fileID: 1940053697605542028, guid: 49830bab96d87954aaf74cb9b214acf0, type: 3}
+  playerUnitId: 2
+  unitPrefab: {fileID: 0}
 --- !u!114 &682819981
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -510,6 +532,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SeoYuGi.BattleView.UnitMoveInput
   blueRangeColor: {r: 0.3, g: 0.6, b: 1, a: 1}
   yellowRangeColor: {r: 1, g: 0.85, b: 0.2, a: 1}
+  telegraphColor: {r: 0.91, g: 0.25, b: 0.12, a: 1}
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0

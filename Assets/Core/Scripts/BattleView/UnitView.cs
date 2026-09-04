@@ -87,6 +87,12 @@ namespace SeoYuGi.BattleView
             moving = null;
         }
 
+        void OnDisable()
+        {
+            // 시야에서 숨겨질 때 코루틴이 강제 종료됨 — IsMoving이 영구 true로 남지 않게
+            moving = null;
+        }
+
         void ApplyColor(Color color)
         {
             mpb.SetColor(BaseColorId, color);

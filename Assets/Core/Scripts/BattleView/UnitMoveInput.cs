@@ -25,20 +25,29 @@ namespace SeoYuGi.BattleView
         UnitViewRegistry views;
 
         int selectedUnitId = -1;
+
+        /// <summary>HUD용 — 내 유닛이 선택돼 조작 가능한 상태인가.</summary>
+        public bool HasSelection => selectedUnitId != -1;
         readonly List<Coord> blue = new List<Coord>();
         readonly List<Coord> yellow = new List<Coord>();
         readonly List<Coord> cells = new List<Coord>();
         readonly List<Color> colors = new List<Color>();
 
         int playerUnitId = -1; // 조작 가능한 유닛 (기획서 §04: 내 캐릭터 1기뿐)
+        int playerTeam;
+        System.Func<Coord, bool> isCellVisible; // 내 팀 시야 — 적 예고 필터 (세부기획 B)
 
-        public void Init(MoveSystem moveSystem, CombatSystem combat, GridView gridView, UnitViewRegistry views, int playerUnitId)
+        public void Init(MoveSystem moveSystem, CombatSystem combat, GridView gridView, UnitViewRegistry views,
+            int playerUnitId, System.Func<Coord, bool> isCellVisible = null)
         {
             this.moveSystem = moveSystem;
             this.combat = combat;
             this.gridView = gridView;
             this.views = views;
             this.playerUnitId = playerUnitId;
+            this.isCellVisible = isCellVisible;
+            playerTeam = moveSystem.State.GetUnit(playerUnitId).team;
+            selectedUnitId = -1; // 라운드 재시작 — 이전 라운드 선택은 무효
             rayCamera = Camera.main;
         }
 
@@ -141,12 +150,17 @@ namespace SeoYuGi.BattleView
                 foreach (var c in yellow) { cells.Add(c); colors.Add(yellowRangeColor); }
             }
 
-            // 설치 공격 예고는 항상 표시 — 같은 칸이면 빨강이 이김 (나중 쓰기 우선)
+            // 설치 공격 예고 표시 — 같은 칸이면 빨강이 이김 (나중 쓰기 우선).
+            // 적 예고는 내 팀 시야 안의 칸만 보인다 — 안개 속 예측 설치가 서프라이즈로 남게.
             foreach (var strike in combat.ActiveStrikes)
-            foreach (var c in strike.cells)
             {
-                cells.Add(c);
-                colors.Add(telegraphColor);
+                bool mine = strike.team == playerTeam;
+                foreach (var c in strike.cells)
+                {
+                    if (!mine && isCellVisible != null && !isCellVisible(c)) continue;
+                    cells.Add(c);
+                    colors.Add(telegraphColor);
+                }
             }
 
             gridView.SetHighlights(cells, colors);

@@ -6,58 +6,67 @@ using SeoYuGi.BattleView;
 namespace SeoYuGi.Art
 {
     /// <summary>
-    /// 스킨 모델의 대기↔달리기 애니메이션 크로스페이드.
-    /// AnimatorController 없이 Playables로 직접 재생 — 클립은 GLB 서브에셋에서 온다.
-    /// UnitView.IsMoving을 보고 자동 전환. run이 없으면 idle만 루프.
+    /// 클립 하나를 무한 루프 재생 (AnimatorController 불필요, GLB 서브에셋 클립용).
     /// </summary>
-    public class SkinAnimator : MonoBehaviour
+    public class SkinLoopAnimator : MonoBehaviour
     {
-        const float BlendSpeed = 8f;
-
-        UnitView view;
         PlayableGraph graph;
-        AnimationMixerPlayable mixer;
-        bool hasRun;
-        float blend;
+        AnimationClipPlayable playable;
+        float length;
 
-        public void Init(UnitView view, AnimationClip idle, AnimationClip run)
+        public void Init(AnimationClip clip)
         {
-            this.view = view;
-            hasRun = run != null;
-
             var animator = GetComponent<Animator>();
             if (animator == null) animator = gameObject.AddComponent<Animator>();
 
-            graph = PlayableGraph.Create("SkinAnimator");
+            length = clip.length;
+            graph = PlayableGraph.Create("SkinLoop");
             graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-            mixer = AnimationMixerPlayable.Create(graph, 2);
-
-            var idlePlayable = AnimationClipPlayable.Create(graph, idle);
-            graph.Connect(idlePlayable, 0, mixer, 0);
-            if (hasRun)
-            {
-                var runPlayable = AnimationClipPlayable.Create(graph, run);
-                graph.Connect(runPlayable, 0, mixer, 1);
-            }
-            mixer.SetInputWeight(0, 1f);
-
+            playable = AnimationClipPlayable.Create(graph, clip);
             var output = AnimationPlayableOutput.Create(graph, "out", animator);
-            output.SetSourcePlayable(mixer);
+            output.SetSourcePlayable(playable);
             graph.Play();
         }
 
         void Update()
         {
-            if (!hasRun || !graph.IsValid()) return;
-            float target = view != null && view.IsMoving ? 1f : 0f;
-            blend = Mathf.MoveTowards(blend, target, Time.deltaTime * BlendSpeed);
-            mixer.SetInputWeight(0, 1f - blend);
-            mixer.SetInputWeight(1, blend);
+            // 임포트 클립의 랩 모드에 기대지 않고 수동 루프
+            if (graph.IsValid() && length > 0f && playable.GetTime() >= length)
+                playable.SetTime(playable.GetTime() % length);
         }
 
         void OnDestroy()
         {
             if (graph.IsValid()) graph.Destroy();
+        }
+    }
+
+    /// <summary>
+    /// 대기(정적 모델) ↔ 이동(달리기 애니 모델) 스왑.
+    /// 대기 애니 없이도 살아 보이게 — 이동 시작 순간에 바꿔서 전환이 안 튄다.
+    /// </summary>
+    public class MoveSwapSkin : MonoBehaviour
+    {
+        UnitView view;
+        GameObject idleGo;
+        GameObject runGo;
+        bool moving;
+
+        public void Init(UnitView view, GameObject idleGo, GameObject runGo)
+        {
+            this.view = view;
+            this.idleGo = idleGo;
+            this.runGo = runGo;
+            runGo.SetActive(false);
+        }
+
+        void Update()
+        {
+            bool now = view != null && view.IsMoving;
+            if (now == moving) return;
+            moving = now;
+            idleGo.SetActive(!moving);
+            runGo.SetActive(moving);
         }
     }
 

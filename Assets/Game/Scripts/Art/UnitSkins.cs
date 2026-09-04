@@ -87,31 +87,36 @@ namespace SeoYuGi.Art
 
             if (!Models.TryGetValue((unit.team, unit.unitClass), out var resource)) return;
 
-            // 애니 버전이 있으면 그걸 스킨으로 (리그+클립이 한 몸이라 호환 보장)
-            AnimationClip idle = null, run = null;
-            var prefab = Resources.Load<GameObject>(resource + "_idle");
-            if (prefab != null)
-            {
-                idle = FirstClip(resource + "_idle");
-                run = FirstClip(resource + "_run");
-            }
-            else
-            {
-                prefab = LoadModel(resource);
-            }
+            var prefab = LoadModel(resource);
             if (prefab == null) return; // 모델 없으면 큐브 유지 (미도착분 폴백)
-
-            var skin = Instantiate(prefab, view.transform);
-            skin.name = SkinName;
-            skin.transform.localPosition = Vector3.zero;
-            skin.transform.localRotation = Quaternion.identity;
 
             // BattleRunner가 클래스별로 큐브 스케일을 키워놓음 — 그 비율만큼 스킨도 크게
             float classScale = view.transform.localScale.y / BaseCubeScale;
-            FitToUnit(skin, view.transform, BaseHeight * classScale);
+            float height = BaseHeight * classScale;
 
-            if (idle != null)
-                skin.AddComponent<SkinAnimator>().Init(view, idle, run);
+            var skin = new GameObject(SkinName);
+            skin.transform.SetParent(view.transform, false);
+
+            // 대기 = 다이내믹 포즈 정적 모델
+            var idleGo = Instantiate(prefab, skin.transform);
+            idleGo.transform.localPosition = Vector3.zero;
+            idleGo.transform.localRotation = Quaternion.identity;
+            FitToUnit(idleGo, view.transform, height);
+
+            // 이동 = A포즈 달리기 애니 모델 (<resource>_anim, 있으면)
+            var animPrefab = Resources.Load<GameObject>(resource + "_anim");
+            if (animPrefab != null)
+            {
+                var runGo = Instantiate(animPrefab, skin.transform);
+                runGo.transform.localPosition = Vector3.zero;
+                runGo.transform.localRotation = Quaternion.identity;
+                FitToUnit(runGo, view.transform, height);
+
+                var clips = Resources.LoadAll<AnimationClip>(resource + "_anim");
+                if (clips.Length > 0)
+                    runGo.AddComponent<SkinLoopAnimator>().Init(clips[0]);
+                skin.AddComponent<MoveSwapSkin>().Init(view, idleGo, runGo);
+            }
 
             // 드론류 기계는 부유 연출
             if (unit.team == 1 && unit.unitClass != UnitClass.Tank && unit.unitClass != UnitClass.Balance)
@@ -119,12 +124,6 @@ namespace SeoYuGi.Art
 
             var cube = view.GetComponent<MeshRenderer>();
             if (cube != null) cube.enabled = false;
-        }
-
-        static AnimationClip FirstClip(string resourcePath)
-        {
-            var clips = Resources.LoadAll<AnimationClip>(resourcePath);
-            return clips.Length > 0 ? clips[0] : null;
         }
 
         GameObject LoadModel(string resource)

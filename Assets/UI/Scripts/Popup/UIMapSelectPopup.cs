@@ -71,6 +71,7 @@ public class UIMapSelectPopup : UIPopup
                 tex.SetPixel(x, y, floor);
         foreach (var c in map.Walls) tex.SetPixel(c.x, c.y, wall);
         foreach (var c in map.Highlands) tex.SetPixel(c.x, c.y, high);
+        foreach (var c in map.Voids) tex.SetPixel(c.x, c.y, Color.clear); // 구덩이 — 카드 배경이 비침
         foreach (var cells in map.Zones)
             foreach (var c in cells) tex.SetPixel(c.x, c.y, zone);
         foreach (var kv in map.Spawns)

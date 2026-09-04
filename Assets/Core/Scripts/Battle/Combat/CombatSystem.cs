@@ -362,18 +362,20 @@ namespace SeoYuGi.Battle
 
         // ── 내부 ──────────────────────────────────────────────────
 
-        /// <summary>저격 직선의 타격 칸들. 평지 사수는 첫 벽에서 정지, 고지대 사수는 벽을 넘겨 맵 끝까지(벽 칸 자체는 제외).</summary>
+        /// <summary>저격 직선의 타격 칸들. 벽: 평지 사수는 정지, 고지대 사수는 넘겨 쏨. 구덩이: 누구든 탄이 지나간다(칸 자체는 제외).</summary>
         List<Coord> SnipeLine(UnitState unit, Coord dir)
         {
             var cells = new List<Coord>();
             bool elevated = State.Grid.IsHighland(unit.pos);
             for (var c = unit.pos + dir; State.Grid.InBounds(c); c += dir)
             {
-                if (!State.Grid.IsWalkableTerrain(c))
+                var type = State.Grid.GetCell(c).type;
+                if (type == CellType.Obstacle)
                 {
                     if (elevated) continue;
                     break;
                 }
+                if (type == CellType.Void) continue;
                 cells.Add(c);
             }
             return cells;

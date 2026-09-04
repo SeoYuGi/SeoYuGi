@@ -38,18 +38,20 @@ namespace SeoYuGi.Battle
 
         public Cell GetCell(Coord c) => cells[Index(c)];
 
-        /// <summary>맵 안 + 장애물 아님 + 유닛 없음. (고지대는 걸을 수 있음)</summary>
+        static bool WalkableType(CellType t) => t == CellType.Empty || t == CellType.Highland;
+
+        /// <summary>맵 안 + 걸을 수 있는 지형(바닥·고지대) + 유닛 없음.</summary>
         public bool IsWalkable(Coord c)
         {
             if (!InBounds(c)) return false;
             ref var cell = ref cells[Index(c)];
-            return cell.type != CellType.Obstacle && cell.occupantUnitId == Cell.NoUnit;
+            return WalkableType(cell.type) && cell.occupantUnitId == Cell.NoUnit;
         }
 
         /// <summary>지형만 판정(점유 무시). 해석기에서 사용.</summary>
         public bool IsWalkableTerrain(Coord c)
         {
-            return InBounds(c) && cells[Index(c)].type != CellType.Obstacle;
+            return InBounds(c) && WalkableType(cells[Index(c)].type);
         }
 
         public bool IsHighland(Coord c)
@@ -76,6 +78,12 @@ namespace SeoYuGi.Battle
         {
             if (!InBounds(c)) throw new ArgumentOutOfRangeException(nameof(c));
             cells[Index(c)].type = CellType.Highland;
+        }
+
+        public void SetVoid(Coord c)
+        {
+            if (!InBounds(c)) throw new ArgumentOutOfRangeException(nameof(c));
+            cells[Index(c)].type = CellType.Void;
         }
 
         public void PlaceUnit(int unitId, Coord c)

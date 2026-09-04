@@ -189,6 +189,8 @@ namespace SeoYuGi.BattleView
             var grid = new GridModel(gridConfig);
             foreach (var c in map.Walls)
                 grid.SetObstacle(c);
+            foreach (var c in map.Voids)
+                grid.SetVoid(c);
             foreach (var c in map.Highlands)
                 grid.SetHighland(c);
 

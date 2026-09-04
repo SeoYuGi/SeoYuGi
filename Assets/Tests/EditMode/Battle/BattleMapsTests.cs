@@ -62,7 +62,7 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [TestCaseSource(nameof(AllMapIndices))]
-        public void Highlands_ArePointSymmetric(int index)
+        public void HighlandsAndVoids_ArePointSymmetric(int index)
         {
             var map = BattleMaps.Get(index);
             var highs = new HashSet<Coord>(map.Highlands);
@@ -71,6 +71,13 @@ namespace SeoYuGi.Battle.Tests
                 var mirror = new Coord(map.Width - 1 - h.x, map.Height - 1 - h.y);
                 Assert.IsTrue(highs.Contains(mirror),
                     $"{map.Name}: 고지대 {h}의 180° 대칭 {mirror}이 없음 — 양팀 불공정");
+            }
+            var voids = new HashSet<Coord>(map.Voids);
+            foreach (var v in voids)
+            {
+                var mirror = new Coord(map.Width - 1 - v.x, map.Height - 1 - v.y);
+                Assert.IsTrue(voids.Contains(mirror),
+                    $"{map.Name}: 구덩이 {v}의 180° 대칭 {mirror}이 없음 — 양팀 불공정");
             }
         }
 
@@ -92,9 +99,11 @@ namespace SeoYuGi.Battle.Tests
             var grid = new GridModel(new GridConfig { width = map.Width, height = map.Height });
             foreach (var w in map.Walls)
                 grid.SetObstacle(w);
+            foreach (var v in map.Voids)
+                grid.SetVoid(v);
 
             var reached = Pathfinding.FloodFill(grid, map.Spawns[1], int.MaxValue, null);
-            int floorCells = map.Width * map.Height - map.Walls.Count;
+            int floorCells = map.Width * map.Height - map.Walls.Count - map.Voids.Count;
             // FloodFill은 시작 칸 제외
             Assert.AreEqual(floorCells - 1, reached.Count,
                 $"{map.Name}: 고립된 바닥 칸 존재 — 맵이 두 동강");
@@ -104,7 +113,8 @@ namespace SeoYuGi.Battle.Tests
         public void ZonePatches_HaveOpenEntrances(int index)
         {
             var map = BattleMaps.Get(index);
-            var walls = new HashSet<Coord>(map.Walls);
+            var blocked = new HashSet<Coord>(map.Walls);
+            blocked.UnionWith(map.Voids); // 구덩이도 진입 불가
             foreach (var zone in map.Zones)
             {
                 var patch = new HashSet<Coord>(zone);
@@ -115,7 +125,7 @@ namespace SeoYuGi.Battle.Tests
                     var n = cell + dir;
                     if (patch.Contains(n)) continue;
                     bool inBounds = n.x >= 0 && n.x < map.Width && n.y >= 0 && n.y < map.Height;
-                    if (inBounds && !walls.Contains(n)) open++;
+                    if (inBounds && !blocked.Contains(n)) open++;
                 }
                 Assert.GreaterOrEqual(open, 4, $"{map.Name}: 거점 {CenterOf(zone)} 입구 부족");
             }

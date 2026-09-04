@@ -49,6 +49,7 @@ namespace SeoYuGi.BattleView
             {
                 var coord = new Coord(x, y);
                 var type = grid.GetCell(coord).type;
+                if (type == CellType.Void) continue; // 구덩이 — 타일 없음(맵 실루엣)
                 // CoordToWorld는 고지대 표면 높이를 더하므로 타일 생성은 평면 기준으로
                 var flat = transform.position + new Vector3(x * tileSize, 0f, y * tileSize);
                 var go = CreateTile(flat, type);
@@ -134,7 +135,7 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < coords.Count; i++)
             {
                 var c = coords[i];
-                if (!grid.InBounds(c)) continue;
+                if (!grid.InBounds(c) || tiles[c.x, c.y] == null) continue; // Void 칸은 타일 없음
                 mpb.SetColor(BaseColorId, colors[i]);
                 tiles[c.x, c.y].SetPropertyBlock(mpb);
                 highlighted.Add(c);
@@ -153,7 +154,8 @@ namespace SeoYuGi.BattleView
         {
             if (matZone == null) return; // 텍스처 미사용 모드
             foreach (var c in zoneCells)
-                tiles[c.x, c.y].sharedMaterial = matZone;
+                if (tiles[c.x, c.y] != null)
+                    tiles[c.x, c.y].sharedMaterial = matZone;
         }
 
         /// <summary>하이라이트가 없을 때 유지되는 틴트 (거점 소유 팀 색 등).</summary>
@@ -199,6 +201,7 @@ namespace SeoYuGi.BattleView
 
         void ResetTile(Coord c)
         {
+            if (tiles[c.x, c.y] == null) return; // Void 칸
             if (fogged.Contains(c))
             {
                 mpb.SetColor(BaseColorId, fogColor);

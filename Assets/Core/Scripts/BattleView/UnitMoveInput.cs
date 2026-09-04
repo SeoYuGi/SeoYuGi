@@ -244,6 +244,7 @@ namespace SeoYuGi.BattleView
 
             // 설치 공격 예고 표시 — 같은 칸이면 예고가 이김 (나중 쓰기 우선). 펄스로 깜빡임.
             // 피아 구분: 아군 예고 = 주황, 적 예고 = 빨강 — "빨간 건 피해야 함"이 즉시 읽히게.
+            // 판정 0.35초 전부터 점멸이 급가속 — 긴장→판정 해소 리듬 (타격감 D안).
             // 적 예고는 내 팀 시야 안의 칸만 보인다 — 안개 속 예측 설치가 서프라이즈로 남게.
             float pulseK = Mathf.PingPong(Time.time * 2.5f, 0.4f);
             var enemyPulse = Color.Lerp(telegraphColor, Color.white, pulseK);
@@ -251,11 +252,20 @@ namespace SeoYuGi.BattleView
             foreach (var strike in combat.ActiveStrikes)
             {
                 bool mine = strike.team == playerTeam;
+                var baseColor = mine ? allyTelegraphColor : telegraphColor;
+                Color c2 = mine ? allyPulse : enemyPulse;
+                float remain = strike.impactTime - combat.State.time;
+                if (remain < 0.35f)
+                {
+                    bool on = Mathf.Sin(Time.time * 45f) > 0f;
+                    c2 = on ? Color.Lerp(baseColor, Color.white, 0.5f) : baseColor * 0.45f;
+                    c2.a = 1f;
+                }
                 foreach (var c in strike.cells)
                 {
                     if (!mine && isCellVisible != null && !isCellVisible(c)) continue;
                     cells.Add(c);
-                    colors.Add(mine ? allyPulse : enemyPulse);
+                    colors.Add(c2);
                 }
             }
 

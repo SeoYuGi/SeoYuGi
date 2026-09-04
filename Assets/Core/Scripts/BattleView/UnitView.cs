@@ -26,6 +26,7 @@ namespace SeoYuGi.BattleView
         Coroutine moving;
         Coroutine hitRoutine;
         Vector3 preHitScale; // 피격 펀치 시작 전 스케일 — 중첩 피격 시 복원 기준
+        Quaternion preHitRot = Quaternion.identity; // 리코일 틸트 복원 기준
 
         public void Bind(int unitId, Color teamColor, GridView gridView, Coord start)
         {
@@ -60,18 +61,32 @@ namespace SeoYuGi.BattleView
         Color CurrentColor => dimmed ? teamColor * 0.35f : teamColor;
 
         /// <summary>피격 연출: 흰 번쩍 + 펀치 스케일.</summary>
-        public void PlayHit()
+        /// <param name="hitDir">타격이 밀어내는 월드 방향 — 리코일 틸트. Zero면 틸트 없음.</param>
+        public void PlayHit(Vector3 hitDir = default)
         {
             if (!gameObject.activeInHierarchy) return; // 시야 밖 — 연출 생략
             if (hitRoutine != null) StopCoroutine(hitRoutine);
-            else preHitScale = transform.localScale; // 연타 피격 시 이미 커진 스케일로 기준 오염 방지
-            hitRoutine = StartCoroutine(HitRoutine());
+            else
+            {
+                preHitScale = transform.localScale; // 연타 피격 시 이미 커진 스케일로 기준 오염 방지
+                preHitRot = transform.rotation;
+            }
+            hitRoutine = StartCoroutine(HitRoutine(hitDir));
         }
 
-        IEnumerator HitRoutine()
+        IEnumerator HitRoutine(Vector3 hitDir)
         {
+            // 리코일: 타격 방향으로 상체가 훅 기울었다 복귀 — 위치는 안 건드려 이동 로직과 무충돌
+            var tiltRot = preHitRot;
+            if (hitDir.sqrMagnitude > 0.01f)
+            {
+                var axis = Vector3.Cross(Vector3.up, hitDir.normalized);
+                tiltRot = Quaternion.AngleAxis(-16f, axis) * preHitRot;
+            }
+
             ApplyColor(Color.white);
             transform.localScale = preHitScale * 1.25f;
+            transform.rotation = tiltRot;
             yield return new WaitForSeconds(0.08f);
 
             for (float t = 0f; t < 0.15f; t += Time.deltaTime)
@@ -79,10 +94,12 @@ namespace SeoYuGi.BattleView
                 float k = t / 0.15f;
                 ApplyColor(Color.Lerp(Color.white, CurrentColor, k));
                 transform.localScale = Vector3.Lerp(preHitScale * 1.25f, preHitScale, k);
+                transform.rotation = Quaternion.Slerp(tiltRot, preHitRot, k);
                 yield return null;
             }
             ApplyColor(CurrentColor);
             transform.localScale = preHitScale;
+            transform.rotation = preHitRot;
             hitRoutine = null;
         }
 
@@ -143,8 +160,9 @@ namespace SeoYuGi.BattleView
             moving = null;
             if (hitRoutine != null)
             {
-                // 플래시 도중 숨겨짐 — 스케일·색 원복
+                // 플래시 도중 숨겨짐 — 스케일·색·회전 원복
                 transform.localScale = preHitScale;
+                transform.rotation = preHitRot;
                 ApplyColor(CurrentColor);
                 hitRoutine = null;
             }

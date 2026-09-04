@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using SeoYuGi.Battle;
 using UnityEngine;
 
@@ -39,6 +40,8 @@ namespace SeoYuGi.BattleView
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle;
         GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
         bool stylesReady;
+        Texture2D iconMove, iconAttack, iconGuard, iconSkill, panelBriefing; // Resources/UI — 없으면 무시
+        Texture2D texSlot, texPanel, texInfo, texChip, texBanner;           // 프레임류 — 없으면 GUI.Box 폴백
         UnitMoveInput moveInput; // 선택 상태 조회용 — 같은 GO에서 자동 연결
 
         // hudScale 적용 후 논리 화면 크기
@@ -59,6 +62,71 @@ namespace SeoYuGi.BattleView
             enemyColor = teamColors[1 - playerTeam];
             overlay = Overlay.None;
             if (moveInput == null) moveInput = GetComponent<UnitMoveInput>();
+
+            iconMove = Resources.Load<Texture2D>("UI/Icon_Move");
+            iconAttack = Resources.Load<Texture2D>("UI/Icon_Attack");
+            iconGuard = Resources.Load<Texture2D>("UI/Icon_Guard");
+            iconSkill = Resources.Load<Texture2D>("UI/" + SkillIconName(battle.GetUnit(playerUnitId).unitClass));
+            panelBriefing = Resources.Load<Texture2D>("UI/Panel_Briefing");
+            texSlot = LoadKeyed("UI/Frame_Slot");
+            texPanel = LoadKeyed("UI/Frame_Panel");
+            texInfo = LoadKeyed("UI/Frame_Info");
+            texChip = LoadKeyed("UI/Frame_Chip");
+            texBanner = LoadKeyed("UI/Frame_Banner");
+        }
+
+        static readonly Dictionary<string, Texture2D> keyedCache = new Dictionary<string, Texture2D>();
+
+        /// <summary>
+        /// 생성 이미지의 검정 배경을 투명 처리해서 로드 (프레임류는 plain black 위에 생성됨).
+        /// 순수 검정(합 &lt; 30)만 제거, 30~60은 페더 — 건메탈 아트(합 130+)는 안전.
+        /// Read/Write 꺼져 있으면 원본 그대로 (검정 배경 노출 폴백).
+        /// </summary>
+        static Texture2D LoadKeyed(string path)
+        {
+            if (keyedCache.TryGetValue(path, out var cached)) return cached;
+            var src = Resources.Load<Texture2D>(path);
+            Texture2D result = src;
+            if (src != null)
+            {
+                try
+                {
+                    var px = src.GetPixels32();
+                    for (int i = 0; i < px.Length; i++)
+                    {
+                        int lum = px[i].r + px[i].g + px[i].b;
+                        if (lum < 30) px[i].a = 0;
+                        else if (lum < 60) px[i].a = (byte)((lum - 30) * 255 / 30);
+                    }
+                    var tex = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
+                    tex.SetPixels32(px);
+                    tex.Apply();
+                    result = tex;
+                }
+                catch (UnityException) { /* isReadable=0 — 원본 사용 */ }
+            }
+            keyedCache[path] = result;
+            return result;
+        }
+
+        /// <summary>프레임 텍스처가 있으면 이미지, 없으면 GUI.Box 폴백.</summary>
+        void DrawFrame(Rect r, Texture2D tex)
+        {
+            if (tex != null) GUI.DrawTexture(r, tex, ScaleMode.StretchToFill);
+            else GUI.Box(r, "");
+        }
+
+        static string SkillIconName(UnitClass cls)
+        {
+            switch (cls)
+            {
+                case UnitClass.Tank: return "Icon_Skill_Smash";
+                case UnitClass.Balance: return "Icon_Skill_Dash";
+                case UnitClass.Assassin: return "Icon_Skill_Blink";
+                case UnitClass.Grenadier: return "Icon_Skill_Burst";
+                case UnitClass.Sniper: return "Icon_Skill_Snipe";
+                default: return "Icon_Skill_Generic";
+            }
         }
 
         /// <summary>라운드 사이 — AI가 학습한 내용을 관제 로그 톤으로 보여준다.</summary>
@@ -130,7 +198,7 @@ namespace SeoYuGi.BattleView
         {
             // 남은시간 (탱고파이브 중앙 타이머)
             var timerBox = new Rect(W / 2f - 70, 6, 140, 48);
-            GUI.Box(timerBox, "");
+            DrawFrame(timerBox, texInfo);
             if (round.SuddenDeath)
             {
                 GUI.color = new Color(1f, 0.4f, 0.3f);
@@ -157,10 +225,20 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < zones.Count; i++)
             {
                 var z = zones[i];
+                var chipRect = new Rect(x0 + i * (chipW + gap), 60, chipW, 24);
                 GUI.color = z.owner == -1 ? new Color(0.55f, 0.55f, 0.6f)
                     : Color.Lerp(z.owner == playerTeam ? allyColor : enemyColor, Color.white, 0.25f);
-                GUI.Box(new Rect(x0 + i * (chipW + gap), 60, chipW, 24), i < letters.Length ? letters[i] : "?", chipStyle);
-                GUI.color = Color.white;
+                if (texChip != null)
+                {
+                    GUI.DrawTexture(chipRect, texChip, ScaleMode.StretchToFill);
+                    GUI.color = Color.white;
+                    GUI.Label(chipRect, i < letters.Length ? letters[i] : "?", slotNameStyle);
+                }
+                else
+                {
+                    GUI.Box(chipRect, i < letters.Length ? letters[i] : "?", chipStyle);
+                    GUI.color = Color.white;
+                }
             }
 
             GUI.Label(new Rect(W / 2f - 100, 86, 200, 16),
@@ -214,8 +292,16 @@ namespace SeoYuGi.BattleView
 
             var box = new Rect(W / 2f - 210, 108, 420, 26);
             GUI.color = bannerColor;
-            GUI.DrawTexture(box, Texture2D.whiteTexture);
-            GUI.color = new Color(0.05f, 0.15f, 0.2f);
+            if (texBanner != null)
+            {
+                GUI.DrawTexture(box, texBanner, ScaleMode.StretchToFill);
+                GUI.color = new Color(0.85f, 0.98f, 1f); // 어두운 프레임 위 밝은 텍스트
+            }
+            else
+            {
+                GUI.DrawTexture(box, Texture2D.whiteTexture);
+                GUI.color = new Color(0.05f, 0.15f, 0.2f);
+            }
             GUI.Label(box, msg, bannerTextStyle);
             GUI.color = Color.white;
         }
@@ -235,7 +321,7 @@ namespace SeoYuGi.BattleView
             float x0 = W / 2f - totalW / 2f;
             float y = H - slotH - 14f;
 
-            GUI.Box(new Rect(x0 - 10, y - 8, totalW + 20, slotH + 18), ""); // 바 배경
+            DrawFrame(new Rect(x0 - 10, y - 8, totalW + 20, slotH + 18), texPanel); // 바 배경
 
             // HP 세그먼트 (탱고파이브 좌측 캐릭터 정보 자리)
             var hpSeg = new Rect(x0, y, segW, slotH);
@@ -250,22 +336,22 @@ namespace SeoYuGi.BattleView
             float moveCoolFrac = u.moveCooldown > 0f && u.profile.yellowCooldownSeconds > 0f
                 ? u.moveCooldown / u.profile.yellowCooldownSeconds : 0f;
             DrawSlot(new Rect(sx, y, slotW, slotH), "좌클릭", "이동",
-                $"게이지 {(int)u.moveGauge}", u.moveCooldown <= 0f, u.moveCooldown, moveCoolFrac);
+                $"게이지 {(int)u.moveGauge}", u.moveCooldown <= 0f, u.moveCooldown, moveCoolFrac, false, iconMove);
 
             var aim = moveInput != null ? moveInput.CurrentAim : UnitMoveInput.AimMode.None;
             DrawSlot(new Rect(sx + (slotW + gap), y, slotW, slotH), "A", "일반공격",
                 $"AP {combatConfig.costAttack:0}", u.ap >= combatConfig.costAttack, 0f, 0f,
-                aim == UnitMoveInput.AimMode.Attack);
+                aim == UnitMoveInput.AimMode.Attack, iconAttack);
 
             DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass),
                 $"AP {combatConfig.costSkill:0}", u.ap >= combatConfig.costSkill, 0f, 0f,
-                aim == UnitMoveInput.AimMode.Skill);
+                aim == UnitMoveInput.AimMode.Skill, iconSkill);
 
             float guardRemain = Mathf.Max(0f, u.guardUntil - battle.time);
             float guardFrac = combatConfig.guardDurationSeconds > 0f
                 ? guardRemain / combatConfig.guardDurationSeconds : 0f;
             DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", "방어",
-                $"AP {combatConfig.costGuard:0}", u.ap >= combatConfig.costGuard, guardRemain, guardFrac);
+                $"AP {combatConfig.costGuard:0}", u.ap >= combatConfig.costGuard, guardRemain, guardFrac, false, iconGuard);
 
             // AP 세그먼트 (탱고파이브 탄약 카운터 자리 — 95/최대95 식)
             var apSeg = new Rect(x0 + totalW - segW, y, segW, slotH);
@@ -276,7 +362,8 @@ namespace SeoYuGi.BattleView
             Bar(new Rect(apSeg.x + 14, apSeg.y + 48, apSeg.width - 28, 8), u.ap / combatConfig.apMax, new Color(0.35f, 0.75f, 1f));
         }
 
-        void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac, bool active = false)
+        void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac,
+            bool active = false, Texture2D icon = null)
         {
             if (active)
             {
@@ -285,7 +372,9 @@ namespace SeoYuGi.BattleView
                 GUI.DrawTexture(new Rect(r.x - 3, r.y - 3, r.width + 6, r.height + 6), Texture2D.whiteTexture);
             }
             GUI.color = enabled ? Color.white : new Color(1f, 1f, 1f, 0.4f);
-            GUI.Box(r, "");
+            DrawFrame(r, texSlot);
+            if (icon != null)
+                GUI.DrawTexture(new Rect(r.x + r.width - 30, r.y + 4, 26, 26), icon, ScaleMode.ScaleToFit);
             GUI.Box(new Rect(r.x + 5, r.y + 5, key.Length > 2 ? 46 : 22, 18), key, keyStyle);
             GUI.Label(new Rect(r.x, r.y + 25, r.width, 18), name, slotNameStyle);
             GUI.Label(new Rect(r.x, r.y + 43, r.width, 16), cost, slotCostStyle);
@@ -322,6 +411,8 @@ namespace SeoYuGi.BattleView
             bool myWin = briefingWinner == playerTeam;
             var box = new Rect(W / 2f - 270, H / 2f - 160, 540, 320);
             GUI.Box(box, "");
+            if (panelBriefing != null)
+                GUI.DrawTexture(box, panelBriefing, ScaleMode.StretchToFill); // 관제 터미널 배경
 
             GUI.color = myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f);
             GUI.Label(new Rect(box.x, box.y + 14, box.width, 26),

@@ -37,7 +37,7 @@ namespace SeoYuGi.Battle
 
         public event Action<TelegraphStrike> OnTelegraph;
         public event Action<TelegraphStrike, bool> OnStrikeResolved; // (strike, hitAnything)
-        public event Action<int, int> OnUnitDamaged;                 // (unitId, damage)
+        public event Action<int, int, Coord> OnUnitDamaged;          // (unitId, damage, hitDir — Zero면 방향 없음)
         public event Action<int> OnUnitDied;
         public event Action<int> OnGuard;
         public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
@@ -178,7 +178,7 @@ namespace SeoYuGi.Battle
                     if (occupant.guardUntil < State.time)
                     {
                         hitIds.Add(occupantId);
-                        Damage(occupant, skill.damage);
+                        Damage(occupant, skill.damage, dir);
                         if (occupant.alive) Push(occupant, dir, 1, 0);
                     }
                     if (State.Grid.GetUnitAt(next) != Cell.NoUnit) break; // 안 밀렸으면 정지
@@ -411,7 +411,10 @@ namespace SeoYuGi.Battle
                 if (unit.team == strike.team) continue;          // 팀킬 없음
                 if (unit.guardUntil >= State.time) continue;     // 방어 성공
 
-                Damage(unit, strike.damage);
+                var hitDir = attacker != null
+                    ? new Coord(Math.Sign(unit.pos.x - attacker.pos.x), Math.Sign(unit.pos.y - attacker.pos.y))
+                    : Coord.Zero;
+                Damage(unit, strike.damage, hitDir);
                 hit = true;
                 if (strike.pushCells > 0 && unit.alive)
                     Push(unit, strike.pushDir, strike.pushCells, strike.wallBonusDamage);
@@ -424,11 +427,11 @@ namespace SeoYuGi.Battle
             OnStrikeResolved?.Invoke(strike, hit);
         }
 
-        void Damage(UnitState unit, int amount)
+        void Damage(UnitState unit, int amount, Coord hitDir = default)
         {
             if (amount <= 0) return;
             unit.hp -= amount;
-            OnUnitDamaged?.Invoke(unit.id, amount);
+            OnUnitDamaged?.Invoke(unit.id, amount, hitDir);
             if (unit.hp <= 0)
             {
                 unit.alive = false;
@@ -448,7 +451,7 @@ namespace SeoYuGi.Battle
                 {
                     // 벽/맵 경계/고지대 단면 충돌
                     OnWallCrash?.Invoke(unit.id);
-                    if (wallBonusDamage > 0) Damage(unit, wallBonusDamage);
+                    if (wallBonusDamage > 0) Damage(unit, wallBonusDamage, dir);
                     return;
                 }
                 if (State.Grid.GetUnitAt(next) != Cell.NoUnit) return; // 유닛에 막힘 — 추가 피해 없음

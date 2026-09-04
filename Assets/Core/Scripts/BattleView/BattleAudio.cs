@@ -87,6 +87,48 @@ namespace SeoYuGi.BattleView
             return length;
         }
 
+        AudioClip thumpSmall, thumpBig;
+
+        /// <summary>저역 임팩트 "쿵" — 기존 SFX 위에 겹쳐 무게 추가 (절차 합성, 파일 불필요).</summary>
+        public void PlayThump(bool big)
+        {
+            if (thumpSmall == null)
+            {
+                thumpSmall = MakeThump(0.16f, 62f, 30f);
+                thumpBig = MakeThump(0.3f, 52f, 26f);
+            }
+            var clip = big ? thumpBig : thumpSmall;
+            var src = gameObject.AddComponent<AudioSource>();
+            src.playOnAwake = false;
+            src.clip = clip;
+            src.volume = sfxVolume * (big ? 1f : 0.65f);
+            src.Play();
+            Destroy(src, clip.length + 0.05f);
+        }
+
+        /// <summary>감쇠 사인 서브 + 노이즈 트랜지언트 — 다크 톤 저역 펀치.</summary>
+        static AudioClip MakeThump(float seconds, float freq, float pitchDrop)
+        {
+            const int rate = 44100;
+            int n = (int)(rate * seconds);
+            var data = new float[n];
+            float phase = 0f;
+            var rng = new System.Random(7);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)rate;
+                float env = Mathf.Exp(-t * (10f / seconds) * 0.55f);
+                float f = Mathf.Max(30f, freq - pitchDrop * (t / seconds));
+                phase += 2f * Mathf.PI * f / rate;
+                float s = Mathf.Sin(phase) * env;
+                if (i < 130) s += ((float)rng.NextDouble() * 2f - 1f) * 0.35f * (1f - i / 130f); // 타격 클릭
+                data[i] = Mathf.Clamp(s, -1f, 1f) * 0.9f;
+            }
+            var clip = AudioClip.Create("thump", n, 1, rate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
         /// <summary>거점 점거 중 틱 루프 on/off.</summary>
         public void SetCaptureLoop(bool on) =>
             SetLoop(captureLoop, "SFX/S11_CaptureLoop", on, sfxVolume * 0.5f);

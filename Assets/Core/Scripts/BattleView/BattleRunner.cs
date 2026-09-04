@@ -81,6 +81,8 @@ namespace SeoYuGi.BattleView
         Coord humanPrevPos;          // Predictor 이동 관찰용 직전 위치
         Func<Coord, bool> playerVisibleFn;
 
+        GameObject pickBg; // 맵/클래스 픽 화면 배경 (Resources/UI/BG_Title)
+
         // 라운드마다 파괴·재생성되는 뷰 오브젝트
         readonly List<GameObject> roundObjects = new List<GameObject>();
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
@@ -108,6 +110,12 @@ namespace SeoYuGi.BattleView
             // 플레이어 행동 거부 버저 — input은 라운드 넘어 유지되므로 1회만 구독
             input.OnActionDenied += () => battleAudio.PlaySfx("S24_ApBuzz", 0.5f);
 
+            // 카메라 셰이커 — 추적/전술 캠 위에 얹는 타격감 레이어
+            var mainCam = Camera.main;
+            if (mainCam != null && mainCam.GetComponent<CameraShaker>() == null)
+                mainCam.gameObject.AddComponent<CameraShaker>();
+            ImpactFx.Ensure(); // 명중 비네트 펀치 + 격파 플래시 (글로벌 Volume)
+
             Match = new MatchSystem();
             ShowMapSelect();
         }
@@ -119,6 +127,7 @@ namespace SeoYuGi.BattleView
             battleAudio.PlayBgm("B6_Title"); // 픽 화면 = 타이틀 테마
             if (UIManager.Instance == null)
                 new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
+            ShowPickBackground();
 
             var popup = UIManager.Instance.ShowPopupUI<UIMapSelectPopup>();
             popup.OnPicked = idx =>
@@ -138,6 +147,7 @@ namespace SeoYuGi.BattleView
             phase = Phase.ClassSelect;
             if (UIManager.Instance == null)
                 new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
+            ShowPickBackground(); // 재시작 픽에서도 배경 유지
 
             var popup = UIManager.Instance.ShowPopupUI<UIClassSelectPopup>();
             popup.OnPicked = cls =>
@@ -181,10 +191,28 @@ namespace SeoYuGi.BattleView
             return new Predictor(cfg);
         }
 
+        /// <summary>픽 화면 전체 배경 — HUDRoot 캔버스(팝업보다 아래)에 깔림.</summary>
+        void ShowPickBackground()
+        {
+            if (pickBg != null) return;
+            var tex = Resources.Load<Texture2D>("UI/BG_Title");
+            if (tex == null) return;
+            pickBg = new GameObject("PickBackground", typeof(UnityEngine.UI.Image));
+            pickBg.transform.SetParent(UIManager.Instance.HUDRoot.transform, false);
+            var img = pickBg.GetComponent<UnityEngine.UI.Image>();
+            img.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            var rt = pickBg.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+        }
+
         /// <summary>라운드 1개 분량의 Core + 뷰 전체 조립. 라운드 시작마다 호출.</summary>
         void BuildRound()
         {
             ClearRoundObjects();
+            if (pickBg != null) { Destroy(pickBg); pickBg = null; } // 픽 배경 제거
 
             var grid = new GridModel(gridConfig);
             foreach (var c in map.Walls)
@@ -284,6 +312,7 @@ namespace SeoYuGi.BattleView
                 {
                     ObserveHumanPath(path);
                     battleAudio.PlaySfx(yellow ? "S7_YellowMove" : "S6_Hop", yellow ? 1f : 0.4f);
+                    if (yellow) CameraShaker.Shake(0.12f); // 과부하 점프 — 미세한 무게
                 }
             };
 
@@ -302,19 +331,48 @@ namespace SeoYuGi.BattleView
                 else if (hit) battleAudio.PlaySfx("S3_Hit", 0.8f);
             };
             Combat.OnGuard += _ => battleAudio.PlaySfx("S8_Guard", 0.8f);
-            Combat.OnSkillCast += (unitId, kind) => battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
-            Combat.OnWallCrash += _ => battleAudio.PlaySfx("S21_WallCrash", 0.6f);
-            Combat.OnUnitDied += unitId =>
-                battleAudio.PlaySfx(Battle.GetUnit(unitId).team == playerTeam ? "S10a_DeathAlly" : "S10b_DeathEnemy", 1.5f);
-
-            Combat.OnUnitDamaged += (unitId, dmg) =>
+            Combat.OnSkillCast += (unitId, kind) =>
             {
-                var v = viewRegistry.Get(unitId);
-                v?.PlayHit();
-                if (v != null && v.gameObject.activeInHierarchy)
-                    FloatingText.Spawn(v.transform.position, $"-{dmg}", new Color(1f, 0.25f, 0.2f), 1.1f);
-                Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {Battle.GetUnit(unitId).hp}/{Battle.GetUnit(unitId).maxHp})");
+                battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
+                // 즉발 이동기(대시·점멸)는 캐스팅 순간에 무게 — 예고형은 판정 시 피해 셰이크가 담당
+                if (kind == SkillKind.Dash && IsUnitVisibleToPlayer(unitId)) CameraShaker.Shake(0.18f);
+            };
+            Combat.OnWallCrash += unitId =>
+            {
+                battleAudio.PlaySfx("S21_WallCrash", 0.6f);
+                if (IsUnitVisibleToPlayer(unitId)) CameraShaker.Shake(0.35f); // 벽에 처박히는 쾅
+            };
+            Combat.OnUnitDied += unitId =>
+            {
+                var dead = Battle.GetUnit(unitId);
+                battleAudio.PlaySfx(dead.team == playerTeam ? "S10a_DeathAlly" : "S10b_DeathEnemy", 1.5f);
+                if (IsUnitVisibleToPlayer(unitId))
+                {
+                    CameraShaker.Shake(0.55f); // 격파 — 가장 무거운 한 방
+                    HitStop.Do(0.09f);
+                    ImpactFx.DeathFlash();
+                    ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f);
+                    battleAudio.PlayThump(big: true);
+                }
+            };
+
+            Combat.OnUnitDamaged += (unitId, dmg, hitDir) =>
+            {
+                var victim = Battle.GetUnit(unitId);
+                var victimView = viewRegistry.Get(unitId);
+                victimView?.PlayHit(new Vector3(hitDir.x, 0f, hitDir.y)); // 리코일 틸트 + 플래시
+                if (victimView != null && victimView.gameObject.activeInHierarchy)
+                    FloatingText.Spawn(victimView.transform.position, $"-{dmg}", new Color(1f, 0.25f, 0.2f), 1.1f);
+                Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {victim.hp}/{victim.maxHp})");
                 battleAudio.PlaySfx("S9_Hurt", 0.6f);
+                if (IsUnitVisibleToPlayer(unitId))
+                {
+                    CameraShaker.Shake(0.28f); // 피격 — 짧고 절도 있게
+                    HitStop.Do(0.05f);
+                    ImpactFx.Punch(0.5f);
+                    ImpactVfx.Sparks(gridView.CoordToWorld(victim.pos), machine: victim.team == 1);
+                    battleAudio.PlayThump(big: false);
+                }
             };
 
             // 플로팅 텍스트 — 누가 뭘 하는지 머리 위에 뜸 (시야 안일 때만)
@@ -330,9 +388,17 @@ namespace SeoYuGi.BattleView
             // 타격 연출 — 시야 밖 칸은 예고 필터와 같은 규칙으로 숨긴다 (정보 누출 방지)
             Combat.OnStrikeResolved += (strike, hit) =>
             {
+                int pillars = 0;
                 foreach (var c in strike.cells)
                     if (strike.team == playerTeam || playerVisibleFn(c))
+                    {
                         CellFlash.Spawn(gridView.CoordToWorld(c), Color.white);
+                        if (hit && pillars < 5) // 명중 판정 — 섬광 기둥 (예고→해소)
+                        {
+                            ImpactVfx.Pillar(gridView.CoordToWorld(c), new Color(1f, 0.75f, 0.45f));
+                            pillars++;
+                        }
+                    }
             };
 
             Combat.OnUnitDied += unitId =>
@@ -417,6 +483,13 @@ namespace SeoYuGi.BattleView
         {
             float length = battleAudio.PlayVoice(clip);
             hud.ShowSubtitle(subtitle, Mathf.Max(2.5f, length));
+        }
+
+        bool IsUnitVisibleToPlayer(int unitId)
+        {
+            var u = Battle.GetUnit(unitId);
+            if (u == null) return false;
+            return u.team == playerTeam || vision.IsVisibleTo(playerTeam, u.pos);
         }
 
         bool AnyCellVisible(TelegraphStrike strike)

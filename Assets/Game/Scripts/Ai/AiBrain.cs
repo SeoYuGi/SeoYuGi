@@ -14,7 +14,6 @@ namespace SeoYuGi.Ai
         private readonly AiConfig _cfg;
         private readonly Predictor _predictor; // 적팀 뇌만 보유, 아군 팀원은 null
         private float _nextDecisionTime;
-        private float _lastDecoyTime = -999f;
 
         public AiBrain(int actorId, AiConfig config, Predictor predictor = null)
         {
@@ -40,12 +39,14 @@ namespace SeoYuGi.Ai
 
         private AiCommand Decide(IWorldView world, ActorState me, float ap)
         {
-            // 1) 회피 — 내 칸에 곧 떨어지는 적 예고가 있으면 비키거나 막는다
+            // 1) 회피 — 내 칸에 곧 떨어지는 적 예고가 있으면 비키거나, 디코이를 태우거나, 막는다
             if (IsThreatened(world, me.Team, me.Pos))
             {
                 var dodge = FindDodgeCell(world, me);
                 if (dodge.HasValue && ap >= _cfg.CostMove)
                     return AiCommand.Of(CommandType.Move, dodge.Value);
+                if (world.Round >= 2 && world.HasDecoy(_actorId))
+                    return AiCommand.Of(CommandType.Decoy, me.Pos); // 장비라 AP 소모 없음
                 if (ap >= _cfg.CostGuard)
                     return AiCommand.Of(CommandType.Guard, me.Pos);
             }
@@ -75,32 +76,45 @@ namespace SeoYuGi.Ai
 
         private AiCommand TrySkill(IWorldView world, ActorState me, float ap, ActorState target, Cell aim)
         {
-            if (ap < _cfg.CostHeavy + _cfg.ReserveAp && me.Class != ClassId.Jammer) return AiCommand.None;
+            if (ap < _cfg.CostHeavy) return AiCommand.None;
 
             switch (me.Class)
             {
-                case ClassId.Sniper:
-                    // 예측 칸과 행/열이 정렬됐을 때만 조준 — 맞히는 것 자체가 예측
-                    if ((aim.X == me.Pos.X || aim.Y == me.Pos.Y) &&
-                        Chebyshev(me.Pos, aim) <= _cfg.SnipeRange && !aim.Equals(me.Pos))
+                case ClassId.Tank:
+                    // 강타: 예측 칸이 인접이면 후려친다 (밀침은 코어가 처리)
+                    if (IsOrthoAdjacent(me.Pos, aim))
                         return AiCommand.Of(CommandType.Heavy, aim);
                     break;
 
-                case ClassId.Runner:
+                case ClassId.Balance:
                     // 돌파: 타겟이 같은 행/열 2칸 이내면 대시로 접촉
                     if ((target.Pos.X == me.Pos.X || target.Pos.Y == me.Pos.Y) &&
                         Chebyshev(me.Pos, target.Pos) <= 2)
                         return AiCommand.Of(CommandType.Heavy, target.Pos);
                     break;
 
-                case ClassId.Jammer:
-                    // 디코이: R2부터, 쿨다운마다 — 상대 학습이 유효해진 뒤에만 가치가 있음
-                    if (world.Round >= 2 && ap >= _cfg.CostDecoy + _cfg.ReserveAp &&
-                        world.Time - _lastDecoyTime >= _cfg.DecoyCooldown)
+                case ClassId.Assassin:
+                    // 그림자 도약: 적 시야 밖일 때만 — 고스트를 남기지 않고 파고든다
+                    if (Chebyshev(me.Pos, target.Pos) <= 3 &&
+                        !world.IsVisibleTo(EnemyOf(me.Team), me.Pos))
                     {
-                        _lastDecoyTime = world.Time;
-                        return AiCommand.Of(CommandType.Decoy, me.Pos);
+                        var dest = BlinkCellToward(world, me.Pos, target.Pos);
+                        if (dest.HasValue)
+                            return AiCommand.Of(CommandType.Heavy, dest.Value);
                     }
+                    break;
+
+                case ClassId.Grenadier:
+                    // 파열탄: 예측 칸이 사거리 안이면 십자 폭격
+                    if (Manhattan(me.Pos, aim) <= _cfg.GrenadeRange && !aim.Equals(me.Pos))
+                        return AiCommand.Of(CommandType.Heavy, aim);
+                    break;
+
+                case ClassId.Sniper:
+                    // 조준 사격: 예측 칸과 행/열이 정렬됐을 때만 — 맞히는 것 자체가 예측
+                    if ((aim.X == me.Pos.X || aim.Y == me.Pos.Y) &&
+                        Chebyshev(me.Pos, aim) <= _cfg.SnipeRange && !aim.Equals(me.Pos))
+                        return AiCommand.Of(CommandType.Heavy, aim);
                     break;
             }
             return AiCommand.None;
@@ -113,8 +127,11 @@ namespace SeoYuGi.Ai
             foreach (var a in world.Actors)
             {
                 if (!a.Alive || a.Team == me.Team) continue;
+                bool visible = world.IsVisibleTo(me.Team, a.Pos);
+                if (!visible && !(a.IsHuman && _predictor != null)) continue; // 안개 속은 예측 가능한 인간만 노림
                 float score = -Manhattan(me.Pos, a.Pos);
                 if (a.IsHuman) score += _cfg.HumanTargetBonus;
+                if (!visible) score -= 2f;
                 score += (3 - a.Hp) * 0.5f; // 마무리 우선
                 if (score > bestScore) { bestScore = score; best = a; }
             }
@@ -185,6 +202,25 @@ namespace SeoYuGi.Ai
             yield return new Cell(c.X - 1, c.Y);
             yield return new Cell(c.X + 1, c.Y);
         }
+
+        private Cell? BlinkCellToward(IWorldView world, Cell from, Cell target)
+        {
+            Cell? best = null;
+            int bestDist = Manhattan(from, target);
+            for (int dx = -2; dx <= 2; dx++)
+                for (int dy = -2; dy <= 2; dy++)
+                {
+                    if (Math.Abs(dx) + Math.Abs(dy) > 2 || (dx == 0 && dy == 0)) continue;
+                    var c = new Cell(from.X + dx, from.Y + dy);
+                    if (!world.IsWalkable(c)) continue;
+                    int d = Manhattan(c, target);
+                    if (d < bestDist) { bestDist = d; best = c; }
+                }
+            return best;
+        }
+
+        private static TeamId EnemyOf(TeamId team) =>
+            team == TeamId.Human ? TeamId.Machine : TeamId.Human;
 
         private static bool IsOrthoAdjacent(Cell a, Cell b) => Manhattan(a, b) == 1;
 

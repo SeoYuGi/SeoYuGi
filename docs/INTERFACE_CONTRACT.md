@@ -23,7 +23,8 @@ predictor.Observe(new ActionEvent {
 ```
 
 - 예고만 되고 아직 판정 안 된 공격도 "지정한 순간" 보낸다 (의도가 학습 재료).
-- 디코이 사용 시 코어는 `predictor.InjectDecoy(actorId, durationSec)`를 호출한다.
+- 디코이(개인 장비, 1기당 매치 1회 — 잔여 관리는 코어)가 발동되면 코어는
+  `predictor.InjectDecoy(actorId, 5f)`를 호출한다. 효과는 그 팀 전체 5초 교란.
 
 ## 3. AI → 코어 : 예측 조회
 ```csharp
@@ -47,17 +48,21 @@ string[] lines = predictor.GetBriefing(actorId);  // 브리핑 화면용 분석 
 `Assets/Game/Scripts/Ai/` — 적팀 3기와 아군 백필 팀원이 전부 쓰는 조종 뇌. 순수 C#.
 
 ```csharp
-// 슬롯 세팅 (매치 시작 시)
+// 슬롯 세팅 (매치 시작 시) — ClassId 5종: Tank/Balance/Assassin/Grenadier/Sniper
 var predictor = new Predictor(predCfg);            // 매치당 1개, 적팀 뇌들이 공유
 var enemyBrain = new AiBrain(actorId, AiConfig.ForClass(ClassId.Sniper), predictor);
-var allyBrain  = new AiBrain(actorId, AiConfig.ForClass(ClassId.Runner));  // 아군 팀원: predictor 없음
+var allyBrain  = new AiBrain(actorId, AiConfig.ForClass(ClassId.Balance)); // 아군 팀원: predictor 없음
 
 // 매 프레임 (코어가 IWorldView 구현체를 넘긴다)
 AiCommand cmd = brain.Tick(worldView);
 if (cmd.Type != CommandType.None) ExecuteCommand(actorId, cmd); // AP 차감·실행은 코어 소관
 ```
 
-- `IWorldView`(WorldView.cs)는 코어가 구현: 액터 상태·존 소유·예고 목록·AP 조회·통행 판정.
+- `IWorldView`(WorldView.cs)는 코어가 구현: 액터 상태·존 소유·예고 목록·AP 조회·통행 판정,
+  그리고 시야 시스템용 `IsVisibleTo(team, cell)`(팀 공유 시야 + 벽 LOS)와
+  디코이 잔여 조회 `HasDecoy(actorId)`.
+- 뇌의 시야 규칙: 보이는 적을 우선 노리고, 안개 속은 <예측 가능한 인간 슬롯>만 예측 칸으로 조준
+  (적 AI 뇌만 해당 — 아군 팀원 뇌는 predictor가 없어 보이는 것만 상대함).
 - AiBrain은 명령만 내놓고 **AP 차감·쿨타임·판정은 전부 코어가 집행** — AP 부족이면 코어가 무시해도 안전.
 - 난이도: `AiConfig.AggressionDelay`(반응 지연)와 `PredictionConfig` 가중치 두 개만 만지면 됨.
 

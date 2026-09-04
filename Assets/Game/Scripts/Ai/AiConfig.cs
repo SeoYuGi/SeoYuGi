@@ -7,27 +7,31 @@ namespace SeoYuGi.Ai
         public float CostMove = 1f;
         public float CostAttack = 2f;
         public float CostHeavy = 3f;
-        public float CostGuard = 1f;
-        public float CostDecoy = 3f;
+        public float CostGuard = 1f; // 디코이는 장비(AP 무관)라 비용 없음
 
         public float MinDecisionInterval = 0.25f; // 초당 최대 4회 판단 — 인간다운 템포
         public float DodgeWindow = 0.6f;          // 예고 판정까지 이 시간 안이면 회피 시도
         public float ReserveAp = 0f;              // 이만큼은 항상 남겨둠 (역할별 프리셋)
         public float HumanTargetBonus = 3f;       // 타겟 선정 시 인간 슬롯 가중(거리 환산)
         public int SnipeRange = 6;
-        public float DecoyCooldown = 12f;
         public float AggressionDelay = 0f;        // 판단 후 실행 지연 — 난이도 낮출 때 증가
+
+        public int GrenadeRange = 3;
 
         public static AiConfig ForClass(ClassId cls)
         {
             switch (cls)
             {
-                case ClassId.Runner:
+                case ClassId.Tank:
+                    return new AiConfig { ReserveAp = 0f, MinDecisionInterval = 0.3f };
+                case ClassId.Balance:
                     return new AiConfig { ReserveAp = 0f };
+                case ClassId.Assassin:
+                    return new AiConfig { ReserveAp = 3f }; // 점멸각을 위해 비축
+                case ClassId.Grenadier:
+                    return new AiConfig { ReserveAp = 1f };
                 case ClassId.Sniper:
                     return new AiConfig { ReserveAp = 3f, MinDecisionInterval = 0.35f };
-                case ClassId.Jammer:
-                    return new AiConfig { ReserveAp = 1f };
                 default:
                     return new AiConfig();
             }

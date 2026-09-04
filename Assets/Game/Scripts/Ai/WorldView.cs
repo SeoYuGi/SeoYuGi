@@ -3,7 +3,8 @@ using SeoYuGi.Prediction;
 
 namespace SeoYuGi.Ai
 {
-    public enum ClassId { Runner, Sniper, Jammer }
+    // 기획서 v1.3 클래스 5종: 탱커(너구리)/밸런스(치즈태비)/어쌔신(검은고양이)/중거리(비둘기)/장거리(까치)
+    public enum ClassId { Tank, Balance, Assassin, Grenadier, Sniper }
 
     public enum CommandType { None, Move, Attack, Heavy, Guard, Decoy }
 
@@ -54,6 +55,8 @@ namespace SeoYuGi.Ai
         IReadOnlyList<ZoneState> Zones { get; }
         IReadOnlyList<Telegraph> Telegraphs { get; }
         float GetAp(int actorId);
-        bool IsWalkable(Cell cell); // 맵 안 && 점유 안 됨
+        bool IsWalkable(Cell cell);              // 맵 안 && 벽 아님 && 점유 안 됨
+        bool IsVisibleTo(TeamId team, Cell cell); // 해당 팀의 공유 시야 안인가 (벽 LOS 반영)
+        bool HasDecoy(int actorId);               // 디코이 미사용 여부 (1기당 매치 1회, 집행은 코어)
     }
 }

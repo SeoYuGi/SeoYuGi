@@ -1,0 +1,489 @@
+<title>UNPREDICT 맵 워크벤치</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Gothic+A1:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --paper:#f4f6f9; --surface:#ffffff; --ink:#171c26; --ink-soft:#4c5666; --ink-faint:#8892a0;
+  --line:#d8dee8; --heat:#e8401f; --heat-soft:#fbe3dc; --zone:#1f7a8c; --zone-soft:#dcecef;
+  --grid-line:#c3ccd8; --code-bg:#eceff4; --wall:#39404c; --ok:#2e7d4f; --warn:#b26a00; --heal:#2e7d4f;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --paper:#12151b; --surface:#1a1e26; --ink:#e8ebf0; --ink-soft:#a8b0bd; --ink-faint:#6d7684;
+    --line:#2c323d; --heat:#ff6844; --heat-soft:#3a231d; --zone:#4db3c8; --zone-soft:#1b3138;
+    --grid-line:#39404c; --code-bg:#232833; --wall:#454e5e; --ok:#5cc98a; --warn:#e0a144; --heal:#5cc98a;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#12151b; --surface:#1a1e26; --ink:#e8ebf0; --ink-soft:#a8b0bd; --ink-faint:#6d7684;
+  --line:#2c323d; --heat:#ff6844; --heat-soft:#3a231d; --zone:#4db3c8; --zone-soft:#1b3138;
+  --grid-line:#39404c; --code-bg:#232833; --wall:#454e5e; --ok:#5cc98a; --warn:#e0a144; --heal:#5cc98a;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:14px;line-height:1.6;margin:0;}
+.page{max-width:1120px;margin:0 auto;padding:28px 20px 64px;}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px;}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.18em;color:var(--heat);text-transform:uppercase;margin:0;width:100%;}
+h1{font-family:"Do Hyeon","Gothic A1",sans-serif;font-weight:400;font-size:30px;margin:0;line-height:1.1;}
+.sub{color:var(--ink-faint);font-size:12.5px;margin:0;}
+main{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;}
+.board-col{flex:1 1 620px;min-width:340px;}
+.side{flex:0 0 320px;min-width:280px;display:flex;flex-direction:column;gap:14px;}
+
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;}
+.bar label{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;color:var(--ink-faint);}
+input[type=text],select,input[type=number]{
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;
+  padding:6px 9px;font-family:inherit;font-size:13.5px;
+}
+input[type=text]{font-weight:700;width:150px;}
+input[type=number]{width:58px;font-variant-numeric:tabular-nums;}
+select{max-width:190px;}
+button{
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;
+  padding:6px 12px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;
+}
+button:hover{border-color:var(--ink-faint);}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--zone);outline-offset:1px;}
+button.primary{background:var(--zone);border-color:var(--zone);color:#fff;}
+
+#gridWrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;}
+#grid{display:grid;gap:1px;background:var(--grid-line);border:1px solid var(--grid-line);width:max-content;user-select:none;touch-action:none;}
+.cell{
+  width:28px;height:28px;background:var(--paper);display:flex;align-items:center;justify-content:center;
+  font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;cursor:crosshair;position:relative;
+}
+.cell:hover{outline:2px solid var(--ink-faint);outline-offset:-2px;z-index:1;}
+.cell.wall{background:var(--wall);}
+.cell.wall::after{content:"";position:absolute;inset:5px;border:1.5px solid rgba(255,255,255,.28);border-radius:2px;}
+.cell.zA,.cell.zB,.cell.zC{background:var(--zone-soft);color:var(--zone);}
+.cell.heal{color:var(--heal);}
+.cell.heal::before{content:"✚";font-size:14px;}
+.cell.high{background:var(--heat-soft);color:var(--heat);}
+.cell.high::before{content:"▲";font-size:12px;}
+.cell .sp{width:19px;height:19px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;}
+.cell .sp.t0{background:var(--zone);border-radius:50%;}
+.cell .sp.t1{background:var(--heat);border-radius:4px;}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12px;color:var(--ink-soft);}
+.legend span{display:inline-flex;align-items:center;gap:5px;}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid var(--line);}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;}
+.panel h2{font-family:"Do Hyeon","Gothic A1",sans-serif;font-weight:400;font-size:17px;margin:0 0 10px;display:flex;align-items:baseline;gap:8px;}
+.panel h2 .no{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--heat);}
+.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+.tool{
+  display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 6px;
+  border:1px solid var(--line);border-radius:6px;background:var(--paper);cursor:pointer;font-size:11.5px;color:var(--ink-soft);
+}
+.tool .g{font-family:"IBM Plex Mono",monospace;font-size:15px;font-weight:600;color:var(--ink);}
+.tool.on{border-color:var(--zone);background:var(--zone-soft);color:var(--zone);}
+.tool.on .g{color:var(--zone);}
+.tool.ext{border-style:dashed;}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;}
+.chk input{accent-color:var(--zone);}
+.hint{font-size:11.5px;color:var(--ink-faint);margin:8px 0 0;}
+.hint em{font-style:normal;color:var(--warn);font-weight:700;}
+
+#checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;}
+#checks li{display:flex;gap:7px;align-items:flex-start;}
+#checks .ic{font-family:"IBM Plex Mono",monospace;font-weight:600;flex:0 0 auto;}
+#checks li.ok .ic{color:var(--ok);} #checks li.warn .ic{color:var(--warn);} #checks li.err .ic{color:var(--heat);}
+#checks li.warn,#checks li.err{color:var(--ink);} #checks li.ok{color:var(--ink-soft);}
+
+textarea{
+  width:100%;background:var(--code-bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:1.45;padding:9px;resize:vertical;white-space:pre;
+}
+.row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+.copied{color:var(--ok);font-size:12px;font-weight:700;}
+footer{margin-top:36px;border-top:1px solid var(--line);padding-top:12px;font-size:11.5px;color:var(--ink-faint);font-family:"IBM Plex Mono",monospace;}
+</style>
+
+<div class="page">
+<header>
+  <p class="eyebrow">UNPREDICT 2026 · Level Design Tool</p>
+  <h1>맵 워크벤치</h1>
+  <p class="sub">BattleMaps.cs 포맷 그대로 — 그리기 · 대칭 · 검증 · C# 내보내기</p>
+</header>
+
+<main>
+<div class="board-col">
+  <div class="bar">
+    <label>맵 이름</label><input type="text" id="mapName" value="새 골목">
+    <label>프리셋</label>
+    <select id="preset"></select>
+    <button id="loadPreset">불러오기</button>
+    <label>W×H</label>
+    <input type="number" id="inW" min="7" max="31" value="21"><input type="number" id="inH" min="7" max="21" value="13">
+    <button id="resize">크기 적용</button>
+    <button id="undoBtn" title="Ctrl+Z">↩ 되돌리기</button>
+  </div>
+  <div id="gridWrap"><div id="grid"></div></div>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--paper)"></span>바닥 ·</span>
+    <span><span class="sw" style="background:var(--wall)"></span>벽 #</span>
+    <span><span class="sw" style="background:var(--zone-soft)"></span>거점 A/B/C</span>
+    <span><span class="sw" style="background:var(--zone);border-radius:50%"></span>팀0 스폰 1–3 (아래)</span>
+    <span><span class="sw" style="background:var(--heat)"></span>팀1 스폰 4–6 (위)</span>
+    <span style="color:var(--heal);font-weight:700">✚ 힐팩 H (확장)</span>
+    <span style="color:var(--heat);font-weight:700">▲ 고지대 ^</span>
+  </div>
+</div>
+
+<div class="side">
+  <div class="panel">
+    <h2><span class="no">01</span>팔레트</h2>
+    <div class="tools" id="tools"></div>
+    <div class="chk"><input type="checkbox" id="mirror" checked><label for="mirror" style="font-size:13px;color:var(--ink);letter-spacing:0">180° 점대칭 미러 (벽·거점·스폰 자동 반영)</label></div>
+    <p class="hint">드래그로 칠하기 · 우클릭 = 바닥으로 지우기. <em>H(힐팩)</em>는 현재 Parse가 모르는 글리프 — 코드 확장 전까지 FormatException.</p>
+  </div>
+
+  <div class="panel">
+    <h2><span class="no">02</span>검증</h2>
+    <ul id="checks"></ul>
+  </div>
+
+  <div class="panel">
+    <h2><span class="no">03</span>내보내기 / 가져오기</h2>
+    <textarea id="io" rows="15" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="primary" id="copyCs">C# 스니펫 복사</button>
+      <button id="copyAscii">ASCII만 복사</button>
+      <button id="importBtn">↑ 텍스트에서 가져오기</button>
+      <span class="copied" id="copyMsg"></span>
+    </div>
+    <p class="hint">C# 스니펫은 <code style="font-family:'IBM Plex Mono',monospace">BattleMaps.Layouts</code> 배열에 그대로 붙여넣는 튜플. 가져오기는 위 텍스트영역의 <b>맵 행들</b>(따옴표·쉼표 있어도 됨)을 읽는다.</p>
+  </div>
+</div>
+</main>
+
+<footer>UNPREDICT 2026 · 규칙: 첫 행 = 맵의 위 · 벽 180° 점대칭 권장 · 거점 3×3 · 스폰 1–3 아래 / 4–6 위</footer>
+</div>
+
+<script>
+"use strict";
+const PRESETS = [
+["● 시장 골목 15×11",[
+"...4...5...6...",
+"...............",
+".....##....CCC.",
+".#.........CCC.",
+"......BBB..CCC.",
+"..#...BBB...#..",
+".AAA..BBB......",
+".AAA.........#.",
+".AAA....##.....",
+"...............",
+"...1...2...3..."]],
+["● 옥상 정원 17×13",[
+"....4...5...6....",
+".................",
+"..AAA......^.....",
+"..AAA............",
+"..AAA..##........",
+".......BBB...##..",
+"..^....BBB....^..",
+"..##...BBB.......",
+"........##..CCC..",
+"............CCC..",
+".....^......CCC..",
+".................",
+"....1...2...3...."]],
+["● 뒷골목 미로 21×13",[
+"....4.....5.....6....",
+"..#...#.......#...#..",
+"....#...##.##...#....",
+".##..#....#....#..##.",
+"........#...#........",
+".AAA.#...BBB...#.CCC.",
+".AAA..#..BBB..#..CCC.",
+".AAA.#...BBB...#.CCC.",
+"........#...#........",
+".##..#....#....#..##.",
+"....#...##.##...#....",
+"..#...#.......#...#..",
+"....1.....2.....3...."]],
+["● 재개발 대로 21×9",[
+"....4.....5.....6....",
+".....................",
+".##......#.#......##.",
+".AAA..#..BBB..#..CCC.",
+".AAA.^...BBB...^.CCC.",
+".AAA..#..BBB..#..CCC.",
+".##......#.#......##.",
+".....................",
+"....1.....2.....3...."]],
+["● 수직 상가 13×17",[
+"...4..5..6...",
+".............",
+"....#...#....",
+".##.......##.",
+".........CCC.",
+"..#......CCC.",
+".........CCC.",
+".....BBB.....",
+".#...BBB...#.",
+".....BBB.....",
+".AAA.........",
+".AAA......#..",
+".AAA.........",
+".##.......##.",
+"....#...#....",
+".............",
+"...1..2..3..."]],
+["구: 중앙 창고",[
+"....4.....5.....6....",
+".....................",
+"..##.....###.....##..",
+"......#.......#......",
+"....#....###....#....",
+".AAA.....BBB.....CCC.",
+".AAA..#..BBB..#..CCC.",
+".AAA.....BBB.....CCC.",
+"....#....###....#....",
+"......#.......#......",
+"..##.....###.....##..",
+".....................",
+"....1.....2.....3...."]],
+["구: 감제탑",[
+"....4.....5.....6....",
+".....................",
+"......##.....##......",
+"........^...^........",
+"....#...........#....",
+".AAA.....BBB.....CCC.",
+".AAA.#...BBB...#.CCC.",
+".AAA.....BBB.....CCC.",
+"....#...........#....",
+"........^...^........",
+"......##.....##......",
+".....................",
+"....1.....2.....3...."]],
+["구: 중원 요새",[
+"....4.....5.....6....",
+".....................",
+"..###.....#.....###..",
+".....................",
+"......####.####......",
+".AAA.....BBB.....CCC.",
+".AAA.###.BBB.###.CCC.",
+".AAA.....BBB.....CCC.",
+"......####.####......",
+".....................",
+"..###.....#.....###..",
+".....................",
+"....1.....2.....3...."]],
+["구: 대각 회전",[
+"....4.....5.....6....",
+"............##.......",
+"..............#.CCC..",
+".......#........CCC..",
+"................CCC..",
+".........BBB.........",
+"....#....BBB....#....",
+".........BBB.........",
+"..AAA................",
+"..AAA........#.......",
+"..AAA.#..............",
+".......##............",
+"....1.....2.....3...."]],
+];
+
+const TOOLS = [
+  {g:".", name:"바닥"}, {g:"#", name:"벽"}, {g:"E", name:"지우개"},
+  {g:"A", name:"거점 A"}, {g:"B", name:"거점 B"}, {g:"C", name:"거점 C"},
+  {g:"1", name:"스폰 1"}, {g:"2", name:"스폰 2"}, {g:"3", name:"스폰 3"},
+  {g:"4", name:"스폰 4"}, {g:"5", name:"스폰 5"}, {g:"6", name:"스폰 6"},
+  {g:"H", name:"힐팩", ext:true},
+  {g:"^", name:"고지대"},
+];
+const MIRROR_CH = {".":".","#":"#","A":"C","B":"B","C":"A","1":"6","2":"5","3":"4","4":"3","5":"2","6":"1","H":"H","^":"^"};
+
+let W=21, H=13, rows=[], tool="#", undoStack=[];
+const $=id=>document.getElementById(id);
+
+function blank(w,h){ return Array.from({length:h},()=> ".".repeat(w).split("")); }
+function loadRows(strRows){
+  H=strRows.length; W=strRows[0].length;
+  rows=strRows.map(r=>r.split(""));
+  $("inW").value=W; $("inH").value=H;
+  buildGrid(); refresh();
+}
+function snapshot(){ undoStack.push(rows.map(r=>r.join(""))); if(undoStack.length>60) undoStack.shift(); }
+function undo(){ const s=undoStack.pop(); if(s) loadRows(s); }
+
+function setCell(r,c,ch){
+  if(r<0||c<0||r>=H||c>=W) return;
+  if(ch>="1"&&ch<="6"){ // 스폰은 유일 — 기존 위치 제거
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++) if(rows[y][x]===ch) rows[y][x]=".";
+  }
+  rows[r][c]=ch;
+}
+function paint(r,c,erase){
+  let ch = erase ? "." : (tool==="E" ? "." : tool);
+  setCell(r,c,ch);
+  if($("mirror").checked){
+    const mr=H-1-r, mc=W-1-c;
+    if(!(mr===r&&mc===c)) setCell(mr,mc,MIRROR_CH[ch]||".");
+  }
+  refresh();
+}
+
+// ---- 그리드 렌더 ----
+let painting=false, eraseMode=false;
+function buildGrid(){
+  const g=$("grid");
+  g.style.gridTemplateColumns=`repeat(${W},28px)`;
+  g.innerHTML="";
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){
+    const d=document.createElement("div");
+    d.className="cell"; d.dataset.r=r; d.dataset.c=c;
+    g.appendChild(d);
+  }
+}
+function refresh(){
+  const cells=$("grid").children;
+  for(let i=0;i<cells.length;i++){
+    const d=cells[i], r=+d.dataset.r, c=+d.dataset.c, ch=rows[r][c];
+    d.className="cell"; d.textContent="";
+    if(ch==="#") d.classList.add("wall");
+    else if(ch==="A"||ch==="B"||ch==="C"){ d.classList.add("z"+ch); d.textContent=ch; }
+    else if(ch>="1"&&ch<="6"){
+      const s=document.createElement("span");
+      s.className="sp "+(ch<="3"?"t0":"t1"); s.textContent=ch; d.appendChild(s);
+    }
+    else if(ch==="H") d.classList.add("heal");
+    else if(ch==="^") d.classList.add("high");
+  }
+  validate(); exportText();
+}
+const gridEl=$("grid");
+gridEl.addEventListener("pointerdown",e=>{
+  const d=e.target.closest(".cell"); if(!d) return;
+  e.preventDefault(); painting=true; eraseMode=(e.button===2); snapshot();
+  paint(+d.dataset.r,+d.dataset.c,eraseMode);
+});
+gridEl.addEventListener("pointerover",e=>{
+  if(!painting) return;
+  const d=e.target.closest(".cell"); if(d) paint(+d.dataset.r,+d.dataset.c,eraseMode);
+});
+window.addEventListener("pointerup",()=>painting=false);
+gridEl.addEventListener("contextmenu",e=>e.preventDefault());
+window.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==="z"){ e.preventDefault(); undo(); }
+});
+
+// ---- 검증 ----
+function validate(){
+  const items=[];
+  const add=(lvl,msg)=>items.push({lvl,msg});
+  // 스폰
+  const spawns={};
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){const ch=rows[r][c]; if(ch>="1"&&ch<="6")spawns[ch]=[r,c];}
+  const missing=[..."123456"].filter(d=>!spawns[d]);
+  missing.length ? add("err",`스폰 누락: ${missing.join(", ")} — Parse는 통과하지만 BattleRunner가 유닛 배치에 실패한다`)
+                 : add("ok","스폰 1–6 모두 배치됨");
+  // 거점
+  const zc={A:0,B:0,C:0};
+  for(const row of rows)for(const ch of row) if(zc[ch]!==undefined) zc[ch]++;
+  for(const z of "ABC"){
+    if(zc[z]===0) add("err",`거점 ${z} 없음 — 승리 조건(3거점)이 성립 안 함`);
+    else if(zc[z]!==9) add("warn",`거점 ${z}: ${zc[z]}칸 (기존 맵 관례는 3×3=9칸)`);
+  }
+  if(zc.A===9&&zc.B===9&&zc.C===9) add("ok","거점 A/B/C 각 9칸");
+  // 연결성 — 벽 제외 전 칸이 한 덩어리인지
+  let total=0, first=null;
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++) if(rows[r][c]!=="#"){ total++; if(!first)first=[r,c]; }
+  if(first){
+    const seen=new Set([first.join(",")]), q=[first];
+    while(q.length){
+      const [r,c]=q.pop();
+      for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nr=r+dr,nc=c+dc,k=nr+","+nc;
+        if(nr>=0&&nc>=0&&nr<H&&nc<W&&rows[nr][nc]!=="#"&&!seen.has(k)){seen.add(k);q.push([nr,nc]);}
+      }
+    }
+    seen.size===total ? add("ok","모든 바닥이 연결됨 (고립 구역 없음)")
+                      : add("err",`고립된 바닥 ${total-seen.size}칸 — 벽으로 막힌 구역이 있다`);
+  }
+  // 180° 점대칭
+  let asym=0;
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){
+    const a=rows[r][c], b=rows[H-1-r][W-1-c];
+    if((MIRROR_CH[a]||a)!==b) asym++;
+  }
+  asym===0 ? add("ok","180° 점대칭 (양팀 공정)")
+           : add("warn",`비대칭 ${asym}칸 — 맵 관례상 벽은 점대칭이어야 공정하다`);
+  // 확장 글리프
+  let heals=0, highs=0;
+  for(const row of rows)for(const ch of row){ if(ch==="H")heals++; if(ch==="^")highs++; }
+  if(heals) add("warn",`힐팩 H ×${heals} — BattleMaps.Parse에 'H' 분기 추가 전까지 FormatException을 던진다`);
+  if(highs) add("ok",`고지대 ^ ×${highs} — 진입 비용 2 · 시야 +1 · 저격 벽 관통 · 항상 노출 · 낙하 1`);
+  // 벽 수
+  let walls=0; for(const row of rows)for(const ch of row) if(ch==="#")walls++;
+  add("ok",`벽 ${walls}개 · ${W}×${H}`);
+
+  $("checks").innerHTML = items.map(i=>{
+    const ic = i.lvl==="ok"?"✓":i.lvl==="warn"?"!":"✕";
+    return `<li class="${i.lvl}"><span class="ic">${ic}</span><span>${i.msg}</span></li>`;
+  }).join("");
+}
+
+// ---- 입출력 ----
+function asciiRows(){ return rows.map(r=>r.join("")); }
+function csSnippet(){
+  const name=($("mapName").value||"이름 없음").replace(/"/g,'\\"');
+  return `("${name}", new[]\n{\n`+asciiRows().map(r=>`    "${r}",`).join("\n")+`\n}),`;
+}
+function exportText(){ $("io").value=csSnippet(); }
+function copy(text){
+  navigator.clipboard.writeText(text).then(()=>{
+    $("copyMsg").textContent="복사됨 ✓";
+    setTimeout(()=>$("copyMsg").textContent="",1600);
+  }).catch(()=>{ $("io").value=text; $("io").select(); $("copyMsg").textContent="Ctrl+C로 복사하세요"; });
+}
+$("copyCs").onclick=()=>copy(csSnippet());
+$("copyAscii").onclick=()=>copy(asciiRows().join("\n"));
+$("importBtn").onclick=()=>{
+  const lines=$("io").value.split("\n")
+    .map(l=>{ const m=l.match(/"([^"]*)"/); return m?m[1]:l.trim(); })
+    .filter(l=>/^[.#A-C1-6H^]+$/.test(l));
+  if(lines.length<3){ $("copyMsg").textContent="맵 행을 못 찾았어요"; return; }
+  const w=lines[0].length;
+  if(lines.some(l=>l.length!==w)){ $("copyMsg").textContent="행 너비가 서로 달라요"; return; }
+  snapshot(); loadRows(lines); $("copyMsg").textContent="가져옴 ✓";
+  setTimeout(()=>$("copyMsg").textContent="",1600);
+};
+$("mapName").addEventListener("input",exportText);
+
+// ---- 툴바 · 프리셋 · 크기 ----
+const toolsEl=$("tools");
+TOOLS.forEach(t=>{
+  const b=document.createElement("button");
+  b.type="button"; b.className="tool"+(t.ext?" ext":"")+(t.g===tool?" on":"");
+  b.innerHTML=`<span class="g">${t.g==="E"?"⌫":t.g}</span>${t.name}`;
+  b.onclick=()=>{ tool=t.g; [...toolsEl.children].forEach(x=>x.classList.remove("on")); b.classList.add("on"); };
+  toolsEl.appendChild(b);
+});
+const presetEl=$("preset");
+PRESETS.forEach((p,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=p[0]; presetEl.appendChild(o); });
+$("loadPreset").onclick=()=>{
+  const p=PRESETS[+presetEl.value]; snapshot();
+  $("mapName").value=p[0].replace(/^● /,"").replace(/^구: /,"").replace(/ \d+×\d+$/,"");
+  loadRows(p[1]);
+};
+$("resize").onclick=()=>{
+  const nw=Math.max(7,Math.min(31,+$("inW").value||21));
+  const nh=Math.max(7,Math.min(21,+$("inH").value||13));
+  snapshot();
+  const ng=blank(nw,nh);
+  for(let r=0;r<Math.min(H,nh);r++)for(let c=0;c<Math.min(W,nw);c++) ng[r][c]=rows[r][c];
+  loadRows(ng.map(r=>r.join("")));
+};
+$("undoBtn").onclick=undo;
+
+// 시작 상태: 인게임 로테이션 프리셋
+presetEl.value=1;
+$("mapName").value="옥상 정원";
+loadRows(PRESETS[1][1]);
+</script>

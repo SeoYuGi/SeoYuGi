@@ -209,6 +209,66 @@ public static class UINetPopupBuilders
             btn.anchoredPosition = new Vector2((i - 1) * 240f, 55f);
         }
 
+        // ── 좌측 팀 채팅 패널 — 로그 + 역할 콜 빠른채팅 + 자유 입력 (왕자영요식) ──
+        var chatBack = NewRect("ChatBack", root);
+        chatBack.anchorMin = chatBack.anchorMax = new Vector2(0.5f, 0.5f);
+        chatBack.sizeDelta = new Vector2(430f, 620f);
+        chatBack.anchoredPosition = new Vector2(-650f, -20f);
+        var cbImg = chatBack.gameObject.AddComponent<Image>();
+        cbImg.color = new Color(0f, 0f, 0f, 0.4f);
+        cbImg.raycastTarget = false;
+
+        var chatLog = NewText("ChatLog", root, "", 20, FontStyle.Normal);
+        chatLog.anchorMin = chatLog.anchorMax = new Vector2(0.5f, 0.5f);
+        chatLog.sizeDelta = new Vector2(400f, 280f);
+        chatLog.anchoredPosition = new Vector2(-650f, 130f);
+        var clText = chatLog.GetComponent<Text>();
+        clText.alignment = TextAnchor.LowerLeft; // 최신 줄이 아래
+        clText.color = new Color(0.85f, 0.95f, 1f);
+
+        for (int i = 0; i < 6; i++) // 라벨은 UILobbyPopup이 QuickLines로 채움
+        {
+            var qc = MakeButton(root, $"QC{i + 1}", "", new Vector2(400f, 32f));
+            qc.anchorMin = qc.anchorMax = new Vector2(0.5f, 0.5f);
+            qc.anchoredPosition = new Vector2(-650f, -40f - i * 38f);
+            qc.GetComponentInChildren<Text>().fontSize = 19;
+        }
+
+        var chatField = NewRect("ChatInput", root);
+        chatField.anchorMin = chatField.anchorMax = new Vector2(0.5f, 0.5f);
+        chatField.sizeDelta = new Vector2(400f, 44f);
+        chatField.anchoredPosition = new Vector2(-650f, -290f);
+        var cfImg = chatField.gameObject.AddComponent<Image>();
+        cfImg.color = new Color(0.1f, 0.11f, 0.14f, 0.95f);
+        var chatInput = chatField.gameObject.AddComponent<InputField>();
+
+        var chatText = NewText("Text", chatField, "", 20, FontStyle.Normal);
+        StretchFull(chatText);
+        chatText.offsetMin = new Vector2(12f, 6f);
+        chatText.offsetMax = new Vector2(-12f, -6f);
+        var ctComp = chatText.GetComponent<Text>();
+        ctComp.alignment = TextAnchor.MiddleLeft;
+        ctComp.supportRichText = false;
+
+        var chatPh = NewText("Placeholder", chatField, "팀 채팅 — Enter로 전송", 20, FontStyle.Italic);
+        StretchFull(chatPh);
+        chatPh.offsetMin = new Vector2(12f, 6f);
+        chatPh.offsetMax = new Vector2(-12f, -6f);
+        var cpComp = chatPh.GetComponent<Text>();
+        cpComp.alignment = TextAnchor.MiddleLeft;
+        cpComp.color = new Color(1f, 1f, 1f, 0.25f);
+
+        chatInput.textComponent = ctComp;
+        chatInput.placeholder = cpComp;
+        chatInput.characterLimit = 80;
+
+        // ── 우측 팀 밸런스 경고 — 부족한 역할을 UILobbyPopup이 채움 ──
+        var balance = NewText("BalanceText", root, "", 24, FontStyle.Bold);
+        balance.anchorMin = balance.anchorMax = new Vector2(0.5f, 0.5f);
+        balance.sizeDelta = new Vector2(400f, 240f);
+        balance.anchoredPosition = new Vector2(650f, 0f);
+        balance.GetComponent<Text>().color = new Color(1f, 0.75f, 0.3f);
+
         Save(root, "UILobbyPopup");
     }
 

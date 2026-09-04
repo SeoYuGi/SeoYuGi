@@ -600,22 +600,22 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>
-        /// 무전 패널 — 좌하단 [무전] 토글로 펼치고, 문구 클릭 = 전송 (단축키 병기).
+        /// 무전 패널 — 우상단 [무전] 토글로 아래로 펼치고, 문구 클릭 = 전송 (단축키 병기).
         /// Tab 홀드 중에도 임시로 펼쳐진다 (읽기 + 클릭 둘 다 가능).
         /// </summary>
         void DrawChatPanel()
         {
-            const float btnW = 64f, btnH = 26f, rowH = 30f, panelW = 170f;
-            float x0 = 12f, toggleY = H - 100f;
+            const float btnW = 96f, btnH = 26f, rowH = 30f, panelW = 170f;
+            float x0 = W - panelW - 12f, toggleY = 12f;
 
-            if (GUI.Button(new Rect(x0, toggleY, btnW, btnH), chatPanelOpen ? "무전 ▾" : "무전 ▸", chipStyle))
+            if (GUI.Button(new Rect(W - btnW - 12f, toggleY, btnW, btnH), chatPanelOpen ? "빠른채팅 ▾" : "빠른채팅 ▸", chipStyle))
                 chatPanelOpen = !chatPanelOpen;
 
             if (!chatPanelOpen && !ShowChatCheatsheet) return;
 
             var lines = SeoYuGi.Chat.QuickChat.Lines;
             float panelH = lines.Length * rowH + 30f;
-            float y0 = toggleY - panelH - 6f;
+            float y0 = toggleY + btnH + 6f;
 
             GUI.color = new Color(0f, 0f, 0f, 0.82f);
             GUI.DrawTexture(new Rect(x0, y0, panelW, panelH), Texture2D.whiteTexture);

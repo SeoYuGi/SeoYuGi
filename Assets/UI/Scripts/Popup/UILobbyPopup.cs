@@ -12,7 +12,7 @@ using UnityEngine.UI;
 /// </summary>
 public class UILobbyPopup : UIPopup
 {
-    enum Buttons { Pick1, Pick2, Pick3, Pick4, Pick5, BtnCopyCode, BtnStart, BtnLeave }
+    enum Buttons { Pick1, Pick2, Pick3, Pick4, Pick5, QC1, QC2, QC3, QC4, QC5, QC6, BtnCopyCode, BtnStart, BtnLeave }
 
     public Action OnStart; // 호스트 시작 — BattleRunner가 맵 픽으로 이어감
     public Action OnLeave;
@@ -21,10 +21,23 @@ public class UILobbyPopup : UIPopup
     static readonly string[] CardArt =
         { "Card_Tank", "Card_Balance", "Card_Assassin", "Card_Grenadier", "Card_Sniper" };
 
-    Text codeText, statusText;
+    // 역할 콜 빠른채팅 — 왕자영요식 "내가 ~할게요" (탱/서폿/딜 느낌)
+    static readonly string[] QuickLines =
+    {
+        "내가 탱커 할게요! (너구리)",
+        "내가 서포터 할게요! (치즈태비)",
+        "내가 암살자 할게요! (검은 고양이)",
+        "내가 폭격수 할게요! (비둘기)",
+        "내가 저격수 할게요! (까치)",
+        "밸런스 맞춰 주세요!",
+    };
+
+    Text codeText, statusText, chatLogText, balanceText;
+    InputField chatInput;
     readonly Text[] slotLabels = new Text[6];
     readonly Image[] slotPortraits = new Image[6];
     readonly Image[] pickBackings = new Image[5];
+    readonly System.Collections.Generic.List<string> chatLog = new System.Collections.Generic.List<string>();
     static readonly Sprite[] cardSprites = new Sprite[5]; // 세션 캐시
 
     public override void Init()
@@ -54,6 +67,21 @@ public class UILobbyPopup : UIPopup
             slotLabels[i] = slot.Find("LabelBack/Label")?.GetComponent<Text>();
             slotPortraits[i] = slot.Find("Portrait")?.GetComponent<Image>();
         }
+
+        // 팀 채팅 — 역할 콜 버튼 + 자유 입력 (Enter 전송)
+        for (int i = 0; i < QuickLines.Length; i++)
+        {
+            string line = QuickLines[i];
+            var qc = Get<GameObject>((int)Buttons.QC1 + i);
+            if (qc == null) continue;
+            BindEvent(qc, _ => NetLobby.SendChat(line));
+            var label = qc.GetComponentInChildren<Text>();
+            if (label != null) label.text = line;
+        }
+        chatLogText = transform.Find("ChatLog")?.GetComponent<Text>();
+        balanceText = transform.Find("BalanceText")?.GetComponent<Text>();
+        chatInput = transform.Find("ChatInput")?.GetComponent<InputField>();
+        NetLobby.OnChat += AddChat;
 
         BindEvent(Get<GameObject>((int)Buttons.BtnCopyCode), _ =>
         {
@@ -123,7 +151,37 @@ public class UILobbyPopup : UIPopup
             }
     }
 
-    void OnDestroy() => NetLobby.OnChanged -= Refresh;
+    bool chatWasFocused; // 엔터 시 InputField가 같은 프레임에 포커스를 잃어도 전송되게 직전 상태 기억
+
+    /// <summary>채팅 전송 — onEndEdit는 이벤트 순서에 따라 엔터 감지를 놓쳐서 폴링으로.
+    /// UIPopup.Update(ESC)와 겹치지 않게 LateUpdate 사용.</summary>
+    void LateUpdate()
+    {
+        if (chatInput == null) return;
+        bool focused = chatInput.isFocused;
+        var kb = UnityEngine.InputSystem.Keyboard.current;
+        bool enter = kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame);
+        if (enter && (focused || chatWasFocused) && !string.IsNullOrWhiteSpace(chatInput.text))
+        {
+            NetLobby.SendChat(chatInput.text);
+            chatInput.text = "";
+            chatInput.ActivateInputField(); // 연속 입력 — 포커스 유지
+        }
+        chatWasFocused = focused;
+    }
+
+    void OnDestroy()
+    {
+        NetLobby.OnChanged -= Refresh;
+        NetLobby.OnChat -= AddChat;
+    }
+
+    void AddChat(string callsign, string text)
+    {
+        chatLog.Add($"{callsign}: {text}");
+        if (chatLog.Count > 12) chatLog.RemoveAt(0);
+        if (chatLogText != null) chatLogText.text = string.Join("\n", chatLog);
+    }
 
     void Leave()
     {
@@ -189,6 +247,47 @@ public class UILobbyPopup : UIPopup
             bool sel = i == myCls;
             pickBackings[i].color = sel ? new Color(0.35f, 1f, 0.75f) : new Color(0.12f, 0.13f, 0.17f, 0.95f);
             pickBackings[i].transform.localScale = sel ? Vector3.one * 1.08f : Vector3.one;
+        }
+
+        RefreshBalance(slots, myTeam);
+    }
+
+    /// <summary>내 팀 구성 경고 — 탱/서폿 빠짐·중복 픽 표시 (왕자영요식).
+    /// 봇이 빈 역할을 자동으로 메우므로 보통은 인간끼리 겹칠 때만 뜬다.</summary>
+    void RefreshBalance(NetLobby.LobbySlot[] slots, int myTeam)
+    {
+        if (balanceText == null) return;
+        if (myTeam < 0) { balanceText.text = ""; return; }
+
+        bool hasTank = false, hasSupport = false;
+        var counts = new int[5];
+        foreach (var s in slots)
+        {
+            if (s.team != myTeam) continue;
+            counts[(int)s.cls]++;
+            if (s.cls == UnitClass.Tank) hasTank = true;
+            if (s.cls == UnitClass.Balance) hasSupport = true;
+        }
+
+        var warns = new System.Collections.Generic.List<string>();
+        if (!hasTank) warns.Add("탱커가 없습니다");
+        if (!hasSupport) warns.Add("서포터가 없습니다");
+        for (int c = 0; c < counts.Length; c++)
+            if (counts[c] > 1) warns.Add($"{ClassName((UnitClass)c)} 중복 픽");
+
+        balanceText.text = warns.Count == 0 ? "" : "⚠ 팀 밸런스 부족\n" + string.Join("\n", warns);
+    }
+
+    static string ClassName(UnitClass cls)
+    {
+        switch (cls)
+        {
+            case UnitClass.Tank: return "너구리";
+            case UnitClass.Balance: return "치즈태비";
+            case UnitClass.Assassin: return "검은 고양이";
+            case UnitClass.Grenadier: return "비둘기";
+            case UnitClass.Sniper: return "까치";
+            default: return cls.ToString();
         }
     }
 }

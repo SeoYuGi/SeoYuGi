@@ -20,6 +20,8 @@ namespace SeoYuGi.Net
         const string MsgSlot = "sy_slot";   // client→host : 슬롯 이동 요청 (unitId)
         const string MsgClass = "sy_class"; // client→host : 클래스 변경 요청
         const string MsgStart = "sy_start"; // host→all : 매치 시작 (MatchSetup)
+        const string MsgChatReq = "sy_chatq"; // client→host : 로비 채팅 요청 (텍스트)
+        const string MsgChatBrd = "sy_chatb"; // host→client : 로비 채팅 배달 (콜사인+텍스트, 같은 팀만)
 
         // 슬롯 템플릿 — BattleRunner.roster와 동일한 6칸 (id, team, 콜사인)
         static readonly (int id, int team, string name)[] Template =
@@ -44,6 +46,7 @@ namespace SeoYuGi.Net
 
         public static event Action OnChanged;    // 슬롯 상태 갱신 — UI 리프레시용
         public static event Action OnMatchStart; // 시작 브로드캐스트 수신
+        public static event Action<string, string> OnChat; // 로비 팀 채팅 수신 — (콜사인, 텍스트)
 
         static bool hooked;
 
@@ -73,6 +76,8 @@ namespace SeoYuGi.Net
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgSlot, OnSlotMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgClass, OnClassMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgStart, OnStartMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatReq, OnChatReqMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatBrd, OnChatBrdMsg);
             NetSync.Register(); // 인게임 동기화 핸들러도 같이
 
             if (!hooked)
@@ -105,6 +110,49 @@ namespace SeoYuGi.Net
             using var w = new FastBufferWriter(8, Allocator.Temp);
             w.WriteValueSafe((int)cls);
             nm.CustomMessagingManager.SendNamedMessage(MsgClass, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>로비 팀 채팅 — 호스트가 같은 팀에게만 배달 (왕자영요식 역할 콜).</summary>
+        public static void SendChat(string text)
+        {
+            text = text?.Trim();
+            if (string.IsNullOrEmpty(text)) return;
+            if (text.Length > 80) text = text.Substring(0, 80);
+
+            var nm = NetworkManager.Singleton;
+            if (nm.IsHost) { RelayChat(nm.LocalClientId, text); return; }
+            using var w = new FastBufferWriter(512, Allocator.Temp);
+            w.WriteValueSafe(text);
+            nm.CustomMessagingManager.SendNamedMessage(MsgChatReq, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>호스트 — 발신자 팀을 찾아 같은 팀 인간에게만 배달. 호스트 자신도 이벤트로.</summary>
+        static void RelayChat(ulong senderClientId, string text)
+        {
+            var nm = NetworkManager.Singleton;
+            int team = -1;
+            string callsign = null;
+            foreach (var s in Slots)
+                if (s.owner != SlotOwner.Bot && s.clientId == senderClientId)
+                {
+                    team = s.team;
+                    callsign = s.callsign;
+                    break;
+                }
+            if (team < 0) return; // 슬롯 없는 발신자 무시
+
+            foreach (var s in Slots)
+            {
+                if (s.owner == SlotOwner.Bot || s.team != team) continue;
+                if (s.clientId == nm.LocalClientId) OnChat?.Invoke(callsign, text);
+                else
+                {
+                    using var w = new FastBufferWriter(512, Allocator.Temp);
+                    w.WriteValueSafe(callsign);
+                    w.WriteValueSafe(text);
+                    nm.CustomMessagingManager.SendNamedMessage(MsgChatBrd, s.clientId, w);
+                }
+            }
         }
 
         /// <summary>호스트 전용 — 매치 시작. mapIndex·시드는 호스트가 확정.
@@ -327,6 +375,21 @@ namespace SeoYuGi.Net
             if (!NetworkManager.Singleton.IsHost) return;
             r.ReadValueSafe(out int cls);
             SetClass(sender, (UnitClass)cls);
+        }
+
+        static void OnChatReqMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out string text);
+            RelayChat(sender, text);
+        }
+
+        static void OnChatBrdMsg(ulong sender, FastBufferReader r)
+        {
+            if (sender != NetworkManager.ServerClientId) return; // 호스트 배달만 신뢰
+            r.ReadValueSafe(out string callsign);
+            r.ReadValueSafe(out string text);
+            OnChat?.Invoke(callsign, text);
         }
 
         static void OnStartMsg(ulong sender, FastBufferReader r)

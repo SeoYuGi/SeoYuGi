@@ -123,6 +123,14 @@ namespace SeoYuGi.Ai
                 if (!counterStep.HasValue) return AiCommand.None; // 자리 사수 — 공격은 상위 우선순위가
             }
 
+            // 3.7) 힐팩 — HP가 상했고 근처에 있을 때만. 거점 플레이보다 앞서지만 회피·공격보다는 뒤.
+            // "전술적으로 안 먹기"는 두 문턱으로: 손상(HealSeekMissingHp) + 거리(HealSeekRadius).
+            if (ap >= _cfg.CostMove)
+            {
+                var healStep = StepTowardHealPack(world, me);
+                if (healStep.HasValue) return AiCommand.Of(CommandType.Move, healStep.Value);
+            }
+
             // 4) 거점 이동
             var step = StepTowardBestZone(world, me);
             if (step.HasValue && ap >= _cfg.CostMove + _cfg.ReserveAp)
@@ -390,6 +398,28 @@ namespace SeoYuGi.Ai
                     sidestep = n;
             }
             return best ?? sidestep;
+        }
+
+        /// 힐팩 추구: HP 손상이 문턱 이상이고 반경 안에 활성 힐팩이 있으면 가장 가까운 쪽으로 한 걸음.
+        /// 조건 불충족(비활성 성향·풀피 근처·팩 멀거나 없음)이면 null → 상위가 거점 플레이로 넘어간다.
+        private Cell? StepTowardHealPack(IWorldView world, ActorState me)
+        {
+            if (_cfg.HealSeekMissingHp <= 0) return null;
+            if (me.MaxHp - me.Hp < _cfg.HealSeekMissingHp) return null; // 아직 멀쩡 — 안 먹는다
+            if (world.HealPacks.Count == 0) return null;
+
+            Cell? nearest = null;
+            int bestD = int.MaxValue;
+            foreach (var pack in world.HealPacks)
+            {
+                int d = Manhattan(me.Pos, pack);
+                if (d > _cfg.HealSeekRadius) continue; // 너무 멀다 — 거점 플레이 우선
+                if (d < bestD) { bestD = d; nearest = pack; }
+            }
+            if (!nearest.HasValue) return null;
+            if (me.Pos.Equals(nearest.Value)) return null; // 이미 팩 위 — 코어가 회복 처리
+
+            return GreedyStep(world, me, nearest.Value); // 위협 칸 회피 포함 한 걸음
         }
 
         private Cell? FindDodgeCell(IWorldView world, ActorState me)

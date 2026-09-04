@@ -336,7 +336,7 @@ namespace SeoYuGi.BattleView
             };
 
             // 슬롯: 나 빼고 전부 AI. 적팀 뇌에만 Predictor 주입 — "AI군은 인간을 노린다"(기획서 §05).
-            worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound, hackSystem);
+            worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound, hackSystem, Pickup);
             aiDrivers.Clear();
             pendingPredictedShots.Clear();
             predictedStrikes.Clear();

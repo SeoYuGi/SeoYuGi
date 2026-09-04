@@ -66,6 +66,7 @@ namespace SeoYuGi.Net
                         owner = SlotOwner.Bot
                     };
                 Occupy(FindFree(0), nm.LocalClientId, SlotOwner.LocalHuman); // 호스트 = 팀0 첫 빈칸
+                AssignBotClasses();
             }
 
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgLobby, OnLobbyMsg);
@@ -106,13 +107,12 @@ namespace SeoYuGi.Net
             nm.CustomMessagingManager.SendNamedMessage(MsgClass, NetworkManager.ServerClientId, w);
         }
 
-        /// <summary>호스트 전용 — 매치 시작. mapIndex·시드는 호스트가 확정.</summary>
+        /// <summary>호스트 전용 — 매치 시작. mapIndex·시드는 호스트가 확정.
+        /// 봇 클래스는 로비에서 이미 배정·공개된 그대로 간다.</summary>
         public static void HostStart(int mapIndex, int enemyRollSeed)
         {
             var nm = NetworkManager.Singleton;
             if (!nm.IsHost) return;
-
-            RollBotClasses(enemyRollSeed);
 
             var slots = new SlotConfig[Slots.Length];
             for (int i = 0; i < Slots.Length; i++)
@@ -146,24 +146,45 @@ namespace SeoYuGi.Net
             OnMatchStart?.Invoke();
         }
 
-        /// <summary>봇 슬롯 클래스 랜덤 — 팀 내 중복 없음, 인간 픽과도 안 겹침 (싱글 롤 규칙 계승).</summary>
-        static void RollBotClasses(int seed)
+        /// <summary>
+        /// 봇 클래스 상시 배정 — 롤식 역할 채우기(탱→서폿→딜), 팀 내 중복 없음.
+        /// 인간 픽이 바뀔 때마다 재계산 — 봇이 빈 역할로 갈아탄다 (로비에 사전 공개).
+        /// 결정적 선택 — 같은 상황이면 같은 결과라 카드가 안 튄다.
+        /// </summary>
+        static void AssignBotClasses()
         {
-            var rng = new System.Random(seed);
+            // 역할: 탱 = 너구리 / 서폿(힐 느낌) = 치즈태비 / 딜 = 나머지
+            var dealerOrder = new[] { UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
+
             for (int team = 0; team < 2; team++)
             {
                 var pool = new System.Collections.Generic.List<UnitClass>
                     { UnitClass.Tank, UnitClass.Balance, UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
+                bool hasTank = false, hasSupport = false;
                 for (int i = 0; i < Slots.Length; i++)
                     if (Slots[i].team == team && Slots[i].owner != SlotOwner.Bot)
-                        pool.Remove(Slots[i].cls);
-                for (int i = 0; i < Slots.Length; i++)
-                    if (Slots[i].team == team && Slots[i].owner == SlotOwner.Bot)
                     {
-                        int pick = rng.Next(pool.Count);
-                        Slots[i].cls = pool[pick];
-                        pool.RemoveAt(pick);
+                        pool.Remove(Slots[i].cls);
+                        if (Slots[i].cls == UnitClass.Tank) hasTank = true;
+                        if (Slots[i].cls == UnitClass.Balance) hasSupport = true;
                     }
+
+                for (int i = 0; i < Slots.Length; i++)
+                {
+                    if (Slots[i].team != team || Slots[i].owner != SlotOwner.Bot) continue;
+
+                    UnitClass want;
+                    if (!hasTank && pool.Contains(UnitClass.Tank)) { want = UnitClass.Tank; hasTank = true; }
+                    else if (!hasSupport && pool.Contains(UnitClass.Balance)) { want = UnitClass.Balance; hasSupport = true; }
+                    else
+                    {
+                        want = pool[0];
+                        foreach (var d in dealerOrder)
+                            if (pool.Contains(d)) { want = d; break; }
+                    }
+                    Slots[i].cls = want;
+                    pool.Remove(want);
+                }
             }
         }
 
@@ -179,6 +200,7 @@ namespace SeoYuGi.Net
             if (idx < 0) { nm.DisconnectClient(clientId); return; } // 만석
 
             Occupy(idx, clientId, SlotOwner.RemoteHuman);
+            AssignBotClasses();
             Broadcast();
             OnChanged?.Invoke();
         }
@@ -194,6 +216,7 @@ namespace SeoYuGi.Net
                     Slots[i].owner = SlotOwner.Bot; // 이탈 → 봇 승격, 게임 안 깨짐
                     Slots[i].clientId = 0;
                 }
+            AssignBotClasses();
             Broadcast();
             OnChanged?.Invoke();
         }
@@ -224,6 +247,7 @@ namespace SeoYuGi.Net
             for (int i = 0; i < Slots.Length; i++)
                 if (Slots[i].owner != SlotOwner.Bot && Slots[i].clientId == clientId)
                     Slots[i].cls = cls;
+            AssignBotClasses(); // 인간 픽 변경 → 봇이 빈 역할로 갈아탐
             Broadcast();
             OnChanged?.Invoke();
         }

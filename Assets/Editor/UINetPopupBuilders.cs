@@ -121,41 +121,92 @@ public static class UINetPopupBuilders
         code.sizeDelta = new Vector2(700f, 44f);
         code.GetComponent<Text>().color = new Color(0.55f, 0.95f, 1f);
 
-        // 상태 문구 — 두 슬롯 기둥 사이 중앙 (폭 480 < 기둥 안쪽 간격 530 — 어느 높이든 안 겹침)
+        // 상태 문구 — 하단 슬롯과 버튼 사이 (중앙은 캐릭터 그리드가 차지)
         var status = NewText("StatusText", root, "", 26, FontStyle.Normal);
         status.anchorMin = status.anchorMax = new Vector2(0.5f, 0.5f);
-        status.anchoredPosition = Vector2.zero;
-        status.sizeDelta = new Vector2(480f, 80f);
+        status.anchoredPosition = new Vector2(0f, -420f);
+        status.sizeDelta = new Vector2(700f, 44f);
 
-        // 슬롯 6칸 — 좌 3칸 팀0(파랑 틴트), 우 3칸 팀1(빨강 틴트). 3:4 프레임 비율.
-        // 세로 예산: 위 = 타이틀/코드(맨위 ~-130), 아래 = 버튼(바닥 y55, 상단 -455).
-        // 행 y 230/-30/-290, 높이 240 → 하단 행 바닥 -410, 버튼과 45px 여유.
+        // 슬롯 6칸 — 고정 배치(클릭 이동 없음). 팀0 윗줄(파랑) / 팀1 아랫줄(빨강).
+        // 선택한 캐릭터 카드가 Portrait에 채워진다 — 하단 스트립에 콜사인.
         for (int i = 0; i < 6; i++)
         {
             int team = i < 3 ? 0 : 1;
             var slot = NewRect($"Slot{i + 1}", root);
             slot.anchorMin = slot.anchorMax = new Vector2(0.5f, 0.5f);
-            slot.sizeDelta = new Vector2(190f, 240f);
-            slot.anchoredPosition = new Vector2(team == 0 ? -360f : 360f, 230f - (i % 3) * 260f);
+            slot.sizeDelta = new Vector2(190f, 250f);
+            slot.anchoredPosition = new Vector2(-220f + (i % 3) * 220f, team == 0 ? 245f : -265f);
 
             var img = slot.gameObject.AddComponent<Image>();
             img.color = team == 0
                 ? new Color(0.14f, 0.2f, 0.32f, 0.95f)
                 : new Color(0.3f, 0.15f, 0.14f, 0.95f);
-            slot.gameObject.AddComponent<Button>().targetGraphic = img;
 
-            var label = NewText("Label", slot, $"슬롯 {i + 1}", 24, FontStyle.Bold);
+            var portrait = NewRect("Portrait", slot);
+            StretchFull(portrait);
+            portrait.offsetMin = new Vector2(16f, 20f);
+            portrait.offsetMax = new Vector2(-16f, -16f);
+            var pImg = portrait.gameObject.AddComponent<Image>();
+            pImg.color = new Color(1f, 1f, 1f, 0f); // 아트 주입 전엔 안 보임
+            pImg.raycastTarget = false;
+
+            var labelBack = NewRect("LabelBack", slot);
+            labelBack.anchorMin = new Vector2(0f, 0f);
+            labelBack.anchorMax = new Vector2(1f, 0f);
+            labelBack.pivot = new Vector2(0.5f, 0f);
+            labelBack.anchoredPosition = new Vector2(0f, 20f);
+            labelBack.sizeDelta = new Vector2(-24f, 48f);
+            var lbImg = labelBack.gameObject.AddComponent<Image>();
+            lbImg.color = new Color(0f, 0f, 0f, 0.55f);
+            lbImg.raycastTarget = false;
+
+            var label = NewText("Label", labelBack, $"슬롯 {i + 1}", 18, FontStyle.Bold);
             StretchFull(label);
-            label.GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
         }
 
-        string[] names = { "BtnClass", "BtnCopyCode", "BtnStart", "BtnLeave" };
-        string[] labels = { "캐릭터 선택", "코드 복사", "시작", "나가기" };
-        for (int i = 0; i < 4; i++)
+        // 캐릭터 선택 그리드 — 철권식: 중앙 카드 5장 상시 표시, 클릭 = 선택.
+        // 아트·이름·선택 하이라이트는 UILobbyPopup이 런타임 주입.
+        string[] pickNames = { "너구리", "치즈태비", "검은 고양이", "비둘기", "까치" };
+        for (int i = 0; i < 5; i++)
+        {
+            var pick = NewRect($"Pick{i + 1}", root);
+            pick.anchorMin = pick.anchorMax = new Vector2(0.5f, 0.5f);
+            pick.sizeDelta = new Vector2(150f, 200f);
+            pick.anchoredPosition = new Vector2((i - 2) * 165f, -10f);
+
+            var img = pick.gameObject.AddComponent<Image>(); // 백킹 = 선택 테두리 (런타임 색 제어)
+            img.color = new Color(0.12f, 0.13f, 0.17f, 0.95f);
+            pick.gameObject.AddComponent<Button>().targetGraphic = img;
+
+            var portrait = NewRect("Portrait", pick);
+            StretchFull(portrait);
+            portrait.offsetMin = new Vector2(5f, 5f);
+            portrait.offsetMax = new Vector2(-5f, -5f);
+            var pImg = portrait.gameObject.AddComponent<Image>();
+            pImg.color = new Color(0.2f, 0.22f, 0.28f, 1f);
+            pImg.raycastTarget = false;
+
+            var nameBack = NewRect("NameBack", pick);
+            nameBack.anchorMin = new Vector2(0f, 0f);
+            nameBack.anchorMax = new Vector2(1f, 0f);
+            nameBack.pivot = new Vector2(0.5f, 0f);
+            nameBack.anchoredPosition = new Vector2(0f, 5f);
+            nameBack.sizeDelta = new Vector2(-10f, 30f);
+            var nbImg = nameBack.gameObject.AddComponent<Image>();
+            nbImg.color = new Color(0f, 0f, 0f, 0.6f);
+            nbImg.raycastTarget = false;
+
+            var name = NewText("Name", nameBack, pickNames[i], 20, FontStyle.Bold);
+            StretchFull(name);
+        }
+
+        string[] names = { "BtnCopyCode", "BtnStart", "BtnLeave" };
+        string[] labels = { "코드 복사", "시작", "나가기" };
+        for (int i = 0; i < 3; i++)
         {
             var btn = MakeButton(root, names[i], labels[i], new Vector2(220f, 60f));
             btn.anchorMin = btn.anchorMax = new Vector2(0.5f, 0f);
-            btn.anchoredPosition = new Vector2((i - 1.5f) * 240f, 55f);
+            btn.anchoredPosition = new Vector2((i - 1) * 240f, 55f);
         }
 
         Save(root, "UILobbyPopup");

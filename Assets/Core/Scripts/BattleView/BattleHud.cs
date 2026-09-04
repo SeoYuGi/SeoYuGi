@@ -498,7 +498,10 @@ namespace SeoYuGi.BattleView
         void DrawBriefing()
         {
             bool myWin = briefingWinner == playerTeam;
-            var box = new Rect(W / 2f - 270, H / 2f - 160, 540, 320);
+            // 높이 = 헤더(106) + 줄들(40씩) + SPACE 바 여유(74) — 줄 수 늘어도 안 겹침
+            int lineCount = briefingLines != null ? briefingLines.Length : 0;
+            float boxH = Mathf.Max(320f, 106f + lineCount * 40f + 74f);
+            var box = new Rect(W / 2f - 270, H / 2f - boxH / 2f, 540, boxH);
             GUI.Box(box, "");
             if (panelBriefing != null)
                 GUI.DrawTexture(box, panelBriefing, ScaleMode.StretchToFill); // 관제 터미널 배경

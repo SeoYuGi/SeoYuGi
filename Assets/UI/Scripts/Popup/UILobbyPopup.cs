@@ -5,35 +5,56 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// 멀티 로비 — 슬롯 6칸(팀0 좌 / 팀1 우), 조인 코드, 클래스 선택, 시작(호스트만).
+/// 멀티 로비 — 슬롯 6칸(팀0 윗줄 / 팀1 아랫줄) + 중앙 캐릭터 그리드(철권식 상시 표시).
+/// 슬롯은 고정(클릭 이동 없음) — 접속 순 자동 배정. 카드 클릭 = 클래스 선택.
+/// 선택은 NetLobby가 브로드캐스트 — 봇 포함 모든 슬롯에 캐릭터 카드가 그려진다.
 /// 상태는 NetLobby가 원본 — OnChanged 구독으로 리프레시만 한다.
 /// </summary>
 public class UILobbyPopup : UIPopup
 {
-    enum Buttons { Slot1, Slot2, Slot3, Slot4, Slot5, Slot6, BtnClass, BtnCopyCode, BtnStart, BtnLeave }
+    enum Buttons { Pick1, Pick2, Pick3, Pick4, Pick5, BtnCopyCode, BtnStart, BtnLeave }
 
     public Action OnStart; // 호스트 시작 — BattleRunner가 맵 픽으로 이어감
     public Action OnLeave;
 
+    // UnitClass enum 순서와 동일 — Resources/UI의 클래스별 카드 아트
+    static readonly string[] CardArt =
+        { "Card_Tank", "Card_Balance", "Card_Assassin", "Card_Grenadier", "Card_Sniper" };
+
     Text codeText, statusText;
     readonly Text[] slotLabels = new Text[6];
+    readonly Image[] slotPortraits = new Image[6];
+    readonly Image[] pickBackings = new Image[5];
+    static readonly Sprite[] cardSprites = new Sprite[5]; // 세션 캐시
 
     public override void Init()
     {
         Bind<GameObject>(typeof(Buttons));
-        for (int i = 0; i < 6; i++)
+
+        // 캐릭터 그리드 — 클릭 = 선택. 슬롯 클릭 이동은 없음 (칸 고정).
+        for (int i = 0; i < 5; i++)
         {
-            int unitId = i + 1; // Slot1~6 = unitId 1~6
-            BindEvent(Get<GameObject>(i), _ => NetLobby.RequestSlot(unitId));
-            slotLabels[i] = Get<GameObject>(i).GetComponentInChildren<Text>();
+            var cls = (UnitClass)i;
+            var pick = Get<GameObject>(i);
+            BindEvent(pick, _ => NetLobby.RequestClass(cls));
+            pickBackings[i] = pick.GetComponent<Image>();
+            var portrait = pick.transform.Find("Portrait")?.GetComponent<Image>();
+            var sprite = CardSprite(i);
+            if (portrait != null && sprite != null)
+            {
+                portrait.sprite = sprite;
+                portrait.color = Color.white;
+            }
         }
 
-        BindEvent(Get<GameObject>((int)Buttons.BtnClass), _ =>
+        for (int i = 0; i < 6; i++)
         {
-            var popup = UIManager.Instance.ShowPopupUI<UIClassSelectPopup>(); // 기존 팝업 재사용
-            popup.OnPicked = cls => NetLobby.RequestClass(cls);
-            popup.OnEscape = () => UIManager.Instance.ClosePopupUI(popup); // ESC = 로비로 (스택 복귀)
-        });
+            var slot = transform.Find($"Slot{i + 1}");
+            if (slot == null) continue;
+            slotLabels[i] = slot.Find("LabelBack/Label")?.GetComponent<Text>();
+            slotPortraits[i] = slot.Find("Portrait")?.GetComponent<Image>();
+        }
+
         BindEvent(Get<GameObject>((int)Buttons.BtnCopyCode), _ =>
         {
             if (!string.IsNullOrEmpty(NetBoot.JoinCode))
@@ -57,6 +78,18 @@ public class UILobbyPopup : UIPopup
         Refresh();
     }
 
+    static Sprite CardSprite(int cls)
+    {
+        if (cardSprites[cls] == null)
+        {
+            var tex = Resources.Load<Texture2D>("UI/" + CardArt[cls]);
+            if (tex != null)
+                cardSprites[cls] = Sprite.Create(tex,
+                    new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+        }
+        return cardSprites[cls];
+    }
+
     /// <summary>Resources/UI 아트가 있으면 입힘 — 없으면 플랫 컬러 폴백 (프리팹 재빌드 불필요).</summary>
     void ApplySkin()
     {
@@ -72,7 +105,9 @@ public class UILobbyPopup : UIPopup
         if (slotSprite != null)
             for (int i = 0; i < 6; i++)
             {
-                var img = Get<GameObject>(i).GetComponent<Image>();
+                var slot = transform.Find($"Slot{i + 1}");
+                var img = slot != null ? slot.GetComponent<Image>() : null;
+                if (img == null) continue;
                 img.sprite = slotSprite;
                 // 텍스처 곱연산 틴트 — 팀 색을 밝게 끌어올려야 프레임 디테일이 살아남는다
                 img.color = Color.Lerp(i < 3 ? new Color(0.45f, 0.6f, 1f) : new Color(1f, 0.5f, 0.45f), Color.white, 0.45f);
@@ -80,7 +115,7 @@ public class UILobbyPopup : UIPopup
 
         var btnSprite = UISkin.ButtonPlate();
         if (btnSprite != null)
-            foreach (var b in new[] { Buttons.BtnClass, Buttons.BtnCopyCode, Buttons.BtnStart, Buttons.BtnLeave })
+            foreach (var b in new[] { Buttons.BtnCopyCode, Buttons.BtnStart, Buttons.BtnLeave })
             {
                 var img = Get<GameObject>((int)b).GetComponent<Image>();
                 img.sprite = btnSprite;
@@ -109,30 +144,51 @@ public class UILobbyPopup : UIPopup
 
         var slots = NetLobby.Slots;
         if (slots == null) return;
+
+        // 1차: 내 슬롯 찾기 — 픽 하이라이트 + 상대팀 가리기 기준
+        int myCls = -1, myTeam = -1;
+        var localId = Unity.Netcode.NetworkManager.Singleton != null
+            ? Unity.Netcode.NetworkManager.Singleton.LocalClientId : ulong.MaxValue;
+        foreach (var s in slots)
+            if (s.owner != SlotOwner.Bot && s.clientId == localId)
+            {
+                myCls = (int)s.cls;
+                myTeam = s.team;
+                break;
+            }
+
         for (int i = 0; i < slotLabels.Length && i < slots.Length; i++)
         {
-            if (slotLabels[i] == null) continue;
             var s = slots[i];
-            bool me = s.owner != SlotOwner.Bot &&
-                      Unity.Netcode.NetworkManager.Singleton != null &&
-                      s.clientId == Unity.Netcode.NetworkManager.Singleton.LocalClientId;
-            string who = s.owner == SlotOwner.Bot ? "봇" : me ? "나" : "플레이어";
-            slotLabels[i].text = $"{s.callsign}\n{who}\n{ClassLabel(s.cls)}";
-            slotLabels[i].color = s.owner == SlotOwner.Bot ? new Color(0.6f, 0.6f, 0.6f)
-                : me ? new Color(0.5f, 1f, 0.6f) : Color.white;
-        }
-    }
+            bool me = s.owner != SlotOwner.Bot && s.clientId == localId;
 
-    static string ClassLabel(UnitClass cls)
-    {
-        switch (cls)
+            if (slotLabels[i] != null)
+            {
+                string who = s.owner == SlotOwner.Bot ? "봇" : me ? "나" : "플레이어";
+                slotLabels[i].text = $"{s.callsign} · {who}";
+                slotLabels[i].color = s.owner == SlotOwner.Bot ? new Color(0.6f, 0.6f, 0.6f)
+                    : me ? new Color(0.5f, 1f, 0.6f) : Color.white;
+            }
+
+            // 선택 캐릭터 카드 — 우리 팀만 공개(봇 포함), 상대팀은 시작 전까지 비공개.
+            // 봇 클래스는 호스트가 로비에서 롤식 밸런스로 배정 — 살짝 어둡게 구분.
+            if (slotPortraits[i] != null)
+            {
+                bool hidden = myTeam >= 0 && s.team != myTeam;
+                var sprite = hidden ? null : CardSprite((int)s.cls);
+                slotPortraits[i].sprite = sprite;
+                slotPortraits[i].color = sprite == null ? new Color(1f, 1f, 1f, 0f)
+                    : s.owner == SlotOwner.Bot ? new Color(0.7f, 0.7f, 0.7f) : Color.white;
+            }
+        }
+
+        // 철권식 커서 — 내 픽만 밝은 테두리 + 확대
+        for (int i = 0; i < pickBackings.Length; i++)
         {
-            case UnitClass.Tank: return "너구리";
-            case UnitClass.Balance: return "치즈태비";
-            case UnitClass.Assassin: return "검은 고양이";
-            case UnitClass.Grenadier: return "비둘기";
-            case UnitClass.Sniper: return "까치";
-            default: return cls.ToString();
+            if (pickBackings[i] == null) continue;
+            bool sel = i == myCls;
+            pickBackings[i].color = sel ? new Color(0.35f, 1f, 0.75f) : new Color(0.12f, 0.13f, 0.17f, 0.95f);
+            pickBackings[i].transform.localScale = sel ? Vector3.one * 1.08f : Vector3.one;
         }
     }
 }

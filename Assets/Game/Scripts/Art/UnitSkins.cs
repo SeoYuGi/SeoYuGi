@@ -86,7 +86,19 @@ namespace SeoYuGi.Art
             if (unit == null) return;
 
             if (!Models.TryGetValue((unit.team, unit.unitClass), out var resource)) return;
-            var prefab = LoadModel(resource);
+
+            // 애니 버전이 있으면 그걸 스킨으로 (리그+클립이 한 몸이라 호환 보장)
+            AnimationClip idle = null, run = null;
+            var prefab = Resources.Load<GameObject>(resource + "_idle");
+            if (prefab != null)
+            {
+                idle = FirstClip(resource + "_idle");
+                run = FirstClip(resource + "_run");
+            }
+            else
+            {
+                prefab = LoadModel(resource);
+            }
             if (prefab == null) return; // 모델 없으면 큐브 유지 (미도착분 폴백)
 
             var skin = Instantiate(prefab, view.transform);
@@ -98,8 +110,21 @@ namespace SeoYuGi.Art
             float classScale = view.transform.localScale.y / BaseCubeScale;
             FitToUnit(skin, view.transform, BaseHeight * classScale);
 
+            if (idle != null)
+                skin.AddComponent<SkinAnimator>().Init(view, idle, run);
+
+            // 드론류 기계는 부유 연출
+            if (unit.team == 1 && unit.unitClass != UnitClass.Tank && unit.unitClass != UnitClass.Balance)
+                skin.AddComponent<HoverBob>();
+
             var cube = view.GetComponent<MeshRenderer>();
             if (cube != null) cube.enabled = false;
+        }
+
+        static AnimationClip FirstClip(string resourcePath)
+        {
+            var clips = Resources.LoadAll<AnimationClip>(resourcePath);
+            return clips.Length > 0 ? clips[0] : null;
         }
 
         GameObject LoadModel(string resource)

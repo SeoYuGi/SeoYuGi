@@ -22,6 +22,8 @@ namespace SeoYuGi.BattleView
         float flash;      // 0..1 — 감쇠
         float glitchUntil = -1f; // unscaledTime 기준 — 해킹 지속 동안 화면 교란
         bool suddenDeath;        // 켜져 있는 동안 적색 비네트 맥동
+        float threat;            // 0..1 — 내 칸 피격 예고 임박도
+        float threatUntil = -1f; // unscaledTime 기준 — PulseThreat가 매 프레임 갱신
         const float PunchDecay = 6.5f;
         const float FlashDecay = 9f;
 
@@ -72,6 +74,14 @@ namespace SeoYuGi.BattleView
                 instance.glitchUntil = Time.unscaledTime + seconds;
         }
 
+        /// <summary>내 칸에 적 예고 — 매 프레임 호출하는 동안 가장자리가 붉게 뛴다 (urgency 0..1 = 판정 임박도). 0.15초 안 오면 꺼짐.</summary>
+        public static void PulseThreat(float urgency)
+        {
+            if (instance == null) return;
+            instance.threat = Mathf.Clamp01(urgency);
+            instance.threatUntil = Time.unscaledTime + 0.15f;
+        }
+
         /// <summary>서든데스 — 켜진 동안 화면 가장자리가 붉게 맥동. 라운드 조립 때 꺼준다.</summary>
         public static void SetSuddenDeath(bool on)
         {
@@ -100,6 +110,10 @@ namespace SeoYuGi.BattleView
                 caOut = Mathf.Max(caOut, 0.3f + wobble * 0.7f);
                 lensOut = Mathf.Sin(t * 11f) * 0.2f;
             }
+
+            // 피격 예고 — 임박할수록 빠르고 진하게 뛰는 붉은 가장자리
+            if (t < threatUntil)
+                vigOut = Mathf.Max(vigOut, 0.1f + threat * 0.22f * Mathf.Abs(Mathf.Sin(t * (6f + 14f * threat))));
 
             // 서든데스 — 느린 맥동. 피격 펀치가 더 강하면 그쪽이 이긴다.
             if (suddenDeath)

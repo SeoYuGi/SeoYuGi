@@ -7,7 +7,9 @@ namespace SeoYuGi.Ai
         public float DodgeWindow = 0.6f;          // 예고 판정까지 이 시간 안이면 회피 시도
         public float MinDodgeLead = 0.15f;        // 판정까지 이보다 짧게 남으면 반응 불가 (인간적 한계)
         public float DodgeChance = 0.6f;          // 회피 성공률 — 스트라이크별 결정적 주사위
+        public float DodgeCooldown = 3f;          // 회피 성공 후 이 시간 동안은 못 피한다 — 사람도 옆걸음을 무한히 못 한다 (근접 허공질 방지)
         public float IdleWanderAfter = 1.2f;      // 이 시간 이상 무행동이면 배회 — 프리징 방지
+        public float MoveInterval = 0.45f;        // 이동 한 걸음 뒤 최소 대기 (회피 제외) — 제자리 왔다갔다 방지, 인간적 템포
         public float AttackInterval = 1.0f;       // 공격·스킬 간 최소 간격 — 연타 방지 (인간적 템포)
         public float HumanTargetBonus = 3f;       // 타겟 선정 시 인간 슬롯 가중(거리 환산)
         public int SnipeRange = 6;
@@ -23,20 +25,22 @@ namespace SeoYuGi.Ai
         {
             switch (cls)
             {
+                // 회피 재조정 (2026-09-05): 확률 하향 + 쿨타임 — 근접 1:1에서 영원히 허공 치는 문제.
+                // 첫 공격은 피할 수 있어도 연속 공격은 맞는다. R1은 여기에 ×0.6 더 (EffectiveDodgeChance).
                 case ClassId.Tank:      // 둔중 — 잘 못 피하는 대신 몸으로 받는다. HP 6, 힐팩 잘 안 챙김
-                    return new AiConfig { MinDecisionInterval = 0.3f, DodgeChance = 0.35f, AttackInterval = 1.1f,
+                    return new AiConfig { MinDecisionInterval = 0.3f, DodgeChance = 0.25f, DodgeCooldown = 4f, AttackInterval = 1.1f,
                         HealSeekMissingHp = 3, HealSeekRadius = 4 };
                 case ClassId.Balance:   // 표준
-                    return new AiConfig { DodgeChance = 0.6f, AttackInterval = 1.0f,
+                    return new AiConfig { DodgeChance = 0.45f, DodgeCooldown = 3f, AttackInterval = 1.0f,
                         HealSeekMissingHp = 2, HealSeekRadius = 6 };
-                case ClassId.Assassin:  // 기민 — 회피 특기, 공격도 빠른 편. HP 3 유리몸, 힐팩 적극
-                    return new AiConfig { DodgeChance = 0.85f, AttackInterval = 0.8f,
+                case ClassId.Assassin:  // 기민 — 회피 특기지만 무한은 아님. HP 3 유리몸, 힐팩 적극
+                    return new AiConfig { DodgeChance = 0.6f, DodgeCooldown = 2f, AttackInterval = 0.8f,
                         HealSeekMissingHp = 1, HealSeekRadius = 8 };
                 case ClassId.Grenadier: // 후방 표준
-                    return new AiConfig { DodgeChance = 0.55f, AttackInterval = 1.3f,
+                    return new AiConfig { DodgeChance = 0.45f, DodgeCooldown = 3.5f, AttackInterval = 1.3f,
                         HealSeekMissingHp = 2, HealSeekRadius = 6 };
                 case ClassId.Sniper:    // 조준하는 무게 — 제일 느긋한 방아쇠. HP 2 최유리몸, 회복에 민감
-                    return new AiConfig { MinDecisionInterval = 0.35f, DodgeChance = 0.65f, AttackInterval = 1.5f,
+                    return new AiConfig { MinDecisionInterval = 0.35f, DodgeChance = 0.5f, DodgeCooldown = 3f, AttackInterval = 1.5f,
                         HealSeekMissingHp = 1, HealSeekRadius = 8 };
                 default:
                     return new AiConfig();

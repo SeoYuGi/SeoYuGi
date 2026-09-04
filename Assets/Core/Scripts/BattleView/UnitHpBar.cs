@@ -9,9 +9,9 @@ namespace SeoYuGi.BattleView
     /// </summary>
     public class UnitHpBar : MonoBehaviour
     {
-        const float BarWidth = 0.62f;
-        const float BarHeight = 0.09f;
-        const float Height = 1.05f; // 유닛 위 높이
+        const float BarWidth = 0.8f;   // 가독성 패스: 0.62 → 0.8
+        const float BarHeight = 0.12f; // 0.09 → 0.12
+        const float Height = 1.35f;    // 유닛 위 높이 — 스킨 키 1.4에 맞춰 올림
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         static readonly Color FullColor = new Color(0.3f, 0.9f, 0.4f);
@@ -56,7 +56,7 @@ namespace SeoYuGi.BattleView
             var tm = go.AddComponent<TextMesh>();
             tm.text = displayName;
             tm.fontSize = 48;              // 큰 폰트 + 작은 characterSize = 선명
-            tm.characterSize = 0.045f;
+            tm.characterSize = 0.06f; // 0.045 → 0.06 — 이름표도 같이 키움
             tm.anchor = TextAnchor.LowerCenter;
             tm.alignment = TextAlignment.Center;
             tm.color = Color.Lerp(color, Color.white, 0.35f);

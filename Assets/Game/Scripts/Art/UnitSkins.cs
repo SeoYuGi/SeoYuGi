@@ -35,7 +35,7 @@ namespace SeoYuGi.Art
     public class UnitSkinApplier : MonoBehaviour
     {
         const string SkinName = "Skin";
-        const float BaseHeight = 1.1f;       // 기본 클래스(스케일 1)의 목표 키
+        const float BaseHeight = 1.4f;       // 기본 클래스(스케일 1)의 목표 키 — 1.1은 전체 맵 뷰에서 ~35px라 실루엣이 안 읽혔다 (2026-09-05)
         const float BaseCubeScale = 0.7f;    // BattleRunner 폴백 큐브의 기준 스케일
         const float UnitYOffset = 0.5f;      // UnitView.yOffset — 피벗에서 바닥까지
 

@@ -25,6 +25,7 @@ namespace SeoYuGi.Battle
         public int pushCells;
         public int wallBonusDamage; // 벽/맵 경계에 밀려 부딪히면 추가 피해
         public float stunSeconds;   // 비명 교란: 판정 시 스턴 부여
+        public Coord aimCell;       // 시전자가 지정한 칸 — 연출용(조준경·공격선). 광역은 중심, 자기중심 스킬은 시전자 칸
     }
 
     /// <summary>
@@ -133,6 +134,7 @@ namespace SeoYuGi.Battle
                 attackerId = unitId,
                 team = unit.team,
                 cells = { target },
+                aimCell = target,
                 impactTime = State.time + Config.attackTelegraphSeconds,
                 damage = damage
             });
@@ -190,6 +192,7 @@ namespace SeoYuGi.Battle
                 attackerId = unit.id,
                 team = unit.team,
                 cells = { target },
+                aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
                 damage = skill.damage,
                 pushDir = pushCells > 0 ? new Coord(Math.Sign(d.x), Math.Sign(d.y)) : Coord.Zero,
@@ -251,6 +254,7 @@ namespace SeoYuGi.Battle
             {
                 attackerId = unit.id,
                 team = unit.team,
+                aimCell = unit.pos, // 자기 중심 광역
                 impactTime = State.time + skill.telegraphSeconds,
                 damage = skill.damage,
                 stunSeconds = skill.stunSeconds
@@ -291,6 +295,7 @@ namespace SeoYuGi.Battle
             {
                 attackerId = unit.id,
                 team = unit.team,
+                aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
                 damage = skill.damage
             };
@@ -317,6 +322,7 @@ namespace SeoYuGi.Battle
             {
                 attackerId = unit.id,
                 team = unit.team,
+                aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
                 damage = skill.damage
             };
@@ -347,22 +353,21 @@ namespace SeoYuGi.Battle
             return ActDenied.None;
         }
 
+        /// <summary>조준 사격 — 다이아(맨해튼 range-1) + 십자 끝 range칸 안의 한 칸을 지정 (기획 다이어그램 2026-09-05, RangeTemplates.SnipeRange와 동일 모양).
+        /// 벽 LOS 필요 — 고지대 사수는 벽을 넘겨 쏜다. 구 직선 관통은 폐기.</summary>
         ActDenied CastSnipe(UnitState unit, Coord target, SkillDef skill)
         {
-            var dir = UnitDir(unit.pos, target, skill.range);
-            if (dir == Coord.Zero) return ActDenied.BadTarget;
+            if (!CanSnipe(unit, target, skill.range)) return ActDenied.BadTarget;
 
             var strike = new TelegraphStrike
             {
                 attackerId = unit.id,
                 team = unit.team,
+                aimCell = target,
+                cells = { target },
                 impactTime = State.time + skill.telegraphSeconds,
                 damage = skill.damage
             };
-            foreach (var c in SnipeLine(unit, dir, skill.range))
-                strike.cells.Add(c);
-            if (strike.cells.Count == 0) return ActDenied.BadTarget;
-
             Place(strike);
             return ActDenied.None;
         }
@@ -454,8 +459,12 @@ namespace SeoYuGi.Battle
                     }
                     break;
                 case SkillKind.Snipe:
-                    foreach (var dir in Coord.Directions4)
-                        cells.AddRange(SnipeLine(unit, dir, skill.range));
+                    for (int dx = -skill.range; dx <= skill.range; dx++)
+                    for (int dy = -skill.range; dy <= skill.range; dy++)
+                    {
+                        var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
+                        if (CanSnipe(unit, c, skill.range)) cells.Add(c);
+                    }
                     break;
             }
         }
@@ -527,37 +536,23 @@ namespace SeoYuGi.Battle
                         if (State.Grid.IsWalkableTerrain(hover + dir)) cells.Add(hover + dir);
                     return true;
                 case SkillKind.Snipe:
-                {
-                    var dir = UnitDir(unit.pos, hover, skill.range);
-                    if (dir == Coord.Zero) return false;
-                    cells.AddRange(SnipeLine(unit, dir, skill.range));
-                    return cells.Count > 0;
-                }
+                    if (!CanSnipe(unit, hover, skill.range)) return false;
+                    cells.Add(hover);
+                    return true;
                 default: return false;
             }
         }
 
         // ── 내부 ──────────────────────────────────────────────────
 
-        /// <summary>저격 직선의 타격 칸들 (최대 maxRange칸). 벽: 평지 사수는 정지, 고지대 사수는 넘겨 쏨. 구덩이: 탄이 지나간다(칸 제외).</summary>
-        List<Coord> SnipeLine(UnitState unit, Coord dir, int maxRange)
+        /// <summary>조준 사격 지정 가능 칸인가 — 모양(다이아 range-1 + 십자 끝 range) + 지형(벽·구덩이 불가) + 벽 LOS(고지대 사수 면제).</summary>
+        bool CanSnipe(UnitState unit, Coord target, int range)
         {
-            var cells = new List<Coord>();
-            bool elevated = State.Grid.IsHighland(unit.pos);
-            int dist = 0;
-            for (var c = unit.pos + dir; State.Grid.InBounds(c) && dist < maxRange; c += dir)
-            {
-                dist++;
-                var type = State.Grid.GetCell(c).type;
-                if (type == CellType.Obstacle)
-                {
-                    if (elevated) continue;
-                    break;
-                }
-                if (type == CellType.Void) continue;
-                cells.Add(c);
-            }
-            return cells;
+            int dx = Math.Abs(target.x - unit.pos.x), dy = Math.Abs(target.y - unit.pos.y);
+            if (dx == 0 && dy == 0) return false;
+            bool inShape = dx + dy <= range - 1 || (dx == 0 && dy == range) || (dy == 0 && dx == range);
+            if (!inShape || !State.Grid.IsWalkableTerrain(target)) return false;
+            return State.Grid.IsHighland(unit.pos) || VisionSystem.HasLineOfSight(State.Grid, unit.pos, target);
         }
 
         /// <summary>target이 pos에서 직선(상하좌우) maxDist 이내면 단위 방향, 아니면 Zero.</summary>

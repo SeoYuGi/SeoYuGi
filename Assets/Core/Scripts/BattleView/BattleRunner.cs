@@ -112,6 +112,7 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<int, GameObject> strikeTelegraphFx = new Dictionary<int, GameObject>(); // 예고 마커·레이저·투사체 — 판정 시 파괴
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
         readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
+        ThreatWarning threatWarning; // "내 칸에 예고 떨어짐" 경고 — 매치 내내 1개, 라운드 무관
 
         // 예측 사격 추적 (G) — 캐스팅 직후 예고와 매칭해 적중/실패 자막
         readonly List<(int attackerId, Coord cell, float time)> pendingPredictedShots = new List<(int, Coord, float)>();
@@ -201,7 +202,7 @@ namespace SeoYuGi.BattleView
             var kind = (SkillKind)kindInt;
             battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
             if (IsUnitVisibleToPlayer(unitId))
-                SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos));
+                SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam);
             var v = viewRegistry.Get(unitId);
             if (v != null && v.gameObject.activeInHierarchy)
                 FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
@@ -458,7 +459,7 @@ namespace SeoYuGi.BattleView
             {
                 CameraShaker.Shake(0.55f);
                 ImpactFx.DeathFlash();
-                ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f);
+                ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f); StrikeVfx.Kill(gridView.CoordToWorld(dead.pos), dead.team == 1);
                 CellFlash.Spawn(gridView.CoordToWorld(dead.pos), new Color(1f, 0.2f, 0.15f), 0.6f, 1.1f);
                 FloatingText.Spawn(gridView.CoordToWorld(dead.pos), "격파!", new Color(1f, 0.3f, 0.2f), 1.4f, 1.1f);
             }
@@ -605,6 +606,17 @@ namespace SeoYuGi.BattleView
                 var u = Battle?.GetUnit(unitId);
                 var origin = u != null ? gridView.CoordToWorld(u.pos) : Vector3.zero;
                 HackVfx.Play(this, origin, HackSystem.Duration);
+
+                // 해킹 = 적 전원 짧은 스턴 (기획 변경 2026-09-05: 예측 교란만으론 안 쓰게 됐다). 시뮬 상태라 호스트/싱글에서만.
+                if (u != null && Battle != null)
+                    foreach (var enemy in Battle.Units)
+                        if (enemy.alive && enemy.team != u.team)
+                        {
+                            enemy.stunnedUntil = Mathf.Max(enemy.stunnedUntil, Battle.time + HackSystem.StunSeconds);
+                            var ev = viewRegistry.Get(enemy.id);
+                            if (ev != null && ev.gameObject.activeInHierarchy)
+                                FloatingText.Spawn(ev.transform.position, "정지", StrikeVfx.MineNeon, 0.9f, 0.7f);
+                        }
                 battleAudio.PlaySfx("S18_Blink", 1.3f); // 전용 SFX 나오기 전까지 점멸음 재사용
                 hud.ShowSubtitle(u != null && u.team == playerTeam
                     ? "해킹 — 적 예측 마비" : "해킹 감지 — 예측 교란", 2.4f);
@@ -770,6 +782,12 @@ namespace SeoYuGi.BattleView
                 bool ours = zone.owner == playerTeam;
                 battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
 
+                // 어그로 — 거점에서 맵 전체로 팀색 네온 띠가 두 겹 퍼져 나간다 (놓칠 수 없게)
+                var pulseColor = StrikeVfx.TeamColor(ours);
+                float mapReach = Mathf.Max(map.Width, map.Height) * 1.2f;
+                RingWave.Spawn(gridView.CoordToWorld(zone.Center), pulseColor, mapReach, 0.9f);
+                RingWave.Spawn(gridView.CoordToWorld(zone.Center), Color.Lerp(pulseColor, Color.white, 0.5f), mapReach * 0.6f, 0.55f);
+
                 // 거점 글자(A/B/C) 찾기 + 중앙 멘트
                 int zi = -1;
                 for (int i = 0; i < Round.Zones.Count; i++)
@@ -901,8 +919,13 @@ namespace SeoYuGi.BattleView
                     var visCells = new List<Vector3>();
                     foreach (var c in strike.cells)
                         if (mineStrike || playerVisibleFn(c)) visCells.Add(gridView.CoordToWorld(c));
+                    // 조준 칸 — 코어가 기록한 aimCell. 네트 복제본 등 없으면 마지막 보이는 칸으로
+                    bool hasAim = false;
+                    foreach (var c in strike.cells) if (c == strike.aimCell) { hasAim = true; break; }
+                    var aimWorld = hasAim ? gridView.CoordToWorld(strike.aimCell) : visCells[visCells.Count - 1];
                     var fx = StrikeVfx.Telegraph(strike, telegraphAttacker.unitClass, Combat.IsFlying(telegraphAttacker),
-                        gridView.CoordToWorld(telegraphAttacker.pos), visCells, strike.impactTime - Battle.time);
+                        gridView.CoordToWorld(telegraphAttacker.pos), visCells, strike.impactTime - Battle.time,
+                        mineStrike, aimWorld);
                     if (fx != null) strikeTelegraphFx[strike.id] = fx;
 
                     // 폭탄 배달 — 왕복 비행 (시뮬 위치는 출발 칸 그대로, 연출만 난다)
@@ -980,7 +1003,7 @@ namespace SeoYuGi.BattleView
 
                 // 스킬 특성별 시전 VFX — 시야 안일 때만 (정보 누출 방지)
                 if (IsUnitVisibleToPlayer(unitId))
-                    SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos));
+                    SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam);
 
                 // 클라 릴레이 — 시전자 팀 클라는 항상, 적팀 클라는 시전 위치가 시야 안일 때만
                 if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
@@ -1012,7 +1035,7 @@ namespace SeoYuGi.BattleView
                     CameraShaker.Shake(0.55f); // 격파 — 가장 무거운 한 방
                     HitStop.Do(0.09f);
                     ImpactFx.DeathFlash();
-                    ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f);
+                    ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f); StrikeVfx.Kill(gridView.CoordToWorld(dead.pos), dead.team == 1);
                     battleAudio.PlayThump(big: true);
                 }
             };
@@ -1101,7 +1124,7 @@ namespace SeoYuGi.BattleView
                 // 클래스별 임팩트 — 베기·주먹·발톱·폭발·트레이서·광선검 (기획: 캐릭터별 이펙트)
                 var striker = Battle.GetUnit(strike.attackerId);
                 if (striker != null && visCells.Count > 0)
-                    StrikeVfx.Resolve(strike, striker.unitClass, visCells, hit);
+                    StrikeVfx.Resolve(strike, striker.unitClass, visCells, hit, strike.team == playerTeam);
             };
 
             Combat.OnUnitDied += unitId =>
@@ -1233,6 +1256,37 @@ namespace SeoYuGi.BattleView
         void OnNetKilled(int deadId, int killerId)
         {
             if (IsNetClient) ShowKill(deadId, killerId);
+        }
+
+        /// <summary>내 칸을 노리는 적 예고 중 가장 임박한 것 → 유닛 주위 링 + 머리 위 "!". 바닥 틴트는 내 모델에 가려 안 보인다.</summary>
+        void UpdateThreatWarning()
+        {
+            if (threatWarning == null) threatWarning = ThreatWarning.Create(transform);
+
+            float remain = -1f;
+            var me = Battle.GetUnit(playerUnitId);
+            if (me != null && me.alive)
+            {
+                foreach (var strike in Combat.ActiveStrikes)
+                {
+                    if (strike.team == playerTeam) continue;
+                    foreach (var c in strike.cells)
+                    {
+                        if (c != me.pos) continue;
+                        float r = strike.impactTime - Battle.time;
+                        if (remain < 0f || r < remain) remain = r;
+                    }
+                }
+            }
+
+            if (remain < 0f) { threatWarning.Set(default, default, -1f); return; }
+            var view = viewRegistry.Get(playerUnitId);
+            var ground = gridView.CoordToWorld(me.pos);
+            var head = view != null ? view.transform.position + Vector3.up * 0.6f : ground + Vector3.up * 1.1f;
+            threatWarning.Set(ground, head, remain);
+            // 세 겹으로 알린다: 유닛 주위(링·!) + 화면 가장자리(붉은 비네트 맥동) + HUD 배너
+            hud.ShowThreat(remain);
+            ImpactFx.PulseThreat(1f - Mathf.Clamp01(remain / 0.8f));
         }
 
         bool IsUnitVisibleToPlayer(int unitId)
@@ -1533,6 +1587,7 @@ namespace SeoYuGi.BattleView
         void SyncPresentation()
         {
             gridView.UpdateFog(playerVisibleFn); // 시야 밖 타일 어둡게 (세부기획 B)
+            UpdateThreatWarning();
 
             // 거점 점거 원형 게이지 — 점거 중인 팀 색으로 바닥에 차오름
             bool anyCapturing = false;

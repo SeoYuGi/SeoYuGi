@@ -7,7 +7,7 @@ namespace SeoYuGi.Battle
     public class CombatConfig
     {
         public int attackDamage = 1;
-        public float attackTelegraphSeconds = 0.5f; // 모든 공격은 예고 후 판정 — 즉발 없음
+        public float attackTelegraphSeconds = 0.7f; // 모든 공격은 예고 후 판정 — 즉발 없음. 0.5는 읽고 피할 틈이 없었다 (2026-09-05)
         public float attackCooldownSeconds = 2f;    // 일반공격 쿨다운 — 구 AP 경제의 스로틀 대체
 
         public float blinkBuffSeconds = 3f;         // 그림자 도약: 일반공격 +1 지속

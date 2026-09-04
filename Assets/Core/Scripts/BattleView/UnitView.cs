@@ -43,6 +43,31 @@ namespace SeoYuGi.BattleView
 
             ApplyColor(teamColor);
             transform.position = WorldOf(start);
+            CreateFootDisc(teamColor);
+        }
+
+        /// <summary>발밑 팀색 네온 원반 — 유닛을 바닥에서 띄워 보이게 하고 팀이 한눈에 읽히게. 스킨이 뭐든 공통.</summary>
+        void CreateFootDisc(Color color)
+        {
+            var mat = VfxTextures.Glow;
+            if (mat == null) return;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
+            go.name = "FootDisc";
+            go.transform.SetParent(transform, false);
+            // 루트 스케일(클래스별 덩치)을 되돌려 월드 기준 크기·높이로 — 바닥 타일 윗면(+0.05) 바로 위
+            go.transform.localScale = Vector3.one * (1.15f / Mathf.Max(0.01f, baseScale.x));
+            go.transform.localPosition = new Vector3(0f, (-yOffset + 0.08f) / Mathf.Max(0.01f, baseScale.y), 0f);
+            go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            var r = go.GetComponent<Renderer>();
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            var block = new MaterialPropertyBlock();
+            var c = color * 0.7f; c.a = 1f; // 가산 — 색 세기로 밝기 조절
+            block.SetColor(BaseColorId, c);
+            block.SetColor("_Color", c);
+            r.SetPropertyBlock(block);
         }
 
         public void SetSelected(bool selected)
@@ -165,9 +190,13 @@ namespace SeoYuGi.BattleView
         IEnumerator SlideRoutine(Vector3 b, float duration)
         {
             Vector3 a = transform.position;
+            var fromRot = transform.rotation;
+            var toRot = FacingFor(a, b);
             for (float t = 0f; t < duration; t += Time.deltaTime)
             {
-                transform.position = Vector3.Lerp(a, b, t / duration);
+                float k = t / duration;
+                transform.position = Vector3.Lerp(a, b, k);
+                transform.rotation = Quaternion.Slerp(fromRot, toRot, Mathf.Clamp01(k * 3f));
                 yield return null;
             }
             transform.position = b;
@@ -184,18 +213,32 @@ namespace SeoYuGi.BattleView
             moving = StartCoroutine(PathRoutine(path, hopDuration));
         }
 
+        [SerializeField] float facingYawOffset = 0f; // 모델 정면이 +Z가 아니면 여기서 보정 (예: 180)
+
+        /// <summary>진행 방향을 바라보는 회전 — 옆으로 걸을 때 정면만 보던 문제. 수직 성분 무시.</summary>
+        Quaternion FacingFor(Vector3 from, Vector3 to)
+        {
+            var dir = to - from;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f) return transform.rotation;
+            return Quaternion.LookRotation(dir.normalized, Vector3.up) * Quaternion.Euler(0f, facingYawOffset, 0f);
+        }
+
         IEnumerator PathRoutine(IReadOnlyList<Coord> path, float hopDuration)
         {
             foreach (var cell in path)
             {
                 Vector3 a = transform.position;
                 Vector3 b = WorldOf(cell);
+                var fromRot = transform.rotation;
+                var toRot = FacingFor(a, b);
                 for (float t = 0f; t < hopDuration; t += Time.deltaTime)
                 {
                     float k = t / hopDuration;
                     var p = Vector3.Lerp(a, b, k);
                     p.y += hopHeight * 4f * k * (1f - k); // 포물선
                     transform.position = p;
+                    transform.rotation = Quaternion.Slerp(fromRot, toRot, Mathf.Clamp01(k * 2.5f)); // 홉 초반에 몸을 돌린다
                     yield return null;
                 }
                 transform.position = b;

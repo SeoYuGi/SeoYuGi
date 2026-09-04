@@ -15,61 +15,51 @@ namespace SeoYuGi.BattleView
     /// </summary>
     public static class StrikeVfx
     {
-        static readonly Color SniperRed = new Color(0.95f, 0.12f, 0.1f, 0.95f);
-        static readonly Color SaberCyan = new Color(0.45f, 0.95f, 1f);
-        static readonly Color ClawRed = new Color(1f, 0.3f, 0.22f);
-        static readonly Color SteelWhite = new Color(0.9f, 0.95f, 1f);
+        // ── 공격 색 언어 (2026-09-05 통일): 내 팀 = 틸 네온, 적 = 레드-오렌지 네온. 클래스별 고유색은 버렸다 —
+        //    "누구 편 공격인가"가 색 하나로 읽혀야 한다 (기획서 §06: 아군 틸 / AI 시그널 레드-오렌지).
+        public static readonly Color MineNeon = new Color(0.45f, 1f, 0.95f, 0.95f);
+        public static readonly Color EnemyNeon = new Color(1f, 0.32f, 0.15f, 0.95f);
+        public static Color TeamColor(bool mine) => mine ? MineNeon : EnemyNeon;
+        public static Color TeamHi(bool mine) => Color.Lerp(TeamColor(mine), Color.white, 0.55f); // 밝은 변주 (베기 날·트레이서)
 
-        /// <summary>예고 시작 — 반환 컨테이너는 판정 시 파괴(레이저·마커·투사체 수명 = 예고 시간).</summary>
+        static readonly Color SniperRed = EnemyNeon; // 예고선·경고에 쓰는 "적 위협" 색과 동일
+
+        static readonly Color MineWhite = new Color(0.7f, 1f, 0.95f, 0.9f); // 내 공격선 — 틸-흰
+
+        /// <summary>
+        /// 예고 시작 — 반환 컨테이너는 판정 시 파괴(레이저·마커·투사체 수명 = 예고 시간).
+        /// 모든 공격에 시전자→조준 칸 공격선: 적 = 빨강, 내 팀 = 흰 (색 언어) — "누가 누굴 때리는지"가 선으로 읽힌다.
+        /// 조준경은 저격수의 조준 칸 하나에만 (열 전체에 찍으면 소음).
+        /// </summary>
         public static GameObject Telegraph(TelegraphStrike strike, UnitClass cls, bool attackerFlying,
-            Vector3 casterWorld, IReadOnlyList<Vector3> cells, float seconds)
+            Vector3 casterWorld, IReadOnlyList<Vector3> cells, float seconds, bool mine, Vector3 aimWorld)
         {
             if (cells.Count == 0) return null;
             var root = new GameObject("StrikeTelegraphFx");
-            bool machine = strike.team == 1;
+            var lineColor = mine ? MineWhite : SniperRed;
 
-            if (machine)
-            {
-                // 기계 — 시안 레티클 (바닥 문양 루프 프리팹은 칸마다 돌아가며 시선을 뺏어 제거 — 가독성 패스)
-                int shown = 0;
-                foreach (var w in cells)
-                {
-                    if (shown++ >= 6) break;
-                    ScopeMarker.Spawn(root.transform, w, new Color(0.4f, 0.9f, 1f, 0.9f), 0.7f);
-                }
-                if (cls == UnitClass.Sniper) // 감시 드론 — 레이저 조준선
-                    LaserBeam.Spawn(root.transform, casterWorld + Vector3.up * 0.55f,
-                        cells[cells.Count - 1] + Vector3.up * 0.05f, SaberCyan);
-            }
-            else if (cls == UnitClass.Sniper)
-            {
-                // 까치 — 저격수의 상징: 빨간 조준경 레티클 + 레이저 조준선
-                foreach (var w in cells)
-                    ScopeMarker.Spawn(root.transform, w, SniperRed, 0.85f);
-                LaserBeam.Spawn(root.transform, casterWorld + Vector3.up * 0.55f,
-                    cells[cells.Count - 1] + Vector3.up * 0.05f, SniperRed);
-            }
-            else if (cls == UnitClass.Grenadier && !attackerFlying)
+            LaserBeam.Spawn(root.transform, casterWorld + Vector3.up * 0.55f, aimWorld + Vector3.up * 0.15f, lineColor);
+
+            if (cls == UnitClass.Sniper)
+                ScopeMarker.Spawn(root.transform, aimWorld, lineColor, 1f); // 조준경 — 조준 칸 하나
+
+            if (cls == UnitClass.Grenadier && !attackerFlying && strike.team != 1)
             {
                 // 비둘기 일반공격·파열탄 — 폭탄이 포물선으로 날아간다 (배달 비행은 유닛이 직접 운반)
                 BombProjectile.Spawn(root.transform, casterWorld + Vector3.up * 0.5f, cells[0], seconds);
             }
 
-            return root.transform.childCount > 0 ? root : DestroyAndNull(root);
+            return root;
         }
 
-        static GameObject DestroyAndNull(GameObject go)
-        {
-            UnityEngine.Object.Destroy(go);
-            return null;
-        }
-
-        /// <summary>판정 순간 — 클래스·팀별 임팩트. cells는 시야 필터를 통과한 칸만.</summary>
-        public static void Resolve(TelegraphStrike strike, UnitClass cls, IReadOnlyList<Vector3> cells, bool hit)
+        /// <summary>판정 순간 — 클래스·팀별 임팩트. cells는 시야 필터를 통과한 칸만. mine = 내 팀 공격(색 언어).</summary>
+        public static void Resolve(TelegraphStrike strike, UnitClass cls, IReadOnlyList<Vector3> cells, bool hit, bool mine)
         {
             if (cells.Count == 0) return;
             bool machine = strike.team == 1;
             var center = cells[0];
+            var team = TeamColor(mine);
+            var teamHi = TeamHi(mine);
 
             if (machine)
             {
@@ -78,15 +68,16 @@ namespace SeoYuGi.BattleView
                     case UnitClass.Tank:
                     case UnitClass.Balance:
                     case UnitClass.Assassin:
-                        // 기계 근접 — 광선검 베기 (시안 슬래시 + SF 히트)
-                        SlashQuad(center, SaberCyan, spin: UnityEngine.Random.Range(-40f, 40f), scale: 1.25f);
-                        VfxLibrary.Spawn(VfxLibrary.HcfxHit1, center + Vector3.up * 0.35f, 1.5f, 0.6f);
+                        // 기계 근접 — 광선검 베기 (팀색 슬래시) + 금속 불꽃 (HCFX 파스텔은 톤 불일치로 제거)
+                        SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-40f, 40f), scale: 1.25f);
+                        if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, center + Vector3.up * 0.3f, 1.5f, 0.22f, hierarchyScale: true) == null)
+                            ImpactVfx.Sparks(center, machine: true);
                         break;
                     default:
-                        // 기계 원거리 — 록온 후 우다다 연쇄 폭격
+                        // 기계 원거리 — 연쇄 불꽃 (칸 안 크기, 칸마다 살짝 시차)
                         FxSequencer.Stagger(cells, 0.07f, w =>
                         {
-                            if (VfxLibrary.Spawn(VfxLibrary.HcfxExplosion, w + Vector3.up * 0.15f, 2f, 0.55f) == null)
+                            if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, w + Vector3.up * 0.25f, 1.5f, 0.2f, hierarchyScale: true) == null)
                                 ImpactVfx.Sparks(w, machine: true, scale: 1.2f); // 폴백
                         });
                         break;
@@ -106,13 +97,14 @@ namespace SeoYuGi.BattleView
                     }
                     else if (strike.damage >= 2)
                     {
-                        // 강타 — 둔탁한 크리티컬 펀치
-                        VfxLibrary.Spawn(VfxLibrary.ToonPunchCritical, center + Vector3.up * 0.45f, 1.6f, 0.75f);
+                        // 강타 — 카툰 크리티컬 (Wallcoeur), 없으면 ToonFX 펀치
+                        if (VfxLibrary.Spawn(VfxLibrary.WallCritical, center + Vector3.up * 0.3f, 1.6f, 0.4f, hierarchyScale: true) == null)
+                            VfxLibrary.Spawn(VfxLibrary.ToonPunchCritical, center + Vector3.up * 0.45f, 1.6f, 0.75f);
                     }
                     else
                     {
-                        // 기본공격 — 칼 베기 호
-                        SlashQuad(center, SteelWhite, spin: UnityEngine.Random.Range(-30f, 30f), scale: 1.15f);
+                        // 기본공격 — 칼 베기 호 (팀색 날)
+                        SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-30f, 30f), scale: 1.15f);
                         if (hit) VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, center + Vector3.up * 0.4f, 1.4f, 0.5f);
                     }
                     break;
@@ -127,39 +119,60 @@ namespace SeoYuGi.BattleView
                     if (strike.damage >= 3)
                     {
                         // 발톱 쥐어짜기 — 발톱 2연격 촥촥 (교차 방향)
-                        SlashClaw(center, spin: -28f);
-                        FxSequencer.Delay(0.13f, () => SlashClaw(center, spin: 62f));
+                        SlashClaw(center, team, spin: -28f);
+                        FxSequencer.Delay(0.13f, () => SlashClaw(center, team, spin: 62f));
                     }
                     else
                     {
-                        SlashClaw(center, spin: UnityEngine.Random.Range(-25f, 25f)); // 기본 — 발톱 1번
+                        SlashClaw(center, team, spin: UnityEngine.Random.Range(-25f, 25f)); // 기본 — 발톱 1번
                     }
                     break;
 
                 case UnitClass.Grenadier:
-                    // 폭탄 터짐 (공용) — 중심 크게, 주변 십자는 작게
-                    if (VfxLibrary.Spawn(VfxLibrary.ToonExplosion, center + Vector3.up * 0.2f, 2f, 0.6f) == null)
+                    // 폭탄 터짐 — 전쟁 톤 폭발을 칸 크기(0.18)로. 주변 십자는 먼지. 없으면 ToonFX 폴백
+                    if (VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.5f, 0.18f, hierarchyScale: true) == null &&
+                        VfxLibrary.Spawn(VfxLibrary.ToonExplosion, center + Vector3.up * 0.2f, 2f, 0.6f) == null)
                         ImpactVfx.Sparks(center, machine: false, scale: 1.5f);
                     for (int i = 1; i < cells.Count && i <= 4; i++)
-                        VfxLibrary.Spawn(VfxLibrary.ToonExplosionSimple, cells[i] + Vector3.up * 0.15f, 1.8f, 0.4f);
+                        if (VfxLibrary.Spawn(VfxLibrary.PpfxDustHit, cells[i] + Vector3.up * 0.05f, 1.8f, 0.2f, hierarchyScale: true) == null)
+                            VfxLibrary.Spawn(VfxLibrary.ToonExplosionSimple, cells[i] + Vector3.up * 0.15f, 1.8f, 0.4f);
                     break;
 
                 case UnitClass.Sniper:
                     // 저격 판정 — 총성 트레이서가 조준선을 따라 번쩍
+                    // 저격은 지정 칸 1개 — 하늘에서 꽂히는 짧은 트레이서 (시전자 위치는 여기 없다)
                     if (cells.Count >= 1)
-                        LaserBeam.Flash(cells[0] + Vector3.up * 0.3f, cells[cells.Count - 1] + Vector3.up * 0.3f,
-                            new Color(1f, 0.55f, 0.4f), 0.12f);
-                    if (hit && VfxLibrary.Spawn(VfxLibrary.HcfxFlash, cells[cells.Count - 1] + Vector3.up * 0.3f, 1.2f, 0.5f) == null)
-                        ImpactVfx.Sparks(cells[cells.Count - 1], machine: false, scale: 1f);
+                        LaserBeam.Flash(cells[0] + Vector3.up * 1.6f, cells[0] + Vector3.up * 0.25f, teamHi, 0.12f);
+                    if (hit)
+                    {
+                        // 탄착 — 피격자는 공격자 반대 팀: 기계가 쐈으면 동물(흙먼지), 동물이 쐈으면 기계(금속 불꽃)
+                        var end = cells[cells.Count - 1];
+                        string impact = strike.team == 1 ? VfxLibrary.WarImpactDirt : VfxLibrary.WarImpactMetal;
+                        if (VfxLibrary.Spawn(impact, end + Vector3.up * 0.1f, 2f, 0.25f, hierarchyScale: true) == null)
+                            ImpactVfx.Sparks(end, machine: false, scale: 1f);
+                    }
                     break;
             }
         }
 
-        /// <summary>공통 피격 리액션 — 기계=SF 히트, 동물=만화 펀치. 기존 스파크 위에 얹는 층.</summary>
+        /// <summary>공통 피격 리액션 — 기계=금속 불꽃(전쟁 팩, 칸 안 크기), 동물=만화 펀치. 기존 스파크 위에 얹는 층.</summary>
         public static void HitReaction(Vector3 pos, bool machine)
         {
-            if (machine) VfxLibrary.Spawn(VfxLibrary.HcfxHit2, pos + Vector3.up * 0.4f, 1.4f, 0.5f);
-            else VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, pos + Vector3.up * 0.45f, 1.3f, 0.42f);
+            if (machine)
+            {
+                if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, pos + Vector3.up * 0.3f, 1.4f, 0.22f, hierarchyScale: true) == null)
+                    ImpactVfx.Sparks(pos, machine: true);
+            }
+            else if (VfxLibrary.Spawn(VfxLibrary.WallToonImpact, pos + Vector3.up * 0.35f, 1.3f, 0.35f, hierarchyScale: true) == null)
+                VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, pos + Vector3.up * 0.45f, 1.3f, 0.42f); // 카툰 타격팩 없으면 ToonFX
+        }
+
+        /// <summary>격파 — 전쟁 톤 폭발+바닥 연기를 칸 크기로 (큰 연출은 격파에만). 기계는 전기 폭발을 얹는다.</summary>
+        public static void Kill(Vector3 pos, bool machine)
+        {
+            VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, pos + Vector3.up * 0.05f, 3f, 0.16f, hierarchyScale: true);
+            VfxLibrary.Spawn(VfxLibrary.WarSmokeGround, pos, 4f, 0.14f, hierarchyScale: true);
+            if (machine) VfxLibrary.Spawn(VfxLibrary.PpfxElectricExplosion, pos + Vector3.up * 0.2f, 2.5f, 0.2f, hierarchyScale: true);
         }
 
         // ── 내부 도우미 ──────────────────────────────────────────
@@ -169,11 +182,11 @@ namespace SeoYuGi.BattleView
             FxQuad.One(VfxTextures.Slash, pos + Vector3.up * 0.5f, color, scale, 0.45f, 0.22f, spinDeg: spin);
         }
 
-        static void SlashClaw(Vector3 pos, float spin)
+        static void SlashClaw(Vector3 pos, Color color, float spin)
         {
             var mat = VfxTextures.Claw;
             if (mat == null) return;
-            FxQuad.One(mat, pos + Vector3.up * 0.5f, ClawRed, 1.35f, 0.35f, 0.26f, spinDeg: spin);
+            FxQuad.One(mat, pos + Vector3.up * 0.5f, color, 1.35f, 0.35f, 0.26f, spinDeg: spin);
         }
 
         static void WindStreaks(Vector3 pos, Vector3 dir)
@@ -204,7 +217,7 @@ namespace SeoYuGi.BattleView
             UnityEngine.Object.Destroy(go.GetComponent<Collider>());
             go.name = "ScopeMarker";
             go.transform.SetParent(parent);
-            go.transform.position = cellWorld + Vector3.up * 0.03f;
+            go.transform.position = cellWorld + Vector3.up * 0.13f; // 타일 윗면(+0.05) 위 — 0.03이면 타일 속에 파묻혀 안 보였다
             go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥에 눕힘
             var m = go.AddComponent<ScopeMarker>();
             m.color = color;
@@ -238,7 +251,7 @@ namespace SeoYuGi.BattleView
             go.transform.SetParent(parent);
             var b = go.AddComponent<LaserBeam>();
             b.color = color;
-            b.line = MakeLine(go, from, to, color, 0.035f);
+            b.line = MakeLine(go, from, to, color, 0.06f); // 0.035는 탑뷰에서 실처럼 사라졌다
         }
 
         /// <summary>판정 순간 1회성 굵은 섬광 — duration 후 자체 소멸.</summary>

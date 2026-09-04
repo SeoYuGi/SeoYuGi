@@ -6,13 +6,31 @@ using UnityEngine;
 namespace SeoYuGi.EditorTools
 {
     /// <summary>
-    /// ToonFX(레거시 빌트인 파티클 셰이더) 머티리얼을 URP Particles/Unlit로 자동 변환.
+    /// 레거시(빌트인) 파티클 머티리얼을 URP Particles/Unlit로 자동 변환.
     /// 레거시 파티클 셰이더는 URP에서 핑크(에러)로 뜬다 — 에디터 로드 시 1회 검사·변환.
     /// 원본 블렌드 모드는 .mat YAML의 빌트인 fileID로 판별 (에러 셰이더는 이름을 잃기 때문).
+    /// 대상: ToonFX + WarFX + ParticleProFX + ParticleShadersVol1 (2026-09-05 에셋 3종 추가).
     /// </summary>
     public static class ToonFxUrpConverter
     {
-        const string Root = "Assets/Game/Art/VFX/ToonFX";
+        static readonly string[] Roots =
+        {
+            "Assets/Game/Art/VFX/ToonFX",
+            "Assets/JMO Assets/WarFX",
+            "Assets/ParticleProFX",
+            "Assets/ParticleShadersVol1",
+            "Assets/VFXPACK_IMPACT_WALLCOEUR_FreeVersion",
+        };
+
+        // 이름은 살아 있지만 URP에서 못 그리는 커스텀 셰이더 (surface 라이팅·고정기능) — 알파 블렌드 언릿으로 대체
+        static readonly string[] PinkCustomShaders =
+        {
+            "WFX/Transparent Diffuse",
+            "WFX/Transparent Specular",
+            "PPFX/AlphaSelfIllum",
+            "Ethical Motion/Particles/Lit",
+            "Ethical Motion/Particles/Lit MultiLight",
+        };
 
         [InitializeOnLoadMethod]
         static void AutoRun()
@@ -25,7 +43,8 @@ namespace SeoYuGi.EditorTools
 
         static void Convert(bool silent)
         {
-            if (!AssetDatabase.IsValidFolder(Root)) return;
+            var roots = System.Array.FindAll(Roots, AssetDatabase.IsValidFolder);
+            if (roots.Length == 0) return;
             var urpShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
             if (urpShader == null)
             {
@@ -34,7 +53,7 @@ namespace SeoYuGi.EditorTools
             }
 
             int converted = 0;
-            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { Root }))
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", roots))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -42,10 +61,17 @@ namespace SeoYuGi.EditorTools
 
                 string shaderName = mat.shader.name;
                 bool broken = shaderName == "Hidden/InternalErrorShader";
-                bool legacy = shaderName.StartsWith("Particles/") || shaderName.StartsWith("Legacy Shaders/Particles/");
+                bool legacy = shaderName.StartsWith("Particles/") || shaderName.StartsWith("Legacy Shaders/Particles/")
+                              || System.Array.IndexOf(PinkCustomShaders, shaderName) >= 0;
                 if (!broken && !legacy) continue;
 
                 int blendMode = GuessBlend(path, shaderName);
+                // Particles/Standard Unlit·Surface(Wallcoeur 등)는 블렌드가 _Mode 프로퍼티에 있다: 4=Additive, 6=Modulate, 그 외 Alpha
+                if (shaderName.StartsWith("Particles/Standard") && mat.HasProperty("_Mode"))
+                {
+                    int mode = Mathf.RoundToInt(mat.GetFloat("_Mode"));
+                    blendMode = mode == 4 ? 2 : mode == 6 ? 3 : 0;
+                }
 
                 // 스왑 전에 기존 속성 확보 — 스왑하면 프로퍼티 이름이 바뀐다
                 Texture tex = mat.HasProperty("_MainTex") ? mat.GetTexture("_MainTex") : null;
@@ -98,9 +124,9 @@ namespace SeoYuGi.EditorTools
             if (converted > 0)
             {
                 AssetDatabase.SaveAssets();
-                Debug.Log($"ToonFX URP 변환 — 머티리얼 {converted}개 변환 완료");
+                Debug.Log($"VFX URP 변환 — 머티리얼 {converted}개 변환 완료 (ToonFX·WarFX·PPFX·ParticleShaders)");
             }
-            else if (!silent) Debug.Log("ToonFX URP 변환 — 변환할 레거시 머티리얼 없음");
+            else if (!silent) Debug.Log("VFX URP 변환 — 변환할 레거시 머티리얼 없음");
         }
 
         /// <summary>블렌드 판별: 0=Alpha, 1=Premultiply, 2=Additive, 3=Multiply.

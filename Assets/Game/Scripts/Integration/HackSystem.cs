@@ -13,8 +13,9 @@ namespace SeoYuGi.Integration
     public class HackSystem
     {
         public const float Duration = 5f;
-        public const float PassiveChargePerSecond = 0.01f; // 기본 충전 — 초당 1%
-        public const float ChargePerDamage = 0.10f;        // 적중 = 예측 성공 → 데미지 1당 10%
+        public const float StunSeconds = 0.6f;             // 발동 순간 적 전원 정지 — 0.5는 예고 0.7초 세계에서 체감이 약해 0.6
+        public const float PassiveChargePerSecond = 0.007f; // 기본 충전 — 초당 0.7% (스턴 추가로 코스트 상향, 구 1%)
+        public const float ChargePerDamage = 0.07f;         // 적중 = 예측 성공 → 데미지 1당 7% (구 10%)
 
         readonly Predictor predictor;
         readonly List<int> unitIds = new List<int>();               // Tick 순회용 — gauge 키 스냅샷

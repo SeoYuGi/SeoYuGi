@@ -15,6 +15,11 @@ namespace SeoYuGi.Ai
         private readonly Predictor _predictor; // 적팀 뇌만 보유, 아군 팀원은 null
         private float _nextDecisionTime;
         private float _nextAttackTime;         // 공격·스킬 페이싱 — 연타 방지
+        private float _dodgeReadyTime;         // 회피 쿨타임 — 옆걸음 무한 반복 방지 (근접전이 성립하게)
+        private float _nextMoveTime;           // 이동 페이싱 — 한 걸음 뒤 잠깐 서서 판단 (제자리 왕복 방지)
+        private bool _dodgeMove;               // 이번 판단의 Move가 회피인가 — 회피는 페이싱을 안 탄다
+        private readonly Cell[] _recent = new Cell[3]; // 최근 밟은 칸 3개 — 옆걸음·배회가 되돌아가지 않게
+        private int _recentCount;
         private float _lastActiveTime;         // 마지막으로 뭔가 한 시각 — 프리징 감지
         private Cell _prevPos;                 // 직전 위치 — 옆걸음 왕복 방지
         private bool _hasPrevPos;
@@ -40,11 +45,20 @@ namespace SeoYuGi.Ai
             // (고지대 홀드는 카운터 전술의 자리 사수 — 배회로 새면 안 됨)
             if (cmd.Type == CommandType.None &&
                 world.Time - _lastActiveTime > _cfg.IdleWanderAfter &&
-                !OnAnyZonePatch(world, me.Pos) && !OnHighland(world, me.Pos))
+                !OnAnyZonePatch(world, me.Pos) && !OnHighland(world, me.Pos) && !EnemyAdjacent(world, me))
             {
                 var wander = WanderStep(world, me);
                 if (wander.HasValue) cmd = AiCommand.Of(CommandType.Move, wander.Value);
             }
+
+            // 이동 페이싱 — 회피가 아닌 이동은 한 걸음마다 MoveInterval 쉰다. 매 판단마다 걸으면
+            // 위협 칸이 켜졌다 꺼졌다 할 때 두 칸 사이를 왕복한다 (같은 자리 왔다갔다의 주범).
+            if (cmd.Type == CommandType.Move)
+            {
+                if (!_dodgeMove && world.Time < _nextMoveTime) cmd = AiCommand.None;
+                else _nextMoveTime = world.Time + _cfg.MoveInterval;
+            }
+            _dodgeMove = false;
 
             if (cmd.Type != CommandType.None)
             {
@@ -56,18 +70,25 @@ namespace SeoYuGi.Ai
             {
                 _prevPos = me.Pos; // 다음 판단에서 "방금 있던 칸" 회피용
                 _hasPrevPos = true;
+                _recent[_recentCount % _recent.Length] = me.Pos;
+                _recentCount++;
             }
             return cmd;
         }
 
         private AiCommand Decide(IWorldView world, ActorState me)
         {
-            // 1) 회피 — 내 칸에 곧 떨어지는 적 예고. 반응 하한 + 클래스별 확률 (완벽 회피 금지)
-            if (ShouldDodge(world, me))
+            // 1) 회피 — 내 칸에 곧 떨어지는 적 예고. 반응 하한 + 클래스별 확률 + 쿨타임 (완벽 회피 금지)
+            //    쿨타임 중엔 아예 안 피한다 — 첫 공격은 흘려도 연속 공격은 맞아야 근접전이 성립한다.
+            if (world.Time >= _dodgeReadyTime && ShouldDodge(world, me))
             {
                 var dodge = FindDodgeCell(world, me);
                 if (dodge.HasValue)
+                {
+                    _dodgeReadyTime = world.Time + _cfg.DodgeCooldown;
+                    _dodgeMove = true; // 회피는 이동 페이싱 면제 — 살아야 하니까
                     return AiCommand.Of(CommandType.Move, dodge.Value);
+                }
                 if (world.Round >= 2 && world.HasDecoy(_actorId))
                     return AiCommand.Of(CommandType.Decoy, me.Pos); // 해킹 — 게이지 만충 시
                 // 방어는 기획에서 삭제(2026-09-05) — 못 피하면 그냥 맞는다
@@ -112,6 +133,11 @@ namespace SeoYuGi.Ai
                     return AiCommand.Of(CommandType.Attack, aim, predicted);
                 }
             }
+
+            // 3.2) 근접 대치 — 적이 붙어 있으면 근접 클래스는 자리를 지킨다. 매 판단마다 거점으로 걸어 나가면
+            //      플레이어가 쫓아다니는 술래잡기가 된다. 공격은 위 2~3단계가 쿨다운 돌 때 나간다.
+            if (target.HasValue && IsMelee(me.Class) && IsOrthoAdjacent(me.Pos, target.Value.Pos))
+                return AiCommand.None;
 
             // 3.5) 습성 카운터 전술 (D) — 스타일 파악되면 통수 포지셔닝 (R2+)
             if (_predictor != null && world.Round >= 2 && TryCounterTactic(world, me, out var counterStep))
@@ -186,7 +212,7 @@ namespace SeoYuGi.Ai
                         return AiCommand.Of(CommandType.Heavy, cell, predicted: true);
                     break;
                 case ClassId.Sniper:
-                    if ((cell.X == me.Pos.X || cell.Y == me.Pos.Y) && Chebyshev(me.Pos, cell) <= _cfg.SnipeRange)
+                    if (RangeTemplates.Contains(RangeTemplates.SnipeRange, me.Pos, cell)) // 다이아 + 십자 끝 (코어 CanSnipe와 동일 모양)
                         return AiCommand.Of(CommandType.Heavy, cell, predicted: true);
                     break;
             }
@@ -232,7 +258,7 @@ namespace SeoYuGi.Ai
                 if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
                 int d = Manhattan(n, targetCell);
                 if (d < bestDist) { bestDist = d; best = n; }
-                else if (d == curDist && sidestep == null && !(_hasPrevPos && n.Equals(_prevPos)))
+                else if (d == curDist && sidestep == null && !IsRecent(n))
                     sidestep = n;
             }
             return best ?? sidestep;
@@ -291,9 +317,8 @@ namespace SeoYuGi.Ai
                     // 넉백샷(스킬1): 붙으면 때리고 물러난다 — 카이팅
                     if (Chebyshev(me.Pos, target.Pos) == 1)
                         return AiCommand.Of(CommandType.Heavy, target.Pos, skillIndex: 0);
-                    // 조준 사격(스킬2): 예측 칸과 행/열 정렬 + 사거리 5
-                    if ((aim.X == me.Pos.X || aim.Y == me.Pos.Y) &&
-                        Chebyshev(me.Pos, aim) <= 5 && !aim.Equals(me.Pos))
+                    // 조준 사격(스킬2): 예측 칸이 다이아(4)+십자 끝(5) 안이고 내 팀 시야 안이면 (벽 LOS 근사)
+                    if (RangeTemplates.Contains(RangeTemplates.SnipeRange, me.Pos, aim) && world.IsVisibleTo(me.Team, aim))
                         return AiCommand.Of(CommandType.Heavy, aim, skillIndex: 1);
                     break;
             }
@@ -358,6 +383,7 @@ namespace SeoYuGi.Ai
                 bool ours = z.HasOwner && z.Owner == me.Team;
                 if (anyNotOurs && ours) continue; // 먹은 거점에 눌러앉지 말 것
                 float score = -Manhattan(me.Pos, z.Cell);
+                if (TeammateNear(world, me, z.Cell, 3)) score += 2.5f; // 뭉치기 — 아군이 붙은 거점을 선호 (각개전투 억제)
                 if (score > bestScore) { bestScore = score; goal = z; }
             }
             if (!goal.HasValue) return null;
@@ -415,7 +441,7 @@ namespace SeoYuGi.Ai
                 if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
                 int d = Manhattan(n, targetCell.Value);
                 if (d < bestDist) { bestDist = d; best = n; }
-                else if (d == curDist && sidestep == null && !(_hasPrevPos && n.Equals(_prevPos)))
+                else if (d == curDist && sidestep == null && !IsRecent(n))
                     sidestep = n;
             }
             return best ?? sidestep;
@@ -477,7 +503,7 @@ namespace SeoYuGi.Ai
             foreach (var n in OrthoNeighbors(me.Pos))
             {
                 if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
-                if (_hasPrevPos && n.Equals(_prevPos)) { fallback = n; continue; } // 왔던 길은 최후순위
+                if (IsRecent(n)) { fallback = n; continue; } // 방금 왔던 길들은 최후순위
                 seen++;
                 if (pick % seen == 0) fallback = n; // reservoir 흉내 — 결정적이면서 다양
                 if (fallback == null) fallback = n;
@@ -502,6 +528,34 @@ namespace SeoYuGi.Ai
                 if (t.Team != myTeam && t.Cell.Equals(cell) &&
                     t.ImpactTime - world.Time <= _cfg.DodgeWindow)
                     return true;
+            return false;
+        }
+
+        /// 최근 밟은 칸(최대 3)인가 — 옆걸음·배회 왕복 방지.
+        private bool IsRecent(Cell c)
+        {
+            int n = System.Math.Min(_recentCount, _recent.Length);
+            for (int i = 0; i < n; i++)
+                if (_recent[i].Equals(c)) return true;
+            return false;
+        }
+
+        /// 살아있는 아군(나 제외)이 cell에서 radius 이내에 있는가 — 뭉치기 판단.
+        private static bool TeammateNear(IWorldView world, ActorState me, Cell cell, int radius)
+        {
+            foreach (var a in world.Actors)
+                if (a.Alive && a.Id != me.Id && a.Team == me.Team && Manhattan(a.Pos, cell) <= radius) return true;
+            return false;
+        }
+
+        private static bool IsMelee(ClassId c) =>
+            c == ClassId.Tank || c == ClassId.Balance || c == ClassId.Assassin;
+
+        /// 살아있는 적이 십자 인접 칸에 있는가 — 근접 대치 판정.
+        private static bool EnemyAdjacent(IWorldView world, ActorState me)
+        {
+            foreach (var a in world.Actors)
+                if (a.Alive && a.Team != me.Team && IsOrthoAdjacent(me.Pos, a.Pos)) return true;
             return false;
         }
 

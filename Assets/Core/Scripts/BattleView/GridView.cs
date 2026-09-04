@@ -38,8 +38,16 @@ namespace SeoYuGi.BattleView
         // 하이라이트가 걷힌 뒤에도 유지되는 기본 틴트 (거점 소유 표시 등)
         readonly Dictionary<Coord, Color> baseTints = new Dictionary<Coord, Color>();
         readonly HashSet<Coord> fogged = new HashSet<Coord>();
-        readonly Dictionary<Coord, GameObject> fogOverlays = new Dictionary<Coord, GameObject>(); // 시야 밖 안개 쿼드 풀
-        Material fogOverlayMat; // 안개 레이어 공유 머티리얼 (반투명 언릿)
+        // 안개 시트 — 맵 전체를 덮는 쿼드 1장. 시야 마스크를 번지게 하고 노이즈 결을 입힌 텍스처를 매 프레임 굽는다.
+        // (칸마다 구름 쿼드를 얹으면 "스티커 뭉치"로 보인다 — 한 덩어리여야 안개다)
+        GameObject fogSheet;
+        Texture2D fogTex;
+        Color32[] fogPixels;
+        float[] fogField; // 셀 단위 안개 0/1, 마진 포함 (W+2)×(H+2)
+        const int FogPxPerCell = 6;
+        const int FogMargin = 1; // 맵 밖 1칸까지 안개가 번져 나가다 사라진다
+        const float FogFadePerSecond = 2.2f; // 칸 밀도 변화 속도 — 0→1 약 0.45초 (걷힘/차오름 페이드)
+        bool fogFieldInit;                    // 첫 프레임은 페이드 없이 즉시 (라운드 시작 스르륵 방지)
         MaterialPropertyBlock mpb;
         Material matFloorA, matFloorB, matObstacle, matZone, matHighland;
 
@@ -59,9 +67,8 @@ namespace SeoYuGi.BattleView
             highlighted.Clear();
             baseTints.Clear();
             fogged.Clear();
-            foreach (var kv in fogOverlays)
-                if (kv.Value != null) Destroy(kv.Value);
-            fogOverlays.Clear();
+            if (fogSheet != null) { Destroy(fogSheet); fogSheet = null; } // 맵 크기가 바뀌므로 시트도 새로
+            fogFieldInit = false;
 
             this.grid = grid;
             mpb = new MaterialPropertyBlock();
@@ -163,6 +170,10 @@ namespace SeoYuGi.BattleView
                 var template = tiles[c.x, c.y].sharedMaterial;
                 matFloorA = new Material(template) { mainTexture = floorTextureA };
                 matFloorB = new Material(template) { mainTexture = floorTextureB != null ? floorTextureB : floorTextureA };
+                // 바닥은 한 단계 어둡고 채도 낮게 — 유닛·이펙트가 바닥에서 떠 보이게 (유닛-그리드 분리)
+                var floorDim = new Color(0.78f, 0.78f, 0.8f);
+                matFloorA.color = floorDim; if (matFloorA.HasProperty("_BaseColor")) matFloorA.SetColor("_BaseColor", floorDim);
+                matFloorB.color = floorDim; if (matFloorB.HasProperty("_BaseColor")) matFloorB.SetColor("_BaseColor", floorDim);
                 matObstacle = new Material(template) { mainTexture = obstacleTexture != null ? obstacleTexture : floorTextureA };
                 matZone = new Material(template) { mainTexture = zoneTexture != null ? zoneTexture : floorTextureA };
                 matHighland = HighlandMaterial(template);
@@ -420,130 +431,97 @@ namespace SeoYuGi.BattleView
                 if (!visible(c)) fogged.Add(c);
             }
             RepaintAll();
-            UpdateFogOverlays();
+            UpdateFogSheet();
+        }
+
+        void EnsureFogSheet()
+        {
+            if (fogSheet != null) return;
+            int cw = grid.Width + FogMargin * 2, ch = grid.Height + FogMargin * 2;
+            fogField = new float[cw * ch];
+            int w = cw * FogPxPerCell, h = ch * FogPxPerCell;
+            fogTex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            fogPixels = new Color32[w * h];
+
+            fogSheet = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            fogSheet.name = "FogSheet";
+            fogSheet.transform.SetParent(transform, false);
+            Destroy(fogSheet.GetComponent<Collider>());
+            // 시트 중심 = 맵 중심, 크기 = 마진 포함 칸 수 × tileSize. Euler(90,0,0)이라 텍스처 v가 +Z(맵 y)로 간다
+            var center = transform.position + new Vector3((grid.Width - 1) * 0.5f * tileSize, fogOverlayHeight, (grid.Height - 1) * 0.5f * tileSize);
+            fogSheet.transform.position = center;
+            fogSheet.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            fogSheet.transform.localScale = new Vector3(cw * tileSize, ch * tileSize, 1f);
+            var r = fogSheet.GetComponent<Renderer>();
+            r.sharedMaterial = new Material(Shader.Find("Sprites/Default")) { mainTexture = fogTex, color = Color.white };
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
         }
 
         /// <summary>
-        /// 시야 밖 칸 위에 안개 솜뭉치를 켜고, 시야 안은 끈다.
-        /// 솜뭉치마다 위상이 달라 각자 천천히 돌고 숨쉬며(전체 동시 깜빡임 아님), 시야 경계 칸은 옅어져 스며든다.
+        /// 안개 시트 굽기 — 셀 마스크(안개 1/시야 0, 맵 밖 1)를 이중선형 보간 + smoothstep으로 번지게 하고,
+        /// 천천히 흐르는 펄린 노이즈 두 겹으로 결을 입힌다. 경계는 칸 하나 폭으로 스며들고, 맵 밖 마진에서 사라진다.
+        /// 12k 픽셀 수준이라 매 프레임 CPU로 구워도 싸다.
         /// </summary>
-        void UpdateFogOverlays()
+        void UpdateFogSheet()
         {
-            EnsureFogMat();
-            for (int y = 0; y < grid.Height; y++)
-            for (int x = 0; x < grid.Width; x++)
+            EnsureFogSheet();
+            int cw = grid.Width + FogMargin * 2, ch = grid.Height + FogMargin * 2;
+            // 셀 밀도는 목표(0/1)로 '천천히' 움직인다 — 시야가 바뀌어도 칸이 툭 꺼지지 않고 스르륵 걷힌다/차오른다
+            float fade = Time.deltaTime * FogFadePerSecond;
+            for (int cy = 0; cy < ch; cy++)
+            for (int cx = 0; cx < cw; cx++)
             {
-                var c = new Coord(x, y);
-                if (tiles[x, y] == null) continue; // Void 칸 — 맵 밖, 안개 없음
-                bool on = fogged.Contains(c);
-                if (!fogOverlays.TryGetValue(c, out var ov))
+                int mx = cx - FogMargin, my = cy - FogMargin;
+                bool inside = mx >= 0 && my >= 0 && mx < grid.Width && my < grid.Height;
+                float target = !inside || fogged.Contains(new Coord(mx, my)) ? 1f : 0f;
+                int i = cy * cw + cx;
+                fogField[i] = fogFieldInit ? Mathf.MoveTowards(fogField[i], target, fade) : target;
+            }
+            fogFieldInit = true;
+
+            float t = Time.time;
+            int w = fogTex.width, h = fogTex.height;
+            byte cr = (byte)(fogOverlayColor.r * 255f), cg = (byte)(fogOverlayColor.g * 255f), cb = (byte)(fogOverlayColor.b * 255f);
+            for (int py = 0; py < h; py++)
+            {
+                float v = (py + 0.5f) / FogPxPerCell; // 셀 단위 (마진 포함 좌표계)
+                for (int px = 0; px < w; px++)
                 {
-                    if (!on) continue;       // 아직 안개도 아니면 생성 미룸
-                    ov = CreateFogOverlay(c);
-                    fogOverlays[c] = ov;
+                    float u = (px + 0.5f) / FogPxPerCell;
+
+                    // 셀 중심 기준 이중선형 보간 → 칸 경계가 선이 아니라 그라데이션
+                    float fx = Mathf.Clamp(u - 0.5f, 0f, cw - 1.001f), fy = Mathf.Clamp(v - 0.5f, 0f, ch - 1.001f);
+                    int x0 = (int)fx, y0 = (int)fy;
+                    float tx = fx - x0, ty = fy - y0;
+                    float f00 = fogField[y0 * cw + x0], f10 = fogField[y0 * cw + x0 + 1];
+                    float f01 = fogField[(y0 + 1) * cw + x0], f11 = fogField[(y0 + 1) * cw + x0 + 1];
+                    float fog = Mathf.Lerp(Mathf.Lerp(f00, f10, tx), Mathf.Lerp(f01, f11, tx), ty);
+                    fog = fog * fog * (3f - 2f * fog); // smoothstep — 경계를 부드럽게 조임
+
+                    // 맵 밖 마진: 바깥 가장자리로 갈수록 0 — 안개가 맵 밖으로 살짝 새어 나가다 사라진다
+                    float mu = u - FogMargin, mv = v - FogMargin;
+                    float edge = Mathf.Min(Mathf.Min(mu + FogMargin, grid.Width + FogMargin - mu),
+                                           Mathf.Min(mv + FogMargin, grid.Height + FogMargin - mv)) / FogMargin;
+                    fog *= Mathf.Clamp01(edge);
+
+                    // 결 — 큰 덩어리 + 잔결, 서로 다른 방향으로 천천히 흐른다
+                    float n = Mathf.PerlinNoise(u * 0.32f + t * 0.045f, v * 0.32f + t * 0.03f) * 0.62f
+                            + Mathf.PerlinNoise(u * 0.85f - t * 0.035f + 7.3f, v * 0.85f + t * 0.05f + 2.1f) * 0.38f;
+                    float a = fog * (0.55f + 0.45f * n) * fogOverlayColor.a;
+                    float bright = 0.85f + 0.3f * n; // 두꺼운 데는 살짝 밝게 — 입체감
+
+                    fogPixels[py * w + px] = new Color32(
+                        (byte)Mathf.Min(255f, cr * bright), (byte)Mathf.Min(255f, cg * bright), (byte)Mathf.Min(255f, cb * bright),
+                        (byte)(Mathf.Clamp01(a) * 255f));
                 }
-                if (ov.activeSelf != on) ov.SetActive(on);
-                if (on) ov.GetComponent<FogWisp>().SetEdge(IsFogEdge(c));
             }
-        }
-
-        /// <summary>시야 칸과 맞닿은 안개 칸인가 — 경계는 옅게 해서 딱딱한 on/off 선을 없앤다.</summary>
-        bool IsFogEdge(Coord c)
-        {
-            foreach (var d in Coord.Directions4)
-            {
-                var n = c + d;
-                if (!grid.InBounds(n) || tiles[n.x, n.y] == null) continue;
-                if (!fogged.Contains(n)) return true;
-            }
-            return false;
-        }
-
-        void EnsureFogMat()
-        {
-            if (fogOverlayMat != null) return;
-            fogOverlayMat = new Material(Shader.Find("Sprites/Default")) { color = Color.white }; // 색·알파는 솜뭉치별 MPB
-            fogOverlayMat.mainTexture = CloudTexture();
-        }
-
-        static Texture2D cloudTex;
-        /// <summary>방사형 감쇠 × 펄린 노이즈 — 가장자리가 불규칙한 솜뭉치. 칸마다 겹치면 구름 덩어리가 된다.</summary>
-        static Texture2D CloudTexture()
-        {
-            if (cloudTex != null) return cloudTex;
-            const int n = 96;
-            cloudTex = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
-            float c = (n - 1) * 0.5f;
-            const float ox = 13.7f, oy = 41.3f; // 노이즈 오프셋 고정 — 매 실행 같은 구름
-            for (int y = 0; y < n; y++)
-            for (int x = 0; x < n; x++)
-            {
-                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c; // 0(중앙)~1(가장자리)
-                float fall = Mathf.Clamp01(1f - d);
-                fall = fall * fall * (3f - 2f * fall); // smoothstep
-                float noise = Mathf.PerlinNoise(ox + x / 18f, oy + y / 18f) * 0.65f
-                            + Mathf.PerlinNoise(ox + x / 7f, oy + y / 7f) * 0.35f;
-                float a = fall * (0.55f + 0.45f * noise); // 덮임은 보장, 결은 노이즈가
-                cloudTex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
-            }
-            cloudTex.Apply();
-            return cloudTex;
-        }
-
-        GameObject CreateFogOverlay(Coord c)
-        {
-            var ov = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            ov.name = $"Fog_{c.x}_{c.y}";
-            ov.transform.SetParent(transform, false);
-            Destroy(ov.GetComponent<Collider>());
-            ov.transform.position = transform.position + new Vector3(c.x * tileSize, fogOverlayHeight, c.y * tileSize);
-            ov.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥과 평행 (위에서 내려다봄)
-            var r = ov.GetComponent<Renderer>();
-            r.sharedMaterial = fogOverlayMat;
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            r.receiveShadows = false;
-
-            // 좌표 해시 위상 — 같은 칸은 항상 같은 결, 이웃끼리는 어긋나서 덩어리째 안 깜빡인다
-            float phase = ((c.x * 73856093 ^ c.y * 19349663) & 0xffff) / 65535f * 6.2832f;
-            ov.AddComponent<FogWisp>().Init(fogOverlayColor, tileSize * 1.85f, phase);
-            return ov;
-        }
-
-        /// <summary>안개 솜뭉치 1장 — 느린 자전 + 숨쉬기 + 은은한 알파 맥동. 경계 칸이면 절반 알파.</summary>
-        class FogWisp : MonoBehaviour
-        {
-            static readonly int ColorId = Shader.PropertyToID("_Color");
-            Renderer rend;
-            MaterialPropertyBlock mpb;
-            Color baseColor;
-            float phase, spin, baseScale;
-            bool edge;
-
-            public void Init(Color color, float scale, float phase)
-            {
-                rend = GetComponent<Renderer>();
-                mpb = new MaterialPropertyBlock();
-                baseColor = color;
-                baseScale = scale;
-                this.phase = phase;
-                spin = (phase < 3.1416f ? 1f : -1f) * (3f + phase); // 3~9도/초, 방향 섞임
-                transform.Rotate(0f, 0f, phase * 57.3f, Space.Self);   // 시작 각도도 제각각
-            }
-
-            public void SetEdge(bool value) => edge = value;
-
-            void LateUpdate()
-            {
-                float t = Time.time;
-                transform.Rotate(0f, 0f, spin * Time.deltaTime, Space.Self);
-                float breathe = 1f + 0.09f * Mathf.Sin(t * 0.7f + phase);
-                transform.localScale = new Vector3(baseScale * breathe, baseScale * breathe, 1f);
-
-                var col = baseColor;
-                col.a *= (0.85f + 0.15f * Mathf.Sin(t * 1.1f + phase * 1.3f)) * (edge ? 0.45f : 1f);
-                mpb.SetColor(ColorId, col);
-                rend.SetPropertyBlock(mpb);
-            }
+            fogTex.SetPixels32(fogPixels);
+            fogTex.Apply(false);
         }
 
         void RepaintAll()

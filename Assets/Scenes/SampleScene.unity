@@ -482,7 +482,7 @@ MonoBehaviour:
     costSkill: 3
     costGuard: 1
     attackDamage: 1
-    attackTelegraphSeconds: 0.5
+    attackTelegraphSeconds: 0.7
     hitRefund: 1
     guardDurationSeconds: 0.5
     blinkBuffSeconds: 3

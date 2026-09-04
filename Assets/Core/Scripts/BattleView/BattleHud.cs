@@ -214,6 +214,27 @@ namespace SeoYuGi.BattleView
             GUI.color = Color.white;
         }
 
+        float threatRemain = -1f, threatUntil; // 내 칸 피격 예고 — 러너가 매 프레임 갱신, 0.15초 안 오면 꺼짐
+
+        /// <summary>내 칸에 적 예고가 떨어진다 — 상단 붉은 배너. remain = 판정까지 남은 초.</summary>
+        public void ShowThreat(float remain)
+        {
+            threatRemain = remain;
+            threatUntil = Time.time + 0.15f;
+        }
+
+        void DrawThreat()
+        {
+            if (Time.time >= threatUntil) return;
+            float urgency = 1f - Mathf.Clamp01(threatRemain / 0.8f);
+            float beat = 0.5f + 0.5f * Mathf.Sin(Time.time * (6f + 14f * urgency));
+            var box = new Rect(W / 2f - 190, 96, 380, 48);
+            GUI.color = new Color(0.85f, 0.1f, 0.05f, 0.55f + 0.35f * beat);
+            GUI.DrawTexture(box, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(box.x, box.y + 6, box.width, 36), $"⚠ 피격 예고  {Mathf.Max(0f, threatRemain):0.0}s — 피해!", subtitleStyle);
+        }
+
         /// <summary>보이스 재생 동안 하단에 한글 자막 표시.</summary>
         public void ShowSubtitle(string text, float seconds)
         {
@@ -261,6 +282,7 @@ namespace SeoYuGi.BattleView
                 DrawChatPanel();
                 DrawAnnounce();
                 DrawCountdown();
+                DrawThreat();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();

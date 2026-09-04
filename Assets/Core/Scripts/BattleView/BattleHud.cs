@@ -201,12 +201,12 @@ namespace SeoYuGi.BattleView
             else if (moveInput == null || !moveInput.HasSelection) msg = $"{DisplayName()}(내 유닛)를 클릭해 선택하세요.";
             else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Attack)
             {
-                msg = "◎ 일반공격 조준 — 빨간 칸 좌클릭 = 발사 · 우클릭 = 취소";
+                msg = "◎ 일반공격 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
                 bannerColor = new Color(1f, 0.6f, 0.15f, 0.9f);
             }
             else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Skill)
             {
-                msg = $"◎ {SkillName(u.unitClass)} 조준 — 빨간 칸 좌클릭 = 발사 · 우클릭 = 취소";
+                msg = $"◎ {SkillName(u.unitClass)} 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
                 bannerColor = new Color(1f, 0.3f, 0.2f, 0.9f);
             }
             else if (u.moveCooldown > 0f) msg = $"이동 쿨타임 {u.moveCooldown:0.0}s — 공격/방어는 가능합니다.";

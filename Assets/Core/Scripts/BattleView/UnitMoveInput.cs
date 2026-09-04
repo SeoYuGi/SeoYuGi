@@ -15,10 +15,11 @@ namespace SeoYuGi.BattleView
     {
         [SerializeField] Color blueRangeColor = new Color(0.3f, 0.6f, 1f);
         [SerializeField] Color yellowRangeColor = new Color(1f, 0.85f, 0.2f);
-        [SerializeField] Color telegraphColor = new Color(0.91f, 0.25f, 0.12f); // 설치 공격 예고
-        [SerializeField] Color aimRangeColor = new Color(1f, 0.6f, 0.15f);      // 조준 가능 칸 (주황)
-        [SerializeField] Color aimImpactColor = new Color(1f, 0.12f, 0.08f);    // 발사 시 맞는 칸 (진빨강)
-        [SerializeField] Color aimInvalidColor = new Color(0.45f, 0.45f, 0.5f); // 못 쏘는 호버 칸 (회색)
+        [SerializeField] Color telegraphColor = new Color(0.91f, 0.25f, 0.12f);      // 적 설치 공격 예고 (빨강)
+        [SerializeField] Color allyTelegraphColor = new Color(1f, 0.6f, 0.1f);       // 아군 예고 (주황) — 피아 구분
+        [SerializeField] Color aimRangeColor = new Color(1f, 0.6f, 0.15f);           // 조준 가능 칸 (주황)
+        [SerializeField] Color aimImpactColor = new Color(1f, 0.12f, 0.08f);         // 발사 시 맞는 칸 (진빨강)
+        [SerializeField] Color aimInvalidColor = new Color(0.35f, 0.6f, 1f);         // 타겟 아닌 호버 칸 (파랑) = 클릭하면 이동
 
         Camera rayCamera; // Camera.main 자동 연결
 
@@ -125,16 +126,27 @@ namespace SeoYuGi.BattleView
 
         void HandleClick()
         {
-            // 조준 중 좌클릭 = 발사 (이동 아님). 성공하면 조준 해제.
+            // 조준 중 좌클릭: 유효 타겟(빨간 마커) = 발사, 그 외 칸 = 조준 풀고 그냥 이동.
             if (aim != AimMode.None && selectedUnitId != -1)
             {
                 if (TryHoverCell(out var target))
                 {
-                    var result = aim == AimMode.Attack
-                        ? combat.TryAttack(selectedUnitId, target)
-                        : combat.TrySkill(selectedUnitId, target);
-                    Log(result, aim == AimMode.Attack ? "공격" : "스킬");
-                    if (result == ActDenied.None) aim = AimMode.None;
+                    bool validTarget = aim == AimMode.Attack
+                        ? combat.GetAttackImpact(selectedUnitId, target, aimImpact)
+                        : combat.GetSkillImpact(selectedUnitId, target, aimImpact);
+                    if (validTarget)
+                    {
+                        var result = aim == AimMode.Attack
+                            ? combat.TryAttack(selectedUnitId, target)
+                            : combat.TrySkill(selectedUnitId, target);
+                        Log(result, aim == AimMode.Attack ? "공격" : "스킬");
+                        if (result == ActDenied.None) aim = AimMode.None;
+                    }
+                    else
+                    {
+                        aim = AimMode.None; // 이동하고 싶었던 것 — 조준이 이동을 막지 않게
+                        TryMove(target);
+                    }
                 }
                 return;
             }
@@ -230,9 +242,12 @@ namespace SeoYuGi.BattleView
                 }
             }
 
-            // 설치 공격 예고 표시 — 같은 칸이면 빨강이 이김 (나중 쓰기 우선). 펄스로 깜빡임.
+            // 설치 공격 예고 표시 — 같은 칸이면 예고가 이김 (나중 쓰기 우선). 펄스로 깜빡임.
+            // 피아 구분: 아군 예고 = 주황, 적 예고 = 빨강 — "빨간 건 피해야 함"이 즉시 읽히게.
             // 적 예고는 내 팀 시야 안의 칸만 보인다 — 안개 속 예측 설치가 서프라이즈로 남게.
-            var pulse = Color.Lerp(telegraphColor, Color.white, Mathf.PingPong(Time.time * 2.5f, 0.4f));
+            float pulseK = Mathf.PingPong(Time.time * 2.5f, 0.4f);
+            var enemyPulse = Color.Lerp(telegraphColor, Color.white, pulseK);
+            var allyPulse = Color.Lerp(allyTelegraphColor, Color.white, pulseK);
             foreach (var strike in combat.ActiveStrikes)
             {
                 bool mine = strike.team == playerTeam;
@@ -240,7 +255,7 @@ namespace SeoYuGi.BattleView
                 {
                     if (!mine && isCellVisible != null && !isCellVisible(c)) continue;
                     cells.Add(c);
-                    colors.Add(pulse);
+                    colors.Add(mine ? allyPulse : enemyPulse);
                 }
             }
 

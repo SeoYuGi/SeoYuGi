@@ -115,6 +115,7 @@ namespace SeoYuGi.BattleView
         void ShowMapSelect()
         {
             phase = Phase.ClassSelect; // 픽 단계(맵+클래스) 동안 시뮬레이션 정지
+            battleAudio.PlayBgm("B6_Title"); // 픽 화면 = 타이틀 테마
             if (UIManager.Instance == null)
                 new GameObject("@UIManager").AddComponent<UIManager>(); // 씬에 없으면 자동 생성
 
@@ -377,7 +378,8 @@ namespace SeoYuGi.BattleView
         {
             var cam = Camera.main;
             if (cam == null) return;
-            if (cam.GetComponent<QuarterViewCamera>() != null) return; // 추적 캠 우선 — 프레이밍 양보
+            if (cam.GetComponent<QuarterViewCamera>() != null ||
+                cam.GetComponent<SeoYuGi.Art.TacticalCamera>() != null) return; // 추적/전술 캠 우선 — 프레이밍 양보
             var center = (gridView.CoordToWorld(new Coord(0, 0)) +
                           gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1))) * 0.5f;
             cam.transform.rotation = Quaternion.Euler(cameraPitch, 0f, 0f);

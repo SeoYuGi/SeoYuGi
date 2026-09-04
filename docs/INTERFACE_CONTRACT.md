@@ -43,7 +43,25 @@ string[] lines = predictor.GetBriefing(actorId);  // 브리핑 화면용 분석 
 - 캐릭터는 입력을 `IController`에서 받는다: `HumanLocal` / `AIBrain` / (스트레치) `NetworkRemote`.
 - 이렇게 하면 AI 백필·로컬 2P·온라인이 전부 "슬롯에 다른 컨트롤러 꽂기"로 끝난다.
 
-## 5. 파일 소유권 (머지 충돌 방지)
-- `Assets/Game/Scripts/Prediction/` — AI 담당 (이쪽)
+## 5. AI 뇌 (AiBrain) 통합
+`Assets/Game/Scripts/Ai/` — 적팀 3기와 아군 백필 팀원이 전부 쓰는 조종 뇌. 순수 C#.
+
+```csharp
+// 슬롯 세팅 (매치 시작 시)
+var predictor = new Predictor(predCfg);            // 매치당 1개, 적팀 뇌들이 공유
+var enemyBrain = new AiBrain(actorId, AiConfig.ForClass(ClassId.Sniper), predictor);
+var allyBrain  = new AiBrain(actorId, AiConfig.ForClass(ClassId.Runner));  // 아군 팀원: predictor 없음
+
+// 매 프레임 (코어가 IWorldView 구현체를 넘긴다)
+AiCommand cmd = brain.Tick(worldView);
+if (cmd.Type != CommandType.None) ExecuteCommand(actorId, cmd); // AP 차감·실행은 코어 소관
+```
+
+- `IWorldView`(WorldView.cs)는 코어가 구현: 액터 상태·존 소유·예고 목록·AP 조회·통행 판정.
+- AiBrain은 명령만 내놓고 **AP 차감·쿨타임·판정은 전부 코어가 집행** — AP 부족이면 코어가 무시해도 안전.
+- 난이도: `AiConfig.AggressionDelay`(반응 지연)와 `PredictionConfig` 가중치 두 개만 만지면 됨.
+
+## 6. 파일 소유권 (머지 충돌 방지)
+- `Assets/Game/Scripts/Prediction/`, `Assets/Game/Scripts/Ai/` — AI 담당 (이쪽)
 - 그 외 `Assets/Game/` 전부 — 코어 담당 (친구)
-- 공유 타입(`ActionEvent`, `Cell` 등)은 Prediction 폴더에 있고 코어가 참조만 한다. 수정 필요하면 말하고 고치기.
+- 공유 타입(`ActionEvent`, `Cell`, `IWorldView` 등)은 위 두 폴더에 있고 코어가 참조·구현만 한다. 수정 필요하면 말하고 고치기.

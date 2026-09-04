@@ -27,6 +27,7 @@ namespace SeoYuGi.BattleView
             go.transform.position = pos + Vector3.up * 0.45f;
 
             var ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear); // playOnAwake 재생 중엔 duration 세팅 불가
             var main = ps.main;
             main.duration = 0.3f;
             main.loop = false;

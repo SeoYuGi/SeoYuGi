@@ -326,7 +326,8 @@ namespace SeoYuGi.Net
         static void Broadcast()
         {
             var nm = NetworkManager.Singleton;
-            if (!nm.IsHost) return;
+            // 셧다운 중 disconnect 콜백이 오면 메시징 매니저가 이미 없다 — 조용히 스킵
+            if (nm == null || !nm.IsHost || nm.CustomMessagingManager == null) return;
 
             using var w = new FastBufferWriter(1024, Allocator.Temp);
             w.WriteValueSafe(Slots.Length);

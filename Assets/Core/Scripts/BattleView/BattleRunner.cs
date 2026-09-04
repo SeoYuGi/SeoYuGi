@@ -116,6 +116,8 @@ namespace SeoYuGi.BattleView
 
         // 예측 사격 추적 (G) — 캐스팅 직후 예고와 매칭해 적중/실패 자막
         readonly List<(int attackerId, Coord cell, float time)> pendingPredictedShots = new List<(int, Coord, float)>();
+        PredictionMarker predictionMarker; // 적 AI의 내 다음 칸 예측 — 바닥 보라 링 (학습이 보이게)
+        static readonly Color PredictPurple = new Color(0.75f, 0.4f, 1f);
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
         float nextFakeCalloutTime; // 사후 귀속 자막 남발 방지
 
@@ -661,6 +663,7 @@ namespace SeoYuGi.BattleView
         /// <summary>라운드 1개 분량의 Core + 뷰 전체 조립. 라운드 시작마다 호출.</summary>
         void BuildRound()
         {
+            predictionMarker?.Hide(); // 새 라운드 — 이전 라운드 예측 잔상 제거
             ClearRoundObjects();
             if (pickBg != null) { Destroy(pickBg); pickBg = null; } // 픽 배경 제거
 
@@ -994,7 +997,7 @@ namespace SeoYuGi.BattleView
                     var focus = gridView.CoordToWorld(strike.cells[strike.cells.Count / 2]);
                     if (hit)
                     {
-                        hud.ShowSubtitle("패턴 적중 — 예측 사격", 2.2f);
+                        hud.ShowAnnounce("읽혔다 — 패턴 예측 사격 적중", PredictPurple, 2.4f);
                         // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽혔다"가 읽힌다.
                         ImpactVfx.Pillar(focus, new Color(0.8f, 0.45f, 1f));
                         RingWave.Spawn(focus, new Color(0.75f, 0.4f, 1f, 0.9f), 3.2f, 0.5f);
@@ -1003,7 +1006,7 @@ namespace SeoYuGi.BattleView
                     }
                     else
                     {
-                        hud.ShowSubtitle("예측 실패 — 패턴 이탈 감지", 2.2f);
+                        hud.ShowAnnounce("예측 빗나감 — 패턴을 배신했다", new Color(0.45f, 1f, 0.95f), 2.2f);
                         ImpactVfx.Sparks(focus, machine: true, scale: 0.8f); // 빗나간 조준이 흩어짐
                     }
                 }
@@ -1015,7 +1018,7 @@ namespace SeoYuGi.BattleView
                          StrikeCoversPlayer(strike) && UnityEngine.Random.value < 0.35f)
                 {
                     nextFakeCalloutTime = Time.time + 8f;
-                    hud.ShowSubtitle("패턴 적중 — 예측 사격", 2.2f);
+                    hud.ShowAnnounce("읽혔다 — 패턴 예측 사격 적중", PredictPurple, 2.4f);
                 }
             };
             Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S8_Guard", 0.8f); // 스턴 SFX (가드 사운드 재활용)
@@ -1596,12 +1599,22 @@ namespace SeoYuGi.BattleView
             foreach (var driver in aiDrivers)
                 driver.Tick(worldView);
 
-            // 실시간 패턴 감지 자막 (F) — 학습이 라운드 안에서 째깍거리는 연출
+            // 실시간 패턴 감지 (F) — 학습이 라운드 안에서 째깍거리는 연출. 자막이 아니라 큰 공지로 (2026-09-05: "학습하는 느낌이 안 난다")
             if (predictor.TryDequeueDetection(out var detection))
             {
-                hud.ShowSubtitle($"패턴 감지 — {detection}", 2.8f);
+                hud.ShowAnnounce($"적 AI 패턴 감지 — {detection}", PredictPurple, 2.8f);
                 battleAudio.PlaySfx("S22_DetectPing", 0.6f);
             }
+
+            // 적 AI의 "내 다음 칸" 예측을 바닥에 상시 표시 (R2+, 표본 충분할 때) — 피해 가면 배신, 밟으면 맞는다.
+            // 내 해킹으로 적 예측이 마비된 동안은 숨김 (마비가 보이게).
+            if (predictionMarker == null) predictionMarker = PredictionMarker.Create(transform);
+            var meUnit = Battle.GetUnit(playerUnitId);
+            var preds = predictor.PredictNextCells(playerUnitId, 1);
+            if (preds.Count > 0 && meUnit != null && meUnit.alive && !hackSystem.RevealActive(playerTeam, Battle.time))
+                predictionMarker.Show(gridView.CoordToWorld(new Coord(preds[0].Cell.X, preds[0].Cell.Y)));
+            else predictionMarker.Hide();
+            hud.SetLearning(predictor.LearningProgress(playerUnitId), Match.CurrentRound);
 
             SyncPresentation();
 

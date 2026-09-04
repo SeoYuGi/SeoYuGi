@@ -36,6 +36,11 @@ namespace SeoYuGi.BattleView
         string subtitleText;
         float subtitleUntil;
 
+        // 적 AI 학습 게이지 — 좌상단. "AI가 나를 학습한다"가 상시 보이게 (러너가 매 프레임 갱신)
+        float learnProgress;
+        int learnRound = 1;
+        static readonly Color PredictPurple = new Color(0.75f, 0.45f, 1f);
+
         // 큰 중앙 공지 (거점 점령 등) — 자막과 별개, 상단 중앙에 크게
         string announceText;
         float announceUntil;
@@ -59,7 +64,7 @@ namespace SeoYuGi.BattleView
 
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle, killStyle, announceStyle;
-        GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
+        GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle, learnPctStyle;
         bool stylesReady;
         Texture2D iconMove, iconAttack, iconGuard, iconSkill, panelBriefing; // Resources/UI — 없으면 무시
         Texture2D texSlot, texPanel, texInfo, texChip, texBanner;           // 프레임류 — 없으면 GUI.Box 폴백
@@ -242,6 +247,25 @@ namespace SeoYuGi.BattleView
             subtitleUntil = Time.time + seconds;
         }
 
+        public void SetLearning(float progress, int round)
+        {
+            learnProgress = progress;
+            learnRound = round;
+        }
+
+        void DrawLearning()
+        {
+            var box = new Rect(12, 10, 236, 50);
+            DrawFrame(box, texInfo);
+            string title = learnRound >= 3 ? "적 AI · 문맥 예측 가동"
+                : learnRound >= 2 ? "적 AI · 예측 사격 가동" : "적 AI · 패턴 분석 중";
+            GUI.color = PredictPurple;
+            GUI.Label(new Rect(box.x + 14, box.y + 6, 170, 18), title, labelStyle);
+            GUI.Label(new Rect(box.x + box.width - 62, box.y + 6, 48, 18), $"{learnProgress * 100f:0}%", learnPctStyle);
+            GUI.color = Color.white;
+            Bar(new Rect(box.x + 14, box.y + 30, box.width - 28, 8), learnProgress, PredictPurple);
+        }
+
         /// <summary>큰 중앙 공지 — 거점 점령 등 "지금 이거 봐" 급. 팀 색으로.</summary>
         public void ShowAnnounce(string text, Color color, float seconds)
         {
@@ -275,6 +299,7 @@ namespace SeoYuGi.BattleView
             DrawTopBar();
             if (overlay == Overlay.None)
             {
+                DrawLearning();
                 DrawBanner();
                 DrawBottomBar();
                 DrawChatLog();
@@ -314,6 +339,7 @@ namespace SeoYuGi.BattleView
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             subStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
             subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            learnPctStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
 
             // 폰트: 어그로체 = 타이틀·배너·자막 임팩트, SUIT = HUD 전반
             GameFonts.Apply(bannerStyle, GameFonts.Title);      // 매치 승/패 배너
@@ -335,6 +361,7 @@ namespace SeoYuGi.BattleView
             GameFonts.Apply(slotCostStyle, GameFonts.Hud);
             GameFonts.Apply(slotCoolStyle, GameFonts.HudHeavy);
             GameFonts.Apply(subStyle, GameFonts.Hud);
+            GameFonts.Apply(learnPctStyle, GameFonts.HudHeavy);
         }
 
         // ── 상단 바: 생존·스코어 | 남은시간 | 거점 칩 ─────────────────

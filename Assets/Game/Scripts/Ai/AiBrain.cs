@@ -46,6 +46,20 @@ namespace SeoYuGi.Ai
 
             var cmd = Decide(world, me);
 
+            // 프리징 워치독 (2026-09-05): 3초 넘게 아무것도(공격 포함) 안 했고 거점 위도 아니고 적도 안 붙었으면
+            // 페이싱·고지 사수 다 무시하고 미소유 거점으로 한 걸음. "멀뚱히 서 있는 AI"를 구조적으로 없앤다.
+            // 고지대에서 실제로 쏘고 있는 저격수는 공격이 활동으로 잡혀 여기 안 걸린다.
+            if (cmd.Type == CommandType.None && world.Time - _lastActiveTime > 3f &&
+                !OnAnyZonePatch(world, me.Pos) && !EnemyAdjacent(world, me))
+            {
+                var forced = StepTowardBestZone(world, me);
+                if (forced.HasValue)
+                {
+                    cmd = AiCommand.Of(CommandType.Move, forced.Value);
+                    _dodgeMove = true; // 이동 페이싱 면제
+                }
+            }
+
             // 프리징 방지: 한동안 무행동 + 거점·고지대 위도 아니면 배회 한 걸음
             // (고지대 홀드는 카운터 전술의 자리 사수 — 배회로 새면 안 됨)
             if (cmd.Type == CommandType.None &&
@@ -256,9 +270,14 @@ namespace SeoYuGi.Ai
             return best;
         }
 
-        /// 범용 그리디 한 걸음 — 가까워지는 이웃 우선, 없으면 옆걸음(직전 칸 제외).
+        /// 목표 칸으로 한 걸음 — BFS 실제 경로 우선(벽·소품을 돌아간다), 경로 없으면 그리디 옆걸음 폴백.
+        /// 맨해튼 그리디만 쓰던 시절엔 오목한 벽 앞에서 좌우 왕복만 하며 다음 거점에 영영 못 갔다 (2026-09-05).
         private Cell? GreedyStep(IWorldView world, ActorState me, Cell targetCell)
         {
+            var path = PathStep(world, me.Pos, targetCell);
+            if (path.HasValue)
+                return IsThreatened(world, me.Team, path.Value) ? (Cell?)null : path; // 첫 걸음이 위협 칸이면 한 박자 대기
+
             int curDist = Manhattan(me.Pos, targetCell);
             Cell? best = null;
             Cell? sidestep = null;
@@ -272,6 +291,39 @@ namespace SeoYuGi.Ai
                     sidestep = n;
             }
             return best ?? sidestep;
+        }
+
+        private readonly Dictionary<Cell, Cell> _bfsParent = new Dictionary<Cell, Cell>();
+        private readonly Queue<Cell> _bfsQueue = new Queue<Cell>();
+
+        /// from→to 최단 경로(BFS, 십자 이동)의 첫 걸음. 점유·벽은 막힘(목표 칸은 예외). 600칸 확장 상한.
+        /// 경로 없으면 null.
+        private Cell? PathStep(IWorldView world, Cell from, Cell to)
+        {
+            if (from.Equals(to)) return null;
+            _bfsParent.Clear();
+            _bfsQueue.Clear();
+            _bfsParent[from] = from;
+            _bfsQueue.Enqueue(from);
+            int expanded = 0;
+            while (_bfsQueue.Count > 0 && expanded++ < 600)
+            {
+                var cur = _bfsQueue.Dequeue();
+                foreach (var n in OrthoNeighbors(cur))
+                {
+                    if (_bfsParent.ContainsKey(n)) continue;
+                    if (!n.Equals(to) && !world.IsWalkable(n)) continue;
+                    _bfsParent[n] = cur;
+                    if (n.Equals(to))
+                    {
+                        var c = n;
+                        while (!_bfsParent[c].Equals(from)) c = _bfsParent[c];
+                        return c;
+                    }
+                    _bfsQueue.Enqueue(n);
+                }
+            }
+            return null;
         }
 
         private AiCommand TrySkill(IWorldView world, ActorState me, ActorState target, Cell aim)
@@ -437,21 +489,7 @@ namespace SeoYuGi.Ai
             }
             if (!targetCell.HasValue) return null; // 패치 만석 — 밀치지 말고 대기
 
-            // 더 가까워지는 이웃 우선. 없으면 같은 거리 옆걸음 — 오목한 벽 앞 영구 정지 방지.
-            // 옆걸음은 직전 칸 제외 — 두 칸 왕복 진동 방지.
-            int curDist = Manhattan(me.Pos, targetCell.Value);
-            Cell? best = null;
-            Cell? sidestep = null;
-            int bestDist = curDist;
-            foreach (var n in OrthoNeighbors(me.Pos))
-            {
-                if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
-                int d = Manhattan(n, targetCell.Value);
-                if (d < bestDist) { bestDist = d; best = n; }
-                else if (d == curDist && sidestep == null && !IsRecent(n))
-                    sidestep = n;
-            }
-            return best ?? sidestep;
+            return GreedyStep(world, me, targetCell.Value); // BFS 경로 — 벽을 돌아간다
         }
 
         /// 힐팩 추구: HP 손상이 문턱 이상이고 반경 안에 활성 힐팩이 있으면 가장 가까운 쪽으로 한 걸음.

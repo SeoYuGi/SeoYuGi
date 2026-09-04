@@ -40,6 +40,7 @@ namespace SeoYuGi.BattleView
         Material matFloorA, matFloorB, matObstacle, matZone, matHighland;
 
         readonly List<GameObject> tileObjects = new List<GameObject>(); // 맵 교체 재빌드 시 파괴 대상
+        readonly HashSet<Coord> hillPlateCells = new HashSet<Coord>(); // 언덕 상판 — 틴트 있을 때만 렌더
         // GLB 고지대 단상은 렌더러가 여러 개 — 틴트/안개를 전부에 적용하기 위한 목록
         readonly Dictionary<Coord, Renderer[]> tileExtraRenderers = new Dictionary<Coord, Renderer[]>();
 
@@ -50,6 +51,7 @@ namespace SeoYuGi.BattleView
                 if (go != null) Destroy(go);
             tileObjects.Clear();
             tileExtraRenderers.Clear();
+            hillPlateCells.Clear();
             highlighted.Clear();
             baseTints.Clear();
             fogged.Clear();
@@ -57,6 +59,11 @@ namespace SeoYuGi.BattleView
             this.grid = grid;
             mpb = new MaterialPropertyBlock();
             tiles = new Renderer[grid.Width, grid.Height];
+
+            // 언덕 모드 — 단상용 낮은 높이(씬 직렬화 0.35)로는 언덕이 안 산다.
+            // 벽(0.6)의 딱 2배 — 고지대가 벽을 내려다보되 과하지 않게.
+            // 언덕 메시 Y스케일·유닛 서는 높이·칸 상판 전부 이 값을 따라간다.
+            if (HillProp() != null) highlandHeight = Mathf.Max(highlandHeight, 1.2f);
 
             for (int y = 0; y < grid.Height; y++)
             for (int x = 0; x < grid.Width; x++)
@@ -76,7 +83,15 @@ namespace SeoYuGi.BattleView
                 };
                 tiles[x, y] = go.GetComponentInChildren<Renderer>();
 
-                if (type == CellType.Highland && HighlandProp() != null)
+                if (type == CellType.Highland && HillProp() != null)
+                {
+                    // 언덕 모드 상판 — 평소엔 렌더러 꺼짐, 하이라이트/안개 틴트가 올 때만 켜진다
+                    tiles[x, y].sharedMaterial = HillPlateMaterial(tiles[x, y].sharedMaterial);
+                    tiles[x, y].shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    tiles[x, y].enabled = false;
+                    hillPlateCells.Add(coord);
+                }
+                else if (type == CellType.Highland && HighlandProp() != null)
                 {
                     // GLB 단상 — 원본 텍스처 유지, 틴트/안개는 모든 렌더러에 적용
                     var rends = go.GetComponentsInChildren<Renderer>();
@@ -87,12 +102,24 @@ namespace SeoYuGi.BattleView
                 else if (type == CellType.Highland) // 텍스처 미사용 모드에서도 고지대는 구분돼야 함
                     tiles[x, y].sharedMaterial = HighlandMaterial(tiles[x, y].sharedMaterial);
             }
+
+            BuildHillClusters();
         }
 
         GameObject CreateTile(Vector3 pos, CellType type)
         {
             if (type == CellType.Highland)
             {
+                // 언덕 모드(prop_hill) — 덩어리는 군집당 언덕 GLB가 맡고,
+                // 칸에는 얇은 상판만 (하이라이트·안개 표시 + 클릭 콜라이더)
+                if (HillProp() != null)
+                {
+                    var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    plate.transform.SetParent(transform);
+                    plate.transform.localScale = new Vector3(tileSize * tileFill, 0.06f, tileSize * tileFill);
+                    plate.transform.position = pos + Vector3.up * (highlandHeight - 0.08f); // 상판 윗면 = 기존 단상과 동일
+                    return plate;
+                }
                 // 고지대 리마스터 — Resources GLB 단상(prop_highland)이 있으면 그걸로, 없으면 절차 줄무늬 큐브
                 var prop = HighlandProp();
                 if (prop != null) return CreateHighlandProp(prop, pos);
@@ -151,6 +178,88 @@ namespace SeoYuGi.BattleView
             return highlandProp;
         }
 
+        GameObject hillProp;
+        bool hillPropLoaded;
+
+        GameObject HillProp()
+        {
+            if (!hillPropLoaded)
+            {
+                hillPropLoaded = true;
+                hillProp = Resources.Load<GameObject>("prop_hill"); // null이면 칸별 단상 폴백
+            }
+            return hillProp;
+        }
+
+        /// <summary>
+        /// 언덕 모드 — 고지대 칸들을 최대 직사각형으로 잘라 직사각형마다 언덕 GLB 1개.
+        /// 바운딩 박스가 아니라 정확한 사각형이라 링 안쪽 거점·바닥을 절대 안 덮는다.
+        /// 틴트/안개는 칸 상판이 담당 — 언덕 메시는 틴트 없이 원본 그대로.
+        /// </summary>
+        void BuildHillClusters()
+        {
+            var prop = HillProp();
+            if (prop == null) return;
+
+            var covered = new HashSet<Coord>();
+            for (int y = 0; y < grid.Height; y++)
+            for (int x = 0; x < grid.Width; x++)
+            {
+                if (covered.Contains(new Coord(x, y)) || !grid.IsHighland(new Coord(x, y))) continue;
+
+                // 오른쪽으로 최대 확장
+                int w = 1;
+                while (x + w < grid.Width && grid.IsHighland(new Coord(x + w, y))
+                       && !covered.Contains(new Coord(x + w, y))) w++;
+                // 아래로 — 행 전체가 고지대일 때만 확장
+                int h = 1;
+                bool rowOk = true;
+                while (rowOk && y + h < grid.Height)
+                {
+                    for (int i = 0; i < w; i++)
+                        if (!grid.IsHighland(new Coord(x + i, y + h))
+                            || covered.Contains(new Coord(x + i, y + h))) { rowOk = false; break; }
+                    if (rowOk) h++;
+                }
+
+                for (int dy = 0; dy < h; dy++)
+                for (int dx = 0; dx < w; dx++)
+                    covered.Add(new Coord(x + dx, y + dy));
+                CreateHillProp(prop, x, y, x + w - 1, y + h - 1);
+            }
+        }
+
+        void CreateHillProp(GameObject prop, int minX, int minY, int maxX, int maxY)
+        {
+            float w = (maxX - minX + 1) * tileSize * 1.06f; // 살짝 넘치게 — 경사가 칸 밖으로 자연스럽게
+            float d = (maxY - minY + 1) * tileSize * 1.06f;
+            var center = transform.position + new Vector3(
+                (minX + maxX) * 0.5f * tileSize, 0f, (minY + maxY) * 0.5f * tileSize);
+
+            var visual = Instantiate(prop, transform);
+            visual.name = $"Hill_{minX}_{minY}";
+            tileObjects.Add(visual);
+            foreach (var c in visual.GetComponentsInChildren<Collider>(true))
+                Destroy(c); // 클릭 콜라이더는 칸 상판이 담당
+
+            var rends = visual.GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0) return;
+            var b = rends[0].bounds;
+            foreach (var r in rends) b.Encapsulate(r.bounds);
+            // 실루엣 과장 — 윗면(플래토)은 서는 높이에 고정, Y를 더 늘려 아랫단은 땅속으로.
+            // 생성 메시가 납작해 보이는 문제를 경사를 세워서 해결 (유닛 높이 불변).
+            float visualH = highlandHeight * 1.2f;
+            var s = visual.transform.localScale;
+            visual.transform.localScale = new Vector3(
+                s.x * w / Mathf.Max(b.size.x, 0.001f),
+                s.y * visualH / Mathf.Max(b.size.y, 0.001f),
+                s.z * d / Mathf.Max(b.size.z, 0.001f));
+            b = rends[0].bounds;
+            foreach (var r in rends) b.Encapsulate(r.bounds);
+            visual.transform.position += new Vector3(
+                center.x - b.center.x, (highlandHeight - 0.05f) - b.max.y, center.z - b.center.z);
+        }
+
         /// <summary>
         /// GLB 고지대 단상: 클릭 레이캐스트용 박스 콜라이더는 큐브와 동일 규격으로 유지하고,
         /// 비주얼만 GLB로 교체. 발자국은 칸 크기, 높이는 highlandHeight에 바운즈 맞춤.
@@ -183,6 +292,16 @@ namespace SeoYuGi.BattleView
                 visual.transform.position += new Vector3(pos.x - b.center.x, -0.05f - b.min.y, pos.z - b.center.z);
             }
             return root;
+        }
+
+        Material matHillPlate;
+
+        /// <summary>언덕 칸 상판 — 무텍스처 흰 판. 평소 렌더러 꺼짐, 틴트가 올 때만 켜져 색판으로 보인다.</summary>
+        Material HillPlateMaterial(Material template)
+        {
+            if (matHillPlate == null)
+                matHillPlate = new Material(template) { mainTexture = null };
+            return matHillPlate;
         }
 
         /// <summary>고지대 전용 머티리얼 — 벽(크레이트)과 절대 헷갈리지 않게, 에셋 없으면 절차 생성 줄무늬.</summary>
@@ -326,7 +445,8 @@ namespace SeoYuGi.BattleView
             }
         }
 
-        /// <summary>틴트/안개 프로퍼티 블록 적용 — GLB 고지대 단상은 렌더러 전부에.</summary>
+        /// <summary>틴트/안개 프로퍼티 블록 적용 — GLB 고지대 단상은 렌더러 전부에.
+        /// 언덕 상판은 틴트가 있을 때만 렌더러를 켠다 (평소엔 언덕 메시만 보이게).</summary>
         void ApplyBlock(Coord c, MaterialPropertyBlock block)
         {
             if (tileExtraRenderers.TryGetValue(c, out var rends))
@@ -337,6 +457,8 @@ namespace SeoYuGi.BattleView
             else
             {
                 tiles[c.x, c.y].SetPropertyBlock(block);
+                if (hillPlateCells.Contains(c))
+                    tiles[c.x, c.y].enabled = block != null;
             }
         }
     }

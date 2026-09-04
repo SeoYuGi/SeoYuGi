@@ -46,6 +46,7 @@ MonoBehaviour:
     - Lofelt.NiceVibrations.Demo
     - MoreMountains.Tools
     - PauseManager
+    - SeoYuGi.Battle.Core
     showAdvancedSettings: 0
   addMgrToSceneAutomatically: 0
   autoUpdateReferences: 1

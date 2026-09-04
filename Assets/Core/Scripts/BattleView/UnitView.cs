@@ -55,6 +55,12 @@ namespace SeoYuGi.BattleView
             ApplyColor(value ? teamColor * 0.35f : teamColor);
         }
 
+        /// <summary>즉시 위치 동기화 (밀침·대시·점멸 등 연출 없는 이동).</summary>
+        public void SnapTo(Coord c) => transform.position = WorldOf(c);
+
+        /// <summary>현재 표시 위치가 해당 칸과 어긋나 있는가.</summary>
+        public bool IsAt(Coord c) => (transform.position - WorldOf(c)).sqrMagnitude < 0.0001f;
+
         /// <summary>경로를 칸 단위 홉으로 재생. 재생 중 새 경로가 오면 기존 것 중단 후 이어감.</summary>
         public void PlayPath(IReadOnlyList<Coord> path, float hopDuration)
         {

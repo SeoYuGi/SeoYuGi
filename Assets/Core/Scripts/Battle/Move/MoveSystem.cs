@@ -99,6 +99,8 @@ namespace SeoYuGi.Battle
                 return new MoveAttempt { denied = MoveDenied.Dead };
             if (unit.moveCooldown > 0f)
                 return new MoveAttempt { denied = MoveDenied.Locked };
+            if (unit.guardUntil > State.time)
+                return new MoveAttempt { denied = MoveDenied.Locked }; // 방어 중 = 제자리 고정
 
             var p = unit.profile;
             var path = Pathfinding.FindPath(State.Grid, unit.pos, dest, p.maxRange, OtherUnitCells(unitId));

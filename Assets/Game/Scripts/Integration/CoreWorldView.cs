@@ -1,0 +1,82 @@
+using System.Collections.Generic;
+using SeoYuGi.Ai;
+using SeoYuGi.Battle;
+using SeoYuGi.Prediction;
+using AiCell = SeoYuGi.Prediction.Cell; // Battle.Cell과 이름 충돌 — 반드시 alias로 구분
+
+namespace SeoYuGi.Integration
+{
+    /// <summary>
+    /// Core(BattleState/CombatSystem) → IWorldView 어댑터. AiBrain이 읽는 스냅샷.
+    /// 매 프레임 Refresh() 호출 후 브레인들에 넘길 것.
+    ///
+    /// 스텁 상태(해당 시스템 구현 시 교체):
+    ///  - Round = 1 (라운드 시스템 전)
+    ///  - IsVisibleTo = 항상 true (시야 시스템 전 — 전장 공개)
+    ///  - HasDecoy = false (디코이 전)
+    ///  - Zones: 거점 3자리(좌/중/우 중앙열)를 미소유로 노출 — 점유 로직 전이지만 AI 기동 목적지로 제공
+    /// </summary>
+    public class CoreWorldView : IWorldView
+    {
+        readonly BattleState state;
+        readonly CombatSystem combat;
+        readonly int humanUnitId;
+
+        readonly List<ActorState> actors = new List<ActorState>();
+        readonly List<ZoneState> zones = new List<ZoneState>();
+        readonly List<Telegraph> telegraphs = new List<Telegraph>();
+
+        public CoreWorldView(BattleState state, CombatSystem combat, int humanUnitId)
+        {
+            this.state = state;
+            this.combat = combat;
+            this.humanUnitId = humanUnitId;
+
+            // 거점 3개 — 중앙열 좌/중/우 (기획서 §03. 9×9 기준 (1,4)/(4,4)/(7,4))
+            int midY = state.Grid.Height / 2;
+            foreach (int x in new[] { 1, state.Grid.Width / 2, state.Grid.Width - 2 })
+                zones.Add(new ZoneState { Cell = new AiCell(x, midY), HasOwner = false });
+        }
+
+        /// <summary>브레인 틱 전에 매 프레임 1회 호출 — 액터/예고 스냅샷 갱신.</summary>
+        public void Refresh()
+        {
+            actors.Clear();
+            foreach (var u in state.Units)
+                actors.Add(new ActorState
+                {
+                    Id = u.id,
+                    Team = (TeamId)u.team,
+                    Class = (ClassId)(int)u.unitClass, // enum 순서 동일 계약
+                    Pos = new AiCell(u.pos.x, u.pos.y),
+                    Hp = u.hp,
+                    Alive = u.alive,
+                    IsHuman = u.id == humanUnitId
+                });
+
+            telegraphs.Clear();
+            foreach (var strike in combat.ActiveStrikes)
+            foreach (var c in strike.cells)
+                telegraphs.Add(new Telegraph
+                {
+                    Cell = new AiCell(c.x, c.y),
+                    Team = (TeamId)strike.team,
+                    ImpactTime = strike.impactTime
+                });
+        }
+
+        public float Time => state.time;
+        public int Round => 1;
+        public IReadOnlyList<ActorState> Actors => actors;
+        public IReadOnlyList<ZoneState> Zones => zones;
+        public IReadOnlyList<Telegraph> Telegraphs => telegraphs;
+
+        public float GetAp(int actorId) => state.GetUnit(actorId)?.ap ?? 0f;
+
+        public bool IsWalkable(AiCell cell) => state.Grid.IsWalkable(new Coord(cell.X, cell.Y));
+
+        public bool IsVisibleTo(TeamId team, AiCell cell) => true;
+
+        public bool HasDecoy(int actorId) => false;
+    }
+}

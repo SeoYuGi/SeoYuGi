@@ -24,8 +24,8 @@ namespace SeoYuGi.Battle.Tests
             };
             config = new MoveConfig { defaultProfile = profile };
             battle = new BattleState(new GridModel(new GridConfig()));
-            battle.AddUnit(new UnitState(1, team: 0, new Coord(5, 5)));
-            battle.AddUnit(new UnitState(2, team: 1, new Coord(0, 0)));
+            battle.AddUnit(new UnitState(1, team: 0, new Coord(5, 5)) { profile = profile }); // 클래스 기본값 대신 테스트 수치 고정
+            battle.AddUnit(new UnitState(2, team: 1, new Coord(0, 0)) { profile = profile });
             move = new MoveSystem(battle, config);
         }
 

@@ -3,10 +3,13 @@ using System.Collections.Generic;
 
 namespace SeoYuGi.Battle
 {
-    /// <summary>전투 전체 상태: 그리드 + 유닛 목록.</summary>
+    /// <summary>전투 전체 상태: 그리드 + 유닛 목록 + 전투 시계.</summary>
     public class BattleState
     {
         public GridModel Grid { get; }
+
+        /// <summary>전투 경과 시간(초). CombatSystem.Tick이 단독으로 전진시킨다.</summary>
+        public float time;
 
         // unitId 오름차순 유지 — 순회 순서 고정.
         readonly List<UnitState> units = new List<UnitState>();

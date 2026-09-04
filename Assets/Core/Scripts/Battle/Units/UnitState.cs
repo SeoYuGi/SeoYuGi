@@ -1,14 +1,19 @@
 namespace SeoYuGi.Battle
 {
-    /// <summary>유닛 런타임 상태. 스킬/스탯은 본편 범위 — 여기선 위치·생존·이동 게이지만.</summary>
+    /// <summary>유닛 런타임 상태. 클래스 스탯은 생성 시 ClassCatalog에서 초기화.</summary>
     public class UnitState
     {
         public readonly int id;
         public readonly int team;
+        public readonly UnitClass unitClass;
+        public readonly int maxHp;
+        public readonly int sightRange;
+
         public Coord pos;
+        public int hp;
         public bool alive = true;
 
-        // 캐릭터별 이동 특성. null이면 MoveSystem이 MoveConfig.defaultProfile을 꽂는다.
+        // 이동 특성. 기본은 클래스 프로필 — 테스트/특수 유닛만 교체.
         public MoveProfile profile;
         // 이동 게이지 (0..profile.freeRange). 파랑 이동으로 소모, 초당 회복.
         public float moveGauge;
@@ -17,11 +22,25 @@ namespace SeoYuGi.Battle
         // 이동 직후 게이지 회복 정지 타이머(초).
         public float regenDelay;
 
-        public UnitState(int id, int team, Coord pos)
+        // AP (0..CombatConfig.apMax). CombatSystem이 초기화·회복.
+        public float ap;
+        // 방어 종료 시각 (BattleState.time 기준). >= 현재 시각이면 피해 무효 + 이동 불가.
+        public float guardUntil = -1f;
+        // 그림자 도약 버프 종료 시각. 지속 중 일반공격 +1.
+        public float attackBuffUntil = -1f;
+
+        public UnitState(int id, int team, Coord pos, UnitClass unitClass = UnitClass.Balance)
         {
             this.id = id;
             this.team = team;
             this.pos = pos;
+            this.unitClass = unitClass;
+
+            var def = ClassCatalog.Get(unitClass);
+            maxHp = def.maxHp;
+            hp = def.maxHp;
+            sightRange = def.sightRange;
+            profile = def.move;
         }
     }
 }

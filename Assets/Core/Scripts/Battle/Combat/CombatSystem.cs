@@ -238,6 +238,125 @@ namespace SeoYuGi.Battle
             return ActDenied.None;
         }
 
+        // ── 조준 미리보기 (상태 변경 없음 — 뷰 전용 쿼리, AP 검사 안 함) ──
+
+        /// <summary>일반공격 조준 가능 칸 (인접 4칸 중 지형 가능).</summary>
+        public void GetAttackRange(int unitId, List<Coord> cells)
+        {
+            cells.Clear();
+            var unit = State.GetUnit(unitId);
+            if (unit == null || !unit.alive) return;
+            foreach (var dir in Coord.Directions4)
+            {
+                var c = unit.pos + dir;
+                if (State.Grid.IsWalkableTerrain(c)) cells.Add(c);
+            }
+        }
+
+        /// <summary>일반공격을 hover로 발사하면 맞는 칸. 유효 조준이면 true.</summary>
+        public bool GetAttackImpact(int unitId, Coord hover, List<Coord> cells)
+        {
+            cells.Clear();
+            var unit = State.GetUnit(unitId);
+            if (unit == null || !unit.alive) return false;
+            if (Coord.Manhattan(unit.pos, hover) != 1 || !State.Grid.IsWalkableTerrain(hover)) return false;
+            cells.Add(hover);
+            return true;
+        }
+
+        /// <summary>스킬 조준 가능 칸 — SkillKind별 사거리 모양.</summary>
+        public void GetSkillRange(int unitId, List<Coord> cells)
+        {
+            cells.Clear();
+            var unit = State.GetUnit(unitId);
+            if (unit == null || !unit.alive) return;
+            var skill = ClassCatalog.Get(unit.unitClass).skill;
+            switch (skill.kind)
+            {
+                case SkillKind.Smash:
+                    foreach (var dir in Coord.Directions4)
+                        if (State.Grid.IsWalkableTerrain(unit.pos + dir)) cells.Add(unit.pos + dir);
+                    break;
+                case SkillKind.Dash:
+                    foreach (var dir in Coord.Directions4)
+                        for (int i = 1; i <= skill.range; i++)
+                        {
+                            var c = unit.pos + new Coord(dir.x * i, dir.y * i);
+                            if (!State.Grid.IsWalkableTerrain(c)) break;
+                            cells.Add(c);
+                        }
+                    break;
+                case SkillKind.Blink:
+                case SkillKind.Burst:
+                    for (int dx = -skill.range; dx <= skill.range; dx++)
+                    for (int dy = -skill.range; dy <= skill.range; dy++)
+                    {
+                        var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
+                        if (Math.Abs(dx) + Math.Abs(dy) > skill.range || c == unit.pos) continue;
+                        // 점멸은 빈 칸이어야 착지(IsWalkable), 파열탄은 지형만 보면 됨
+                        bool ok = skill.kind == SkillKind.Blink
+                            ? State.Grid.IsWalkable(c)
+                            : State.Grid.IsWalkableTerrain(c);
+                        if (ok) cells.Add(c);
+                    }
+                    break;
+                case SkillKind.Snipe:
+                    foreach (var dir in Coord.Directions4)
+                        for (var c = unit.pos + dir; State.Grid.IsWalkableTerrain(c); c += dir)
+                            cells.Add(c);
+                    break;
+            }
+        }
+
+        /// <summary>스킬을 hover로 발사하면 실제 맞는(닿는) 칸들. 유효 조준이면 true.</summary>
+        public bool GetSkillImpact(int unitId, Coord hover, List<Coord> cells)
+        {
+            cells.Clear();
+            var unit = State.GetUnit(unitId);
+            if (unit == null || !unit.alive) return false;
+            var skill = ClassCatalog.Get(unit.unitClass).skill;
+            switch (skill.kind)
+            {
+                case SkillKind.Smash:
+                    if (Coord.Manhattan(unit.pos, hover) != 1 || !State.Grid.IsWalkableTerrain(hover)) return false;
+                    cells.Add(hover);
+                    return true;
+                case SkillKind.Dash:
+                {
+                    var dir = UnitDir(unit.pos, hover, skill.range);
+                    if (dir == Coord.Zero) return false;
+                    var pos = unit.pos;
+                    for (int i = 0; i < skill.range; i++)
+                    {
+                        var next = pos + dir;
+                        if (!State.Grid.IsWalkableTerrain(next)) break;
+                        cells.Add(next);
+                        pos = next;
+                    }
+                    return cells.Count > 0;
+                }
+                case SkillKind.Blink:
+                    if (Coord.Manhattan(unit.pos, hover) > skill.range || !State.Grid.IsWalkable(hover)) return false;
+                    cells.Add(hover);
+                    return true;
+                case SkillKind.Burst:
+                    if (Coord.Manhattan(unit.pos, hover) > skill.range || !State.Grid.IsWalkableTerrain(hover)) return false;
+                    cells.Add(hover);
+                    foreach (var dir in Coord.Directions4)
+                        if (State.Grid.IsWalkableTerrain(hover + dir)) cells.Add(hover + dir);
+                    return true;
+                case SkillKind.Snipe:
+                {
+                    var dir = UnitDir(unit.pos, hover, int.MaxValue);
+                    if (dir == Coord.Zero) return false;
+                    for (var c = unit.pos + dir; State.Grid.IsWalkableTerrain(c); c += dir)
+                        cells.Add(c);
+                    return cells.Count > 0;
+                }
+                default: return false;
+            }
+        }
+
         // ── 내부 ──────────────────────────────────────────────────
 
         /// <summary>target이 pos에서 직선(상하좌우) maxDist 이내면 단위 방향, 아니면 Zero.</summary>

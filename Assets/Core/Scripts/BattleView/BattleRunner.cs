@@ -246,7 +246,32 @@ namespace SeoYuGi.BattleView
             };
 
             Combat.OnUnitDamaged += (unitId, dmg) =>
+            {
+                viewRegistry.Get(unitId)?.PlayHit();
                 Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {Battle.GetUnit(unitId).hp}/{Battle.GetUnit(unitId).maxHp})");
+            };
+
+            // 타격 연출 — 시야 밖 칸은 예고 필터와 같은 규칙으로 숨긴다 (정보 누출 방지)
+            Combat.OnStrikeResolved += (strike, hit) =>
+            {
+                foreach (var c in strike.cells)
+                    if (strike.team == playerTeam || playerVisibleFn(c))
+                        CellFlash.Spawn(gridView.CoordToWorld(c), Color.white);
+            };
+
+            Combat.OnUnitDied += unitId =>
+            {
+                var u = Battle.GetUnit(unitId);
+                if (u.team == playerTeam || playerVisibleFn(u.pos))
+                    CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(1f, 0.2f, 0.15f), 0.6f, 1.1f);
+            };
+
+            Combat.OnGuard += unitId =>
+            {
+                var u = Battle.GetUnit(unitId);
+                if (u.team == playerTeam || playerVisibleFn(u.pos))
+                    CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(0.3f, 0.7f, 1f));
+            };
 
             humanPrevPos = Battle.GetUnit(playerUnitId).pos;
             input.enabled = true;

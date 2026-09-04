@@ -24,6 +24,8 @@ namespace SeoYuGi.BattleView
         bool dimmed;
         MaterialPropertyBlock mpb;
         Coroutine moving;
+        Coroutine hitRoutine;
+        Vector3 preHitScale; // 피격 펀치 시작 전 스케일 — 중첩 피격 시 복원 기준
 
         public void Bind(int unitId, Color teamColor, GridView gridView, Coord start)
         {
@@ -52,7 +54,36 @@ namespace SeoYuGi.BattleView
         {
             if (dimmed == value) return;
             dimmed = value;
-            ApplyColor(value ? teamColor * 0.35f : teamColor);
+            if (hitRoutine == null) ApplyColor(CurrentColor); // 피격 플래시 중엔 코루틴이 색을 쥔다
+        }
+
+        Color CurrentColor => dimmed ? teamColor * 0.35f : teamColor;
+
+        /// <summary>피격 연출: 흰 번쩍 + 펀치 스케일.</summary>
+        public void PlayHit()
+        {
+            if (!gameObject.activeInHierarchy) return; // 시야 밖 — 연출 생략
+            if (hitRoutine != null) StopCoroutine(hitRoutine);
+            else preHitScale = transform.localScale; // 연타 피격 시 이미 커진 스케일로 기준 오염 방지
+            hitRoutine = StartCoroutine(HitRoutine());
+        }
+
+        IEnumerator HitRoutine()
+        {
+            ApplyColor(Color.white);
+            transform.localScale = preHitScale * 1.25f;
+            yield return new WaitForSeconds(0.08f);
+
+            for (float t = 0f; t < 0.15f; t += Time.deltaTime)
+            {
+                float k = t / 0.15f;
+                ApplyColor(Color.Lerp(Color.white, CurrentColor, k));
+                transform.localScale = Vector3.Lerp(preHitScale * 1.25f, preHitScale, k);
+                yield return null;
+            }
+            ApplyColor(CurrentColor);
+            transform.localScale = preHitScale;
+            hitRoutine = null;
         }
 
         /// <summary>즉시 위치 동기화 (밀침·대시·점멸 등 연출 없는 이동).</summary>
@@ -91,6 +122,13 @@ namespace SeoYuGi.BattleView
         {
             // 시야에서 숨겨질 때 코루틴이 강제 종료됨 — IsMoving이 영구 true로 남지 않게
             moving = null;
+            if (hitRoutine != null)
+            {
+                // 플래시 도중 숨겨짐 — 스케일·색 원복
+                transform.localScale = preHitScale;
+                ApplyColor(CurrentColor);
+                hitRoutine = null;
+            }
         }
 
         void ApplyColor(Color color)

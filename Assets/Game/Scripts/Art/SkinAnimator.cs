@@ -14,7 +14,8 @@ namespace SeoYuGi.Art
         AnimationClipPlayable playable;
         float length;
 
-        public void Init(AnimationClip clip)
+        /// <param name="speed">클래스별 성격 부여용 재생 배속 (묵직=느리게, 날렵=빠르게)</param>
+        public void Init(AnimationClip clip, float speed = 1f)
         {
             var animator = GetComponent<Animator>();
             if (animator == null) animator = gameObject.AddComponent<Animator>();
@@ -23,6 +24,8 @@ namespace SeoYuGi.Art
             graph = PlayableGraph.Create("SkinLoop");
             graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
             playable = AnimationClipPlayable.Create(graph, clip);
+            playable.SetSpeed(speed);
+            playable.SetTime(Random.Range(0f, length)); // 유닛끼리 군무 방지 — 시작점 흩뜨리기
             var output = AnimationPlayableOutput.Create(graph, "out", animator);
             output.SetSourcePlayable(playable);
             graph.Play();
@@ -100,7 +103,11 @@ namespace SeoYuGi.Art
             bool moving = view != null && view.IsMoving;
             if (!moving)
             {
-                target.localScale = Vector3.Lerp(target.localScale, baseScale, Time.deltaTime * 10f);
+                // 대기 숨쉬기 — 느린 미세 팽창/수축으로 뻣뻣함 제거
+                float bt = Time.time * 2.2f;
+                float breath = 1f + Mathf.Sin(bt) * 0.02f;
+                var idleScale = new Vector3(baseScale.x, baseScale.y * breath, baseScale.z);
+                target.localScale = Vector3.Lerp(target.localScale, idleScale, Time.deltaTime * 10f);
                 target.localRotation = Quaternion.Slerp(target.localRotation, baseRot, Time.deltaTime * 10f);
                 return;
             }

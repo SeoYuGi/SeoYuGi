@@ -54,6 +54,16 @@ namespace SeoYuGi.Art
             { (1, UnitClass.Sniper),    "surveillance_drone" },
         };
 
+        // 같은 클립이라도 클래스별 배속으로 성격 부여 (묵직↔날렵)
+        static readonly Dictionary<UnitClass, float> AnimSpeed = new()
+        {
+            { UnitClass.Tank, 0.85f },
+            { UnitClass.Balance, 1.05f },
+            { UnitClass.Assassin, 1.15f },
+            { UnitClass.Grenadier, 0.9f },
+            { UnitClass.Sniper, 0.95f },
+        };
+
         BattleRunner runner;
         readonly Dictionary<string, GameObject> cache = new();
         readonly HashSet<UnitView> attempted = new();
@@ -97,8 +107,20 @@ namespace SeoYuGi.Art
             var skin = new GameObject(SkinName);
             skin.transform.SetParent(view.transform, false);
 
-            // 대기 = 다이내믹 포즈 정적 모델
-            var idleGo = Instantiate(prefab, skin.transform);
+            // 대기 = 대기 애니 모델(<resource>_idle) 우선, 없으면 다이내믹 포즈 정적 모델
+            GameObject idleGo;
+            var idlePrefab = Resources.Load<GameObject>(resource + "_idle");
+            if (idlePrefab != null)
+            {
+                idleGo = Instantiate(idlePrefab, skin.transform);
+                var idleClips = Resources.LoadAll<AnimationClip>(resource + "_idle");
+                if (idleClips.Length > 0)
+                    idleGo.AddComponent<SkinLoopAnimator>().Init(idleClips[0], AnimSpeed[unit.unitClass]);
+            }
+            else
+            {
+                idleGo = Instantiate(prefab, skin.transform);
+            }
             idleGo.transform.localPosition = Vector3.zero;
             idleGo.transform.localRotation = Quaternion.identity;
             FitToUnit(idleGo, view.transform, height);
@@ -114,7 +136,7 @@ namespace SeoYuGi.Art
 
                 var clips = Resources.LoadAll<AnimationClip>(resource + "_anim");
                 if (clips.Length > 0)
-                    runGo.AddComponent<SkinLoopAnimator>().Init(clips[0]);
+                    runGo.AddComponent<SkinLoopAnimator>().Init(clips[0], AnimSpeed[unit.unitClass]);
                 skin.AddComponent<MoveSwapSkin>().Init(view, idleGo, runGo);
             }
             else if (unit.team == 0)

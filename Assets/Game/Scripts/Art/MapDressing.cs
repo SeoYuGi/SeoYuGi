@@ -110,8 +110,20 @@ namespace SeoYuGi.Art
             var rend = quad.GetComponent<Renderer>();
             var tex = Resources.Load<Texture2D>("bg_alley");
             var mat = new Material(rend.sharedMaterial);
-            if (tex != null) mat.mainTexture = tex;
-            else mat.color = new Color(0.16f, 0.15f, 0.14f); // 이미지 미도착 폴백 — 어두운 아스팔트 톤
+            if (tex != null)
+            {
+                // URP Lit은 _BaseMap, 빌트인은 _MainTex — 셰이더 불문 물리게 둘 다 세팅
+                mat.mainTexture = tex;
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+                mat.color = Color.white;
+            }
+            else
+            {
+                var dark = new Color(0.16f, 0.15f, 0.14f); // 이미지 미도착 폴백 — 어두운 아스팔트 톤
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", dark);
+                mat.color = dark;
+            }
             rend.sharedMaterial = mat;
         }
 

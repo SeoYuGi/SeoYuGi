@@ -151,6 +151,14 @@ namespace SeoYuGi.BattleView
                 }
             };
 
+            // 무전 패널 클릭 — 숫자키와 같은 전송 경로
+            hud.OnChatClicked += lineId =>
+            {
+                if (phase != Phase.Playing) return;
+                if (IsNetClient) NetSync.ClientSendChat(playerUnitId, lineId);
+                else quickChat.TrySend(playerUnitId, lineId, Time.time);
+            };
+
             // 카메라 셰이커 — 추적/전술 캠 위에 얹는 타격감 레이어
             var mainCam = Camera.main;
             if (mainCam != null && mainCam.GetComponent<CameraShaker>() == null)
@@ -169,7 +177,38 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatShow += ShowChatVisual;
             NetSync.OnMoved += OnNetMoved;
             NetSync.OnHacked += OnNetHacked;
+            NetSync.OnTelegraph += OnNetTelegraph;
+            NetSync.OnTelegraphEnd += OnNetTelegraphEnd;
+            NetSync.OnSkillCast += OnNetSkillCast;
             ShowTitle();
+        }
+
+        /// <summary>클라 — 스킬 시전 릴레이. SFX + 스킬별 VFX + 라벨을 호스트와 동일하게.</summary>
+        void OnNetSkillCast(int unitId, int kindInt)
+        {
+            if (!IsNetClient || Battle == null) return;
+            var kind = (SkillKind)kindInt;
+            battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
+            if (IsUnitVisibleToPlayer(unitId))
+                SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos));
+            var v = viewRegistry.Get(unitId);
+            if (v != null && v.gameObject.activeInHierarchy)
+                FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
+            if (kind == SkillKind.Blink) blinkSnapIds.Add(unitId); // 점멸 스냅 규칙 유지
+        }
+
+        /// <summary>클라 — 호스트 예고를 미러 CombatSystem에 주입.
+        /// OnTelegraph가 발화돼 예고 렌더·경고 링·SFX가 기존 배선 그대로 뜬다.</summary>
+        void OnNetTelegraph(TelegraphStrike strike)
+        {
+            if (!IsNetClient || Combat == null) return;
+            Combat.InjectRemoteStrike(strike);
+        }
+
+        void OnNetTelegraphEnd(int strikeId, bool hit)
+        {
+            if (!IsNetClient || Combat == null) return;
+            Combat.ResolveRemoteStrike(strikeId, hit);
         }
 
         /// <summary>클라 — 호스트 이동 릴레이. 내 유닛은 낙관 적용으로 이미 재생 — 중복 방지.</summary>
@@ -206,6 +245,9 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatShow -= ShowChatVisual;
             NetSync.OnMoved -= OnNetMoved;
             NetSync.OnHacked -= OnNetHacked;
+            NetSync.OnTelegraph -= OnNetTelegraph;
+            NetSync.OnTelegraphEnd -= OnNetTelegraphEnd;
+            NetSync.OnSkillCast -= OnNetSkillCast;
         }
 
         /// <summary>내 팀 무전만 표시 — 말풍선 + HUD 로그 + 핑. 호스트/클라 공용 시각화.</summary>
@@ -748,11 +790,35 @@ namespace SeoYuGi.BattleView
                     if (yellow) CameraShaker.Shake(0.12f); // 과부하 점프 — 미세한 무게
                 }
                 if (NetBoot.IsOnline && NetBoot.IsHost)
-                    NetSync.HostSendMoved(unitId, path, yellow); // 클라 홉 애니용 경로 릴레이
+                {
+                    // 경로 릴레이 — 같은 팀은 항상, 적팀 클라는 경로가 그 팀 시야에 걸릴 때만 (위치 누출 차단)
+                    var mover = Battle.GetUnit(unitId);
+                    foreach (var s in NetLobby.Slots)
+                    {
+                        if (s.owner != SlotOwner.RemoteHuman) continue;
+                        bool canSee = s.team == mover.team;
+                        if (!canSee)
+                            foreach (var c in path)
+                                if (vision.IsVisibleTo(s.team, c)) { canSee = true; break; }
+                        if (canSee) NetSync.HostSendMoved(s.clientId, unitId, path, yellow);
+                    }
+                }
             };
 
             Combat.OnTelegraph += strike =>
             {
+                // 예고 릴레이 — 시전 팀 클라는 항상, 적팀 클라는 그 팀 시야에 걸리는 예고만
+                if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
+                    foreach (var s in NetLobby.Slots)
+                    {
+                        if (s.owner != SlotOwner.RemoteHuman) continue;
+                        bool canSee = s.team == strike.team;
+                        if (!canSee)
+                            foreach (var c in strike.cells)
+                                if (vision.IsVisibleTo(s.team, c)) { canSee = true; break; }
+                        if (canSee) NetSync.HostSendTelegraph(s.clientId, strike);
+                    }
+
                 bool mineStrike = strike.team == playerTeam;
                 if (mineStrike) battleAudio.PlaySfx("S2_TelegraphAlly", 0.8f);
                 else if (AnyCellVisible(strike)) battleAudio.PlaySfx("S1_TelegraphEnemy", 0.8f);
@@ -782,6 +848,9 @@ namespace SeoYuGi.BattleView
             };
             Combat.OnStrikeResolved += (strike, hit) =>
             {
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendTelegraphEnd(strike.id, hit); // 못 받은 id는 클라가 무시
+
                 if (strike.attackerId == playerUnitId)
                 {
                     battleAudio.PlaySfx(hit ? "S3_Hit" : "S4_Miss", 0.8f);
@@ -825,6 +894,20 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
                 // 즉발 이동기(대시·점멸)는 캐스팅 순간에 무게 — 예고형은 판정 시 피해 셰이크가 담당
                 if (kind == SkillKind.Dash && IsUnitVisibleToPlayer(unitId)) CameraShaker.Shake(0.18f);
+
+                // 스킬 특성별 시전 VFX — 시야 안일 때만 (정보 누출 방지)
+                if (IsUnitVisibleToPlayer(unitId))
+                    SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos));
+
+                // 클라 릴레이 — 시전자 팀 클라는 항상, 적팀 클라는 시전 위치가 시야 안일 때만
+                if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
+                {
+                    var caster = Battle.GetUnit(unitId);
+                    foreach (var s in NetLobby.Slots)
+                        if (s.owner == SlotOwner.RemoteHuman &&
+                            (s.team == caster.team || vision.IsVisibleTo(s.team, caster.pos)))
+                            NetSync.HostSendSkillCast(s.clientId, unitId, (int)kind);
+                }
             };
             Combat.OnWallCrash += unitId =>
             {
@@ -1194,7 +1277,7 @@ namespace SeoYuGi.BattleView
             Pickup.Tick();
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
-                NetSync.HostTick(Time.unscaledDeltaTime, Battle, Round, Pickup, Match.CurrentRound); // 12Hz 스냅샷
+                NetSync.HostTick(Time.unscaledDeltaTime, Battle, Round, Pickup, Match.CurrentRound, vision); // 12Hz 팀별 스냅샷
 
             if (Round.Winner != -1)
             {

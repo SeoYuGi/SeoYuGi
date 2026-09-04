@@ -48,11 +48,25 @@ namespace SeoYuGi.BattleView
             go.transform.position = worldPos + Vector3.up * 0.08f;
             go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // XY로 만든 링을 바닥에 눕힘
 
-            go.AddComponent<MeshFilter>().sharedMesh = SharedRing;
-            var mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = Mat;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
+            // 생성 홀로 링 텍스처가 있으면 그쪽 — 없으면 코드 생성 고리 메시 폴백
+            var ringTex = VfxTextures.Ring;
+            if (ringTex != null)
+            {
+                var quad = go.AddComponent<MeshFilter>();
+                quad.sharedMesh = QuadMesh;
+                var qr = go.AddComponent<MeshRenderer>();
+                qr.sharedMaterial = ringTex;
+                qr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                qr.receiveShadows = false;
+            }
+            else
+            {
+                go.AddComponent<MeshFilter>().sharedMesh = SharedRing;
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = Mat;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+            }
 
             var w = go.AddComponent<RingWave>();
             w.color = color;
@@ -88,10 +102,33 @@ namespace SeoYuGi.BattleView
             if (spinDegrees != 0f)
                 transform.rotation = Quaternion.Euler(90f, 0f, k * spinDegrees);
 
-            var c = color;
-            c.a = color.a * (fadeIn ? Mathf.Lerp(0.35f, 1f, k) : 1f - k);
+            // 가산 머티리얼은 색 자체로 페이드 (알파 무시), 폴백 메시는 알파로
+            float fade = fadeIn ? Mathf.Lerp(0.35f, 1f, k) : 1f - k;
+            var c = color * fade;
+            c.a = color.a * fade;
             mpb.SetColor("_Color", c);
+            mpb.SetColor("_BaseColor", c);
             rend.SetPropertyBlock(mpb);
+        }
+
+        // 텍스처 링용 단위 쿼드 (2×2 — 반지름 1 링 텍스처가 꽉 차게)
+        static Mesh quadMesh;
+        static Mesh QuadMesh
+        {
+            get
+            {
+                if (quadMesh != null) return quadMesh;
+                quadMesh = new Mesh { name = "RingQuad" };
+                quadMesh.vertices = new[]
+                {
+                    new Vector3(-1f, -1f, 0f), new Vector3(1f, -1f, 0f),
+                    new Vector3(-1f, 1f, 0f), new Vector3(1f, 1f, 0f)
+                };
+                quadMesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one };
+                quadMesh.triangles = new[] { 0, 2, 1, 2, 3, 1 };
+                quadMesh.RecalculateBounds();
+                return quadMesh;
+            }
         }
 
         static Material Mat

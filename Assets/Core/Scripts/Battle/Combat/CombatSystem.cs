@@ -16,6 +16,7 @@ namespace SeoYuGi.Battle
     /// <summary>설치 공격 예고 — 예고 후 판정, 즉발 없음(기획서 §03).</summary>
     public class TelegraphStrike
     {
+        public int id;             // 매치 내 고유 — 네트워크 복제·판정 매칭용
         public int attackerId;
         public int team;
         public List<Coord> cells = new List<Coord>();
@@ -566,10 +567,37 @@ namespace SeoYuGi.Battle
             return new Coord(Math.Sign(d.x), Math.Sign(d.y));
         }
 
+        int nextStrikeId; // 예고 고유 id — 네트워크 판정 매칭용
+
         void Place(TelegraphStrike strike)
+        {
+            strike.id = ++nextStrikeId;
+            strikes.Add(strike);
+            OnTelegraph?.Invoke(strike);
+        }
+
+        // ── 멀티 클라이언트 전용 — 호스트가 릴레이한 예고를 미러에 주입 ──
+        // 클라는 Tick을 안 돌리므로 이 경로 외엔 strikes가 채워지지 않는다.
+        // OnTelegraph/OnStrikeResolved를 그대로 발화 — 기존 연출 배선이 무수정으로 동작.
+
+        /// <summary>클라 — 호스트 예고 주입. 예고 렌더·경고 링이 로컬과 동일하게 뜬다.</summary>
+        public void InjectRemoteStrike(TelegraphStrike strike)
         {
             strikes.Add(strike);
             OnTelegraph?.Invoke(strike);
+        }
+
+        /// <summary>클라 — 호스트 판정 통보. 목록에서 제거 + 해소 연출 발화.</summary>
+        public void ResolveRemoteStrike(int strikeId, bool hit)
+        {
+            for (int i = 0; i < strikes.Count; i++)
+                if (strikes[i].id == strikeId)
+                {
+                    var s = strikes[i];
+                    strikes.RemoveAt(i);
+                    OnStrikeResolved?.Invoke(s, hit);
+                    return;
+                }
         }
 
         void Resolve(TelegraphStrike strike)

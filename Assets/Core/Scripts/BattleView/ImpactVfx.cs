@@ -57,7 +57,9 @@ namespace SeoYuGi.BattleView
                 new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
             colorOverLifetime.color = grad;
 
-            ps.GetComponent<ParticleSystemRenderer>().material = Mat;
+            // 기계=전기 아크, 동물=불똥 궤적 텍스처 — 없으면 기존 민무늬 폴백
+            var texMat = machine ? VfxTextures.Electric : VfxTextures.Spark;
+            ps.GetComponent<ParticleSystemRenderer>().material = texMat != null ? texMat : Mat;
             ps.Play();
             Object.Destroy(go, 1.2f);
         }
@@ -70,7 +72,9 @@ namespace SeoYuGi.BattleView
             go.transform.position = pos + Vector3.up * 0.1f;
             var fade = go.AddComponent<PillarFade>();
             fade.color = color;
-            go.GetComponent<Renderer>().material = Mat;
+            // 광구 텍스처가 있으면 부드러운 빛기둥 — 없으면 민무늬 쿼드
+            var glow = VfxTextures.Glow;
+            go.GetComponent<Renderer>().material = glow != null ? glow : Mat;
         }
     }
 
@@ -116,9 +120,10 @@ namespace SeoYuGi.BattleView
                     transform.rotation = Quaternion.LookRotation(-look);
             }
 
-            var c = color;
-            c.a = 1f - k;
+            var c = color * (1f - k); // 가산 텍스처 — 색으로 페이드
+            c.a = 1f - k;             // 민무늬 폴백 — 알파로 페이드
             mpb.SetColor("_Color", c);
+            mpb.SetColor("_BaseColor", c);
             rend.SetPropertyBlock(mpb);
         }
     }

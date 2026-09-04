@@ -44,6 +44,10 @@ namespace SeoYuGi.BattleView
         /// <summary>Tab 홀드 중 프리셋 치트시트 표시 — BattleRunner가 매 프레임 갱신.</summary>
         public bool ShowChatCheatsheet { get; set; }
 
+        /// <summary>무전 패널의 문구 클릭 — lineId. 전송 경로는 러너가 배선.</summary>
+        public event System.Action<int> OnChatClicked;
+        bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
+
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle;
         GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
@@ -211,7 +215,7 @@ namespace SeoYuGi.BattleView
                 DrawBanner();
                 DrawBottomBar();
                 DrawChatLog();
-                if (ShowChatCheatsheet) DrawChatCheatsheet();
+                DrawChatPanel();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();
@@ -568,26 +572,35 @@ namespace SeoYuGi.BattleView
             GUI.color = Color.white;
         }
 
-        /// <summary>Tab 홀드 치트시트 — 조작을 뺏지 않는 읽기 전용 안내.</summary>
-        void DrawChatCheatsheet()
+        /// <summary>
+        /// 무전 패널 — 좌하단 [무전] 토글로 펼치고, 문구 클릭 = 전송 (단축키 병기).
+        /// Tab 홀드 중에도 임시로 펼쳐진다 (읽기 + 클릭 둘 다 가능).
+        /// </summary>
+        void DrawChatPanel()
         {
-            var lines = SeoYuGi.Chat.QuickChat.Lines;
-            const float colW = 150f, rowH = 24f;
-            int rows = (lines.Length + 1) / 2;
-            float boxW = colW * 2 + 24f, boxH = rows * rowH + 34f;
-            float x0 = W / 2f - boxW / 2f, y0 = H - 110f - boxH;
+            const float btnW = 64f, btnH = 26f, rowH = 30f, panelW = 170f;
+            float x0 = 12f, toggleY = H - 100f;
 
-            GUI.color = new Color(0f, 0f, 0f, 0.8f);
-            GUI.DrawTexture(new Rect(x0, y0, boxW, boxH), Texture2D.whiteTexture);
+            if (GUI.Button(new Rect(x0, toggleY, btnW, btnH), chatPanelOpen ? "무전 ▾" : "무전 ▸", chipStyle))
+                chatPanelOpen = !chatPanelOpen;
+
+            if (!chatPanelOpen && !ShowChatCheatsheet) return;
+
+            var lines = SeoYuGi.Chat.QuickChat.Lines;
+            float panelH = lines.Length * rowH + 30f;
+            float y0 = toggleY - panelH - 6f;
+
+            GUI.color = new Color(0f, 0f, 0f, 0.82f);
+            GUI.DrawTexture(new Rect(x0, y0, panelW, panelH), Texture2D.whiteTexture);
             GUI.color = new Color(0.55f, 0.95f, 1f);
-            GUI.Label(new Rect(x0, y0 + 4, boxW, 20), "빠른채팅 — 숫자키", subStyle);
+            GUI.Label(new Rect(x0, y0 + 4, panelW, 20), "빠른채팅 — 클릭 or 숫자키", subStyle);
             GUI.color = Color.white;
 
             for (int i = 0; i < lines.Length; i++)
             {
-                float x = x0 + 12f + (i / rows) * colW;
-                float y = y0 + 28f + (i % rows) * rowH;
-                GUI.Label(new Rect(x, y, colW, rowH), $"{i + 1}  {lines[i]}", labelStyle);
+                var r = new Rect(x0 + 8f, y0 + 26f + i * rowH, panelW - 16f, rowH - 4f);
+                if (GUI.Button(r, $"[{i + 1}] {lines[i]}", chipStyle))
+                    OnChatClicked?.Invoke(i);
             }
         }
 

@@ -22,6 +22,9 @@ namespace SeoYuGi.Net
         const string MsgChatShow = "sy_cs";
         const string MsgMoved = "sy_mv";
         const string MsgHacked = "sy_hk";
+        const string MsgTele = "sy_tg";
+        const string MsgTeleEnd = "sy_te";
+        const string MsgSkill = "sy_sk";
         const float SnapInterval = 1f / 12f;
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
@@ -33,6 +36,9 @@ namespace SeoYuGi.Net
         public static event Action<int, int> OnChatShow;                 // unitId, lineId — 호스트 검증 통과분
         public static event Action<int, Coord[], bool> OnMoved;          // unitId, path, isYellow — 홉 연출용
         public static event Action<int> OnHacked;                        // unitId — 해킹 연출 릴레이
+        public static event Action<TelegraphStrike> OnTelegraph;         // 예고 주입 — 클라 미러용
+        public static event Action<int, bool> OnTelegraphEnd;            // strikeId, hit — 판정 통보
+        public static event Action<int, int> OnSkillCast;                // unitId, (int)SkillKind — 시전 연출
 
         // ── 호스트 수신 이벤트 ─────────────────
         public static event Action<ulong, BattleIntent> OnIntentRequest; // sender, intent — 소유권 검증은 러너
@@ -68,10 +74,83 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgChatShow, OnChatShowMsg);
             mm.RegisterNamedMessageHandler(MsgMoved, OnMovedMsg);
             mm.RegisterNamedMessageHandler(MsgHacked, OnHackedMsg);
+            mm.RegisterNamedMessageHandler(MsgTele, OnTeleMsg);
+            mm.RegisterNamedMessageHandler(MsgTeleEnd, OnTeleEndMsg);
+            mm.RegisterNamedMessageHandler(MsgSkill, OnSkillMsg);
         }
 
-        /// <summary>호스트 — 이동 경로 릴레이. 클라가 슬라이드 대신 홉 애니메이션을 재생하게.</summary>
-        public static void HostSendMoved(int unitId, System.Collections.Generic.IReadOnlyList<Coord> path, bool yellow)
+        /// <summary>호스트 — 스킬 시전 릴레이 (targeted). 즉발기는 예고가 없어 이게 유일한 통보.</summary>
+        public static void HostSendSkillCast(ulong clientId, int unitId, int kind)
+        {
+            using var w = new FastBufferWriter(16, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(kind);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgSkill, clientId, w);
+        }
+
+        static void OnSkillMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int kind);
+            OnSkillCast?.Invoke(unitId, kind);
+        }
+
+        /// <summary>호스트 — 예고를 특정 클라에게. 수신 필터(팀·시야)는 러너가 결정.</summary>
+        public static void HostSendTelegraph(ulong clientId, TelegraphStrike s)
+        {
+            using var w = new FastBufferWriter(32 + s.cells.Count * 8, Allocator.Temp);
+            w.WriteValueSafe(s.id);
+            w.WriteValueSafe(s.attackerId);
+            w.WriteValueSafe(s.team);
+            w.WriteValueSafe(s.impactTime);
+            w.WriteValueSafe((byte)s.cells.Count);
+            foreach (var c in s.cells)
+            {
+                w.WriteValueSafe((byte)c.x);
+                w.WriteValueSafe((byte)c.y);
+            }
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgTele, clientId, w);
+        }
+
+        /// <summary>호스트 — 판정 통보 (전원). 못 받은 예고 id는 클라가 조용히 무시.</summary>
+        public static void HostSendTelegraphEnd(int strikeId, bool hit)
+        {
+            using var w = new FastBufferWriter(16, Allocator.Temp);
+            w.WriteValueSafe(strikeId);
+            w.WriteValueSafe(hit);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgTeleEnd, w);
+        }
+
+        static void OnTeleMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            var s = new TelegraphStrike();
+            r.ReadValueSafe(out s.id);
+            r.ReadValueSafe(out s.attackerId);
+            r.ReadValueSafe(out s.team);
+            r.ReadValueSafe(out s.impactTime);
+            r.ReadValueSafe(out byte count);
+            for (int i = 0; i < count; i++)
+            {
+                r.ReadValueSafe(out byte x);
+                r.ReadValueSafe(out byte y);
+                s.cells.Add(new Coord(x, y));
+            }
+            OnTelegraph?.Invoke(s);
+        }
+
+        static void OnTeleEndMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int strikeId);
+            r.ReadValueSafe(out bool hit);
+            OnTelegraphEnd?.Invoke(strikeId, hit);
+        }
+
+        /// <summary>호스트 — 이동 경로 릴레이 (targeted). 수신 대상(팀·시야)은 러너가 결정.</summary>
+        public static void HostSendMoved(ulong clientId, int unitId,
+            System.Collections.Generic.IReadOnlyList<Coord> path, bool yellow)
         {
             using var w = new FastBufferWriter(16 + path.Count * 8, Allocator.Temp);
             w.WriteValueSafe(unitId);
@@ -82,7 +161,7 @@ namespace SeoYuGi.Net
                 w.WriteValueSafe((byte)c.x);
                 w.WriteValueSafe((byte)c.y);
             }
-            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgMoved, w);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgMoved, clientId, w);
         }
 
         /// <summary>호스트 — 해킹 발동 릴레이 (글리치·자막이 클라에도 뜨게).</summary>
@@ -202,53 +281,72 @@ namespace SeoYuGi.Net
             NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgRound, w);
         }
 
-        /// <summary>호스트 — 매 프레임 호출. 내부에서 12Hz로 스로틀.</summary>
-        public static void HostTick(float realDt, BattleState b, RoundSystem r, PickupSystem p, int matchRound)
+        /// <summary>
+        /// 호스트 — 매 프레임 호출. 내부에서 12Hz로 스로틀.
+        /// 팀별 필터: 그 팀 소속 or 그 팀 시야 안의 유닛만 전송 — 패킷 스니핑 맵핵 차단.
+        /// 빠진 유닛은 클라가 마지막 값 유지 (어차피 시야 밖 = 화면에서 숨김).
+        /// </summary>
+        public static void HostTick(float realDt, BattleState b, RoundSystem r, PickupSystem p,
+            int matchRound, VisionSystem vision)
         {
             sendTimer += realDt;
             if (sendTimer < SnapInterval) return;
             sendTimer = 0f;
 
-            using var w = new FastBufferWriter(1024, Allocator.Temp);
-            w.WriteValueSafe(matchRound);
-            w.WriteValueSafe(b.time);
-
-            w.WriteValueSafe((byte)b.Units.Count);
-            foreach (var u in b.Units)
+            for (int team = 0; team < 2; team++)
             {
-                w.WriteValueSafe((byte)u.id);
-                w.WriteValueSafe((byte)u.pos.x);
-                w.WriteValueSafe((byte)u.pos.y);
-                w.WriteValueSafe((sbyte)u.hp);
-                w.WriteValueSafe(u.alive);
-                w.WriteValueSafe(u.ap);
-                w.WriteValueSafe(u.moveGauge);
-                w.WriteValueSafe(u.moveCooldown);
-                w.WriteValueSafe(u.regenDelay);
-                w.WriteValueSafe(u.attackBuffUntil);
-                w.WriteValueSafe(u.stunnedUntil);
-                w.WriteValueSafe(u.flyingUntil);
-                w.WriteValueSafe(u.skillReadyAt[0]);
-                w.WriteValueSafe(u.skillReadyAt[1]);
-            }
+                bool any = false;
+                foreach (var s in NetLobby.Slots)
+                    if (s.owner == SlotOwner.RemoteHuman && s.team == team) { any = true; break; }
+                if (!any) continue; // 그 팀에 원격 인간 없음 — 전송 생략
 
-            w.WriteValueSafe((byte)r.Zones.Count);
-            foreach (var z in r.Zones)
-            {
-                w.WriteValueSafe((sbyte)z.owner);
-                w.WriteValueSafe((sbyte)z.capturingTeam);
-                w.WriteValueSafe(z.progress);
-            }
+                using var w = new FastBufferWriter(1024, Allocator.Temp);
+                w.WriteValueSafe(matchRound);
+                w.WriteValueSafe(b.time);
 
-            w.WriteValueSafe((byte)p.Packs.Count);
-            foreach (var pack in p.Packs)
-            {
-                w.WriteValueSafe(pack.active);
-                w.WriteValueSafe(pack.respawnAt);
-            }
+                byte visibleCount = 0;
+                foreach (var u in b.Units)
+                    if (u.team == team || vision.IsVisibleTo(team, u.pos)) visibleCount++;
+                w.WriteValueSafe(visibleCount);
+                foreach (var u in b.Units)
+                {
+                    if (u.team != team && !vision.IsVisibleTo(team, u.pos)) continue;
+                    w.WriteValueSafe((byte)u.id);
+                    w.WriteValueSafe((byte)u.pos.x);
+                    w.WriteValueSafe((byte)u.pos.y);
+                    w.WriteValueSafe((sbyte)u.hp);
+                    w.WriteValueSafe(u.alive);
+                    w.WriteValueSafe(u.ap);
+                    w.WriteValueSafe(u.moveGauge);
+                    w.WriteValueSafe(u.moveCooldown);
+                    w.WriteValueSafe(u.regenDelay);
+                    w.WriteValueSafe(u.attackBuffUntil);
+                    w.WriteValueSafe(u.stunnedUntil);
+                    w.WriteValueSafe(u.flyingUntil);
+                    w.WriteValueSafe(u.skillReadyAt[0]);
+                    w.WriteValueSafe(u.skillReadyAt[1]);
+                }
 
-            NetworkManager.Singleton.CustomMessagingManager
-                .SendNamedMessageToAll(MsgSnap, w, NetworkDelivery.Unreliable);
+                w.WriteValueSafe((byte)r.Zones.Count);
+                foreach (var z in r.Zones)
+                {
+                    w.WriteValueSafe((sbyte)z.owner);
+                    w.WriteValueSafe((sbyte)z.capturingTeam);
+                    w.WriteValueSafe(z.progress);
+                }
+
+                w.WriteValueSafe((byte)p.Packs.Count);
+                foreach (var pack in p.Packs)
+                {
+                    w.WriteValueSafe(pack.active);
+                    w.WriteValueSafe(pack.respawnAt);
+                }
+
+                foreach (var s in NetLobby.Slots)
+                    if (s.owner == SlotOwner.RemoteHuman && s.team == team)
+                        NetworkManager.Singleton.CustomMessagingManager
+                            .SendNamedMessage(MsgSnap, s.clientId, w, NetworkDelivery.Unreliable);
+            }
         }
 
         /// <summary>호스트 — 라운드 종료. 브리핑은 클라별 유닛 기준이라 targeted 전송.</summary>

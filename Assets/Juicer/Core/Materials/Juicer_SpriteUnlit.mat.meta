@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 82ba1fdac44483f41bc1e71447aaa356
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Core/Materials/Juicer_SpriteUnlit.mat
+  uploadId: 780613

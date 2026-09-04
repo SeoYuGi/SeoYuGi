@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 735ddd3ebea7cc4478f8045de72a870b
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Scenes/Juicer_Demo_ParallaxAndInfiniteScrolling.unity
+  uploadId: 780613

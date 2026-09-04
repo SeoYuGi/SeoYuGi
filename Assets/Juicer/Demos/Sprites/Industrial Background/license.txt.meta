@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: d961a03567c6aed4ab413a8bd46bafff
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Sprites/Industrial Background/license.txt
+  uploadId: 780613

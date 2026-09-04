@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 35c69a733cea8ec4fa7d030336ff9af8
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Sprites/Tiny Swords/Tiles/Tilemap_Flat_17.asset
+  uploadId: 780613

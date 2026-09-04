@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 548c77483b4615a41bf197e2b769f8ad
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Sprites/Kings and Pigs/Tiles/Terrain (32x32)_16.asset
+  uploadId: 780613

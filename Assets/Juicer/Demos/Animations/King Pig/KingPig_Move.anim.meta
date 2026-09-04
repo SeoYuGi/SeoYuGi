@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 4fb48a38315935941a983ea5adbf840a
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 7400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Animations/King Pig/KingPig_Move.anim
+  uploadId: 780613

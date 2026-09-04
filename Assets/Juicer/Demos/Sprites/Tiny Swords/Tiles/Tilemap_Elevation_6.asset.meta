@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 94689ec8d37fb8340b4c3c1b1e1bc248
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Sprites/Tiny Swords/Tiles/Tilemap_Elevation_6.asset
+  uploadId: 780613

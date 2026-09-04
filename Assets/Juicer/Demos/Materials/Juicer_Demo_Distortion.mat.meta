@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 377a46a812f354043aa241d6bd6869a9
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Materials/Juicer_Demo_Distortion.mat
+  uploadId: 780613

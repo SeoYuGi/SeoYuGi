@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 01a63fb456b0aa9439abdcc449a5e3fc
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Core/Scripts/Juicer_SquishyCollider.cs
+  uploadId: 780613

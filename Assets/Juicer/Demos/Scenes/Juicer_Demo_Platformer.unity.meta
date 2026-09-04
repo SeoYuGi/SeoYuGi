@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: d19243867d21eb746ad14a17f50873ca
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Scenes/Juicer_Demo_Platformer.unity
+  uploadId: 780613

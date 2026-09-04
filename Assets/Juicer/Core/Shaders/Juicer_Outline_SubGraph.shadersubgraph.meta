@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 83449022c7eb2bd49ade23ffebd2a923
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 60072b568d64c40a485e0fc55012dc9f, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Core/Shaders/Juicer_Outline_SubGraph.shadersubgraph
+  uploadId: 780613

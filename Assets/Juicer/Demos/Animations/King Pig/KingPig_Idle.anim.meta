@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 53eef9830c3eafd43ad0ad36814ec1f2
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 7400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Animations/King Pig/KingPig_Idle.anim
+  uploadId: 780613

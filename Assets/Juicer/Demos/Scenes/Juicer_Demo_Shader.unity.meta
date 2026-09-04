@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: b379d60eccd54c54d988122f3a14523f
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Scenes/Juicer_Demo_Shader.unity
+  uploadId: 780613

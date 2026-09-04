@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 5f1df9eea86d0394288dbad0ac0c386c
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Scenes/Juicer_Demo_TopDown.unity
+  uploadId: 780613

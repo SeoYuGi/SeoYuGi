@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 14e9fe45cf99395449ce44f6e1b255a7
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 7400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Animations/Knight/Knight_Idle.anim
+  uploadId: 780613

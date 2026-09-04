@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: a614bcfb8d13c974f85bd01b0b41b238
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 9100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Animations/Knight/Knight.controller
+  uploadId: 780613

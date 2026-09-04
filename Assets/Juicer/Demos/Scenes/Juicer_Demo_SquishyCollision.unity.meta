@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 96d71cbbd517e824499664c9bd3af91d
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Scenes/Juicer_Demo_SquishyCollision.unity
+  uploadId: 780613

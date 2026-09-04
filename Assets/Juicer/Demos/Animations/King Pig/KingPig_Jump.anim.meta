@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: fcbb1c4bc6ed3c242ad716c1798f70dc
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 7400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Animations/King Pig/KingPig_Jump.anim
+  uploadId: 780613

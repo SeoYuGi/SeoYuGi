@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 587f7b40216b55e4e8862ab5de636cf3
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Materials/Juicer_Demo_Outline.mat
+  uploadId: 780613

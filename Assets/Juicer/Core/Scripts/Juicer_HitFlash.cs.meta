@@ -1,0 +1,21 @@
+fileFormatVersion: 2
+guid: 19343380ef440784cae9a600f559d8ed
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - spriteRenderer: {instanceID: 0}
+  - requiredShader: {fileID: -6465566751694194690, guid: 40e6fdb293fc6e745aa220a1e58d4d68,
+      type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Core/Scripts/Juicer_HitFlash.cs
+  uploadId: 780613

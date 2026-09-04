@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: a4332cc91b3a0f947bf56fc087025de4
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 9100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 329356
+  packageName: Juicer
+  packageVersion: 1.1
+  assetPath: Assets/Juicer/Demos/Animations/King Pig/KingPig.controller
+  uploadId: 780613

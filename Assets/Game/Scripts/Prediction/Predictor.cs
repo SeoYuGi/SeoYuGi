@@ -46,6 +46,7 @@ namespace SeoYuGi.Prediction
                 _roundMoveCount.TryGetValue(e.ActorId, out int idx);
                 p.ObserveMove(e.From, e.To, e.Time, idx);
                 _roundMoveCount[e.ActorId] = idx + 1;
+                CheckDetections(e.ActorId, p);
             }
             else
             {
@@ -108,6 +109,13 @@ namespace SeoYuGi.Prediction
 
             var lines = new List<string>();
 
+            // 스타일 분류 + 카운터 예고 — 다음 라운드에 실제로 이 전술이 실행된다 (약속-이행)
+            var style = GetStyle(actorId);
+            if (style == PlayStyle.ZoneRusher)
+                lines.Add("분류: 거점 돌격형 — 고지대를 선점해 진입로를 내려다봅니다.");
+            else if (style == PlayStyle.HighlandHolder)
+                lines.Add("분류: 고지대 선호형 — 선호 고지를 먼저 접수합니다.");
+
             int third = LaneThird(p, out float lanePct);
             string[] laneNames = { "좌측", "중앙", "우측" };
             lines.Add($"{laneNames[third]} 경로 선호 {(int)(lanePct * 100)}% — 해당 경로에 화력을 배치합니다.");
@@ -126,6 +134,83 @@ namespace SeoYuGi.Prediction
                 lines.Add($"오프닝 경유지 {opening.Key} 반복 감지 — 초반 설치를 조정합니다.");
 
             return lines.ToArray();
+        }
+
+        // ── 스타일 분류 + 카운터 전술 API (R2+ "습성 조건부 대응") ──────
+
+        /// 유저 플레이 스타일. 표본 6수 미만이면 Unknown.
+        public PlayStyle GetStyle(int actorId)
+        {
+            if (!_actors.TryGetValue(actorId, out var p) || p.ObservedMoves < 6)
+                return PlayStyle.Unknown;
+            // 고지 성향이 러시 성향보다 뚜렷하면 고지형 — 둘 다면 고지 우선 (더 특이한 습관)
+            if (p.HighlandEntries >= 3 && p.HighlandEntries >= p.ZoneEntries)
+                return PlayStyle.HighlandHolder;
+            if ((p.FirstZoneEntryTime >= 0f && p.FirstZoneEntryTime < 15f) ||
+                p.ZoneEntries / (float)p.ObservedMoves > 0.2f)
+                return PlayStyle.ZoneRusher;
+            return PlayStyle.Unknown;
+        }
+
+        /// 개막 반복 경유지 (2회 이상 반복된 첫 3수 칸). 없으면 false.
+        public bool TryGetOpeningCell(int actorId, out Cell cell)
+        {
+            cell = default;
+            if (!_actors.TryGetValue(actorId, out var p)) return false;
+            int best = 1;
+            foreach (var kv in p.OpeningCells)
+                if (kv.Value > best) { best = kv.Value; cell = kv.Key; }
+            return best >= 2;
+        }
+
+        /// 유저가 가장 자주 밟은 고지대. 표본 없으면 false.
+        public bool TryGetFavoriteHighland(int actorId, out Cell cell)
+        {
+            cell = default;
+            if (!_actors.TryGetValue(actorId, out var p)) return false;
+            float best = 0.5f;
+            foreach (var h in _cfg.HighlandCells)
+            {
+                if (!p.InMap(h)) continue;
+                float v = p.Visits[h.X, h.Y];
+                if (v > best) { best = v; cell = h; }
+            }
+            return best > 0.5f;
+        }
+
+        // ── 실시간 패턴 감지 (자막 연출용) — 감지 종류당 매치 1회 ──────
+
+        private readonly HashSet<string> _firedDetections = new HashSet<string>();
+        private readonly Queue<string> _detections = new Queue<string>();
+
+        public bool TryDequeueDetection(out string message)
+        {
+            message = null;
+            if (_detections.Count == 0) return false;
+            message = _detections.Dequeue();
+            return true;
+        }
+
+        private void CheckDetections(int actorId, ActorPattern p)
+        {
+            if (p.ObservedMoves < 6) return;
+
+            if (p.FirstZoneEntryTime >= 0f && p.FirstZoneEntryTime < 15f)
+                Fire(actorId, "rush", "개막 거점 직행");
+            if (p.HighlandEntries >= 3)
+                Fire(actorId, "high", "고지대 선호");
+            int third = LaneThird(p, out float lanePct);
+            if (lanePct > 0.6f && p.ObservedMoves >= 10)
+            {
+                string[] laneNames = { "좌측", "중앙", "우측" };
+                Fire(actorId, "lane", $"{laneNames[third]} 경로 편중");
+            }
+        }
+
+        private void Fire(int actorId, string key, string message)
+        {
+            if (_firedDetections.Add(actorId + ":" + key))
+                _detections.Enqueue(message);
         }
 
         private ActorPattern GetPattern(int actorId)

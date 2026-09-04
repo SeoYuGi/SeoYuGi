@@ -95,6 +95,11 @@ namespace SeoYuGi.BattleView
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
         readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
 
+        // 예측 사격 추적 (G) — 캐스팅 직후 예고와 매칭해 적중/실패 자막
+        readonly List<(int attackerId, Coord cell, float time)> pendingPredictedShots = new List<(int, Coord, float)>();
+        readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
+        float nextFakeCalloutTime; // 사후 귀속 자막 남발 방지
+
         void Awake()
         {
             gridView = GetComponent<GridView>();
@@ -196,6 +201,8 @@ namespace SeoYuGi.BattleView
             foreach (var zone in map.Zones)
             foreach (var c in zone)
                 cfg.ZoneCells.Add(new PredCell(c.x, c.y));
+            foreach (var h in map.Highlands)
+                cfg.HighlandCells.Add(new PredCell(h.x, h.y)); // 스타일 분류(고지형 감지)용
             return new Predictor(cfg);
         }
 
@@ -331,10 +338,17 @@ namespace SeoYuGi.BattleView
             // 슬롯: 나 빼고 전부 AI. 적팀 뇌에만 Predictor 주입 — "AI군은 인간을 노린다"(기획서 §05).
             worldView = new CoreWorldView(Battle, Combat, Round, vision, playerUnitId, Match.CurrentRound, hackSystem);
             aiDrivers.Clear();
+            pendingPredictedShots.Clear();
+            predictedStrikes.Clear();
             foreach (var r in roster)
                 if (r.id != playerUnitId)
-                    aiDrivers.Add(new AiSlotDriver(r.id, r.team, r.cls, Move, Combat,
-                        r.team != playerTeam ? predictor : null, hackSystem));
+                {
+                    var driver = new AiSlotDriver(r.id, r.team, r.cls, Move, Combat,
+                        r.team != playerTeam ? predictor : null, hackSystem);
+                    driver.OnPredictedShot += (attackerId, cell) =>
+                        pendingPredictedShots.Add((attackerId, new Coord(cell.X, cell.Y), Battle.time));
+                    aiDrivers.Add(driver);
+                }
 
             Move.OnUnitMoved += (unitId, path, yellow) =>
             {
@@ -354,6 +368,19 @@ namespace SeoYuGi.BattleView
             {
                 if (strike.team == playerTeam) battleAudio.PlaySfx("S2_TelegraphAlly", 0.8f);
                 else if (AnyCellVisible(strike)) battleAudio.PlaySfx("S1_TelegraphEnemy", 0.8f);
+
+                // 예측 사격 매칭 — 직전 제출과 같은 공격자·목표 칸이면 표식 (G)
+                for (int i = pendingPredictedShots.Count - 1; i >= 0; i--)
+                {
+                    var shot = pendingPredictedShots[i];
+                    if (Battle.time - shot.time > 0.2f) { pendingPredictedShots.RemoveAt(i); continue; }
+                    if (shot.attackerId == strike.attackerId && strike.cells.Contains(shot.cell))
+                    {
+                        predictedStrikes.Add(strike);
+                        pendingPredictedShots.RemoveAt(i);
+                        break;
+                    }
+                }
             };
             Combat.OnStrikeResolved += (strike, hit) =>
             {
@@ -363,6 +390,23 @@ namespace SeoYuGi.BattleView
                     if (hit) battleAudio.PlaySfx("S5_ApRefund", 1f); // 적중 = 예측 성공 = AP 환급음
                 }
                 else if (hit) battleAudio.PlaySfx("S3_Hit", 0.8f);
+
+                // 예측 사격 결과 (G) — 맞으면 소름, 빗나가면 "배신 성공" 피드백
+                if (predictedStrikes.Remove(strike))
+                {
+                    if (hit) hud.ShowSubtitle("패턴 적중 — 예측 사격", 2.2f);
+                    else hud.ShowSubtitle("예측 실패 — 패턴 이탈 감지", 2.2f);
+                }
+                // 사후 귀속 꼼수: 진짜 예측이 아니어도 플레이어가 맞았으면 35% 확률로
+                // "읽고 쏜 것처럼" 자막 — 어차피 맞은 건 사실이라 뇌가 알아서 소름 돋는다.
+                // R1 제외(바보 컨셉 유지), 8초 쿨다운으로 남발 방지.
+                else if (hit && strike.team != playerTeam && Match.CurrentRound >= 2 &&
+                         Time.time >= nextFakeCalloutTime &&
+                         StrikeCoversPlayer(strike) && UnityEngine.Random.value < 0.35f)
+                {
+                    nextFakeCalloutTime = Time.time + 8f;
+                    hud.ShowSubtitle("패턴 적중 — 예측 사격", 2.2f);
+                }
             };
             Combat.OnGuard += _ => battleAudio.PlaySfx("S8_Guard", 0.8f);
             Combat.OnSkillCast += (unitId, kind) =>
@@ -495,6 +539,7 @@ namespace SeoYuGi.BattleView
                 tm.anchor = TextAnchor.MiddleCenter;
                 tm.alignment = TextAlignment.Center;
                 tm.color = new Color(1f, 1f, 1f, 0.45f);
+                GameFonts.Apply(tm, GameFonts.Title); // 거점 글자 = 어그로체
             }
         }
 
@@ -524,6 +569,14 @@ namespace SeoYuGi.BattleView
             var u = Battle.GetUnit(unitId);
             if (u == null) return false;
             return u.team == playerTeam || vision.IsVisibleTo(playerTeam, u.pos);
+        }
+
+        /// <summary>판정 칸에 플레이어가 있었나 — 사후 귀속 자막의 대상 확인 (근사치).</summary>
+        bool StrikeCoversPlayer(TelegraphStrike strike)
+        {
+            var player = Battle.GetUnit(playerUnitId);
+            if (player == null || !player.alive) return false;
+            return strike.cells.Contains(player.pos);
         }
 
         bool AnyCellVisible(TelegraphStrike strike)
@@ -682,6 +735,13 @@ namespace SeoYuGi.BattleView
             worldView.Refresh();
             foreach (var driver in aiDrivers)
                 driver.Tick(worldView);
+
+            // 실시간 패턴 감지 자막 (F) — 학습이 라운드 안에서 째깍거리는 연출
+            if (predictor.TryDequeueDetection(out var detection))
+            {
+                hud.ShowSubtitle($"패턴 감지 — {detection}", 2.8f);
+                battleAudio.PlaySfx("S22_DetectPing", 0.6f);
+            }
 
             SyncPresentation();
 

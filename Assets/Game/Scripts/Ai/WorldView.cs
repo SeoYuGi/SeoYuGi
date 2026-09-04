@@ -14,10 +14,11 @@ namespace SeoYuGi.Ai
     {
         public CommandType Type;
         public Cell Target;
+        public bool Predicted; // 학습 기반 예측 사격 — 연출(적중/실패 자막)용 표식
 
         public static AiCommand None => new AiCommand { Type = CommandType.None };
-        public static AiCommand Of(CommandType type, Cell target) =>
-            new AiCommand { Type = type, Target = target };
+        public static AiCommand Of(CommandType type, Cell target, bool predicted = false) =>
+            new AiCommand { Type = type, Target = target, Predicted = predicted };
     }
 
     public struct ActorState
@@ -55,6 +56,7 @@ namespace SeoYuGi.Ai
         IReadOnlyList<ActorState> Actors { get; }
         IReadOnlyList<ZoneState> Zones { get; }
         IReadOnlyList<Telegraph> Telegraphs { get; }
+        IReadOnlyList<Cell> Highlands { get; } // 고지대 칸 — 카운터 전술 포지셔닝용
         float GetAp(int actorId);
         bool IsWalkable(Cell cell);              // 맵 안 && 벽 아님 && 점유 안 됨
         bool IsVisibleTo(TeamId team, Cell cell); // 해당 팀의 공유 시야 안인가 (벽 LOS 반영)

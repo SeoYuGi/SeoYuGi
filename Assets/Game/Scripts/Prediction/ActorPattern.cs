@@ -18,6 +18,8 @@ namespace SeoYuGi.Prediction
         internal bool HasPosition;
         internal float FirstZoneEntryTime = -1f;
         internal int ObservedMoves;
+        internal int ZoneEntries;      // 거점 칸 진입 횟수 — 러시 성향
+        internal int HighlandEntries;  // 고지대 칸 진입 횟수 — 고지 성향
         internal readonly Dictionary<Cell, int> OpeningCells = new Dictionary<Cell, int>(); // 라운드별 첫 3수
 
         private readonly PredictionConfig _cfg;
@@ -79,6 +81,9 @@ namespace SeoYuGi.Prediction
                 OpeningCells.TryGetValue(to, out int n);
                 OpeningCells[to] = n + 1;
             }
+
+            if (_cfg.ZoneCells.Contains(to)) ZoneEntries++;
+            if (_cfg.HighlandCells.Contains(to)) HighlandEntries++;
 
             if (FirstZoneEntryTime < 0f && _cfg.ZoneCells.Contains(to))
                 FirstZoneEntryTime = time;

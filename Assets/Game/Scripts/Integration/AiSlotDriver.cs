@@ -17,6 +17,9 @@ namespace SeoYuGi.Integration
         readonly CombatSystem combat;
         readonly HackSystem hack;
 
+        /// <summary>예측 사격 성공 제출 (unitId, 목표 칸) — 적중/실패 연출 배선용.</summary>
+        public event System.Action<int, SeoYuGi.Prediction.Cell> OnPredictedShot;
+
         public AiSlotDriver(int unitId, int team, UnitClass cls, MoveSystem move, CombatSystem combat,
             Predictor predictor = null, HackSystem hack = null)
         {
@@ -37,10 +40,12 @@ namespace SeoYuGi.Integration
                     move.TryMove(unitId, ToCoord(cmd.Target));
                     break;
                 case CommandType.Attack:
-                    combat.TryAttack(unitId, ToCoord(cmd.Target));
+                    if (combat.TryAttack(unitId, ToCoord(cmd.Target)) == ActDenied.None && cmd.Predicted)
+                        OnPredictedShot?.Invoke(unitId, cmd.Target);
                     break;
                 case CommandType.Heavy:
-                    combat.TrySkill(unitId, ToCoord(cmd.Target));
+                    if (combat.TrySkill(unitId, ToCoord(cmd.Target)) == ActDenied.None && cmd.Predicted)
+                        OnPredictedShot?.Invoke(unitId, cmd.Target);
                     break;
                 case CommandType.Guard:
                     combat.TryGuard(unitId);

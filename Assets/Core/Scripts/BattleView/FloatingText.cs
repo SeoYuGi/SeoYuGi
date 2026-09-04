@@ -25,6 +25,7 @@ namespace SeoYuGi.BattleView
             f.tm.anchor = TextAnchor.MiddleCenter;
             f.tm.alignment = TextAlignment.Center;
             f.tm.color = color;
+            GameFonts.Apply(f.tm, GameFonts.HudHeavy); // 데미지·스킬명 = SUIT Heavy
         }
 
         void Update()

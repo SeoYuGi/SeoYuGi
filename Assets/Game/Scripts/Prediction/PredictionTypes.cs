@@ -5,6 +5,9 @@ namespace SeoYuGi.Prediction
 {
     public enum TeamId { Human = 0, Machine = 1 }
 
+    /// 유저 플레이 스타일 분류 — R2+ 카운터 전술의 입력 (기획서 R3 "습성 조건부 대응").
+    public enum PlayStyle { Unknown, ZoneRusher, HighlandHolder }
+
     public enum ActionType { Move, Attack, Heavy, Guard, Decoy }
 
     [Serializable]
@@ -44,6 +47,7 @@ namespace SeoYuGi.Prediction
         public int MapWidth = 9;
         public int MapHeight = 9;
         public List<Cell> ZoneCells = new List<Cell>();
+        public List<Cell> HighlandCells = new List<Cell>(); // 고지대 — 스타일 분류용
 
         // 예측 점수 가중치: 방향 마르코프 vs 칸 선호 vs 거점 인력
         public float MarkovWeight = 0.55f;

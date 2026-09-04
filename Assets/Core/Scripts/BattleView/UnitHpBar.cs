@@ -54,6 +54,7 @@ namespace SeoYuGi.BattleView
             tm.anchor = TextAnchor.LowerCenter;
             tm.alignment = TextAlignment.Center;
             tm.color = Color.Lerp(color, Color.white, 0.35f);
+            GameFonts.Apply(tm, GameFonts.Hud); // 콜사인 = SUIT
         }
 
         void Build()

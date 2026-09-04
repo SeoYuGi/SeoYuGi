@@ -14,6 +14,7 @@ namespace SeoYuGi.Ai
         private readonly AiConfig _cfg;
         private readonly Predictor _predictor; // 적팀 뇌만 보유, 아군 팀원은 null
         private float _nextDecisionTime;
+        private float _nextAttackTime;         // 공격·스킬 페이싱 — AP 연타 방지
         private float _lastActiveTime;         // 마지막으로 뭔가 한 시각 — 프리징 감지
         private Cell _prevPos;                 // 직전 위치 — 옆걸음 왕복 방지
         private bool _hasPrevPos;
@@ -36,10 +37,11 @@ namespace SeoYuGi.Ai
 
             var cmd = Decide(world, me, ap);
 
-            // 프리징 방지: 한동안 무행동 + 거점 위도 아니면 배회 한 걸음
+            // 프리징 방지: 한동안 무행동 + 거점·고지대 위도 아니면 배회 한 걸음
+            // (고지대 홀드는 카운터 전술의 자리 사수 — 배회로 새면 안 됨)
             if (cmd.Type == CommandType.None &&
                 world.Time - _lastActiveTime > _cfg.IdleWanderAfter &&
-                ap >= _cfg.CostMove && !OnAnyZonePatch(world, me.Pos))
+                ap >= _cfg.CostMove && !OnAnyZonePatch(world, me.Pos) && !OnHighland(world, me.Pos))
             {
                 var wander = WanderStep(world, me);
                 if (wander.HasValue) cmd = AiCommand.Of(CommandType.Move, wander.Value);
@@ -73,18 +75,53 @@ namespace SeoYuGi.Ai
                     return AiCommand.Of(CommandType.Guard, me.Pos);
             }
 
+            // 1.5) 개막 카운터 (E) — 러시 습관 감지 시 시작 6초 안에 반복 진입로에 선제 설치 (R2+)
+            if (_predictor != null && world.Round >= 2 && world.Time < 6f &&
+                world.Time >= _nextAttackTime && ap >= _cfg.CostHeavy)
+            {
+                var human = FindHuman(world);
+                if (human.HasValue && _predictor.GetStyle(human.Value.Id) == PlayStyle.ZoneRusher &&
+                    _predictor.TryGetOpeningCell(human.Value.Id, out var openCell))
+                {
+                    var preCast = TryRangedCast(me, openCell);
+                    if (preCast.Type != CommandType.None)
+                    {
+                        _nextAttackTime = world.Time + EffectiveAttackInterval(world);
+                        return preCast;
+                    }
+                }
+            }
+
             var target = PickTarget(world, me);
 
-            // 2) 클래스 스킬
-            if (target.HasValue)
+            // 2~3) 공격·스킬 — AttackInterval 페이싱 (AP를 한 번에 쏟아붓는 연타 방지)
+            if (target.HasValue && world.Time >= _nextAttackTime)
             {
-                var aim = AimCell(target.Value); // 예측 칸(학습 전이면 현재 칸)
+                var aim = AimCell(target.Value, out bool predictedAim); // 예측 칸(학습 전이면 현재 칸)
+                bool predicted = predictedAim && !aim.Equals(target.Value.Pos); // 현재 칸과 다를 때만 "통수"
                 var skill = TrySkill(world, me, ap, target.Value, aim);
-                if (skill.Type != CommandType.None) return skill;
+                if (skill.Type != CommandType.None)
+                {
+                    _nextAttackTime = world.Time + EffectiveAttackInterval(world);
+                    skill.Predicted = predicted;
+                    return skill;
+                }
 
-                // 3) 일반공격 — 예측 칸이 내 십자 인접이면 깐다
-                if (ap >= _cfg.CostAttack + _cfg.ReserveAp && IsOrthoAdjacent(me.Pos, aim))
-                    return AiCommand.Of(CommandType.Attack, aim);
+                // 일반공격 — 예측 칸이 내 십자 인접이면 깐다.
+                // 예비 AP는 스킬용 — 일반공격까지 막지 않는다 (근접 대치에서 수동적이 되는 문제)
+                if (ap >= _cfg.CostAttack && IsOrthoAdjacent(me.Pos, aim))
+                {
+                    _nextAttackTime = world.Time + EffectiveAttackInterval(world);
+                    return AiCommand.Of(CommandType.Attack, aim, predicted);
+                }
+            }
+
+            // 3.5) 습성 카운터 전술 (D) — 스타일 파악되면 통수 포지셔닝 (R2+)
+            if (_predictor != null && world.Round >= 2 && TryCounterTactic(world, me, out var counterStep))
+            {
+                if (counterStep.HasValue && ap >= _cfg.CostMove)
+                    return AiCommand.Of(CommandType.Move, counterStep.Value);
+                if (!counterStep.HasValue) return AiCommand.None; // 자리 사수 — 공격은 상위 우선순위가
             }
 
             // 4) 거점 이동
@@ -94,6 +131,109 @@ namespace SeoYuGi.Ai
 
             // 5) 비축
             return AiCommand.None;
+        }
+
+        // ── R1 = 살짝 바보 (기준선) — R2부터 본색. 학습의 낙차를 만드는 대비 장치 ──
+
+        private float EffectiveDodgeChance(IWorldView world) =>
+            _cfg.DodgeChance * (world.Round <= 1 ? 0.6f : 1f);
+
+        private float EffectiveAttackInterval(IWorldView world) =>
+            _cfg.AttackInterval * (world.Round <= 1 ? 1.35f : 1f);
+
+        /// 습성 카운터: 러시형 유저 → 원거리가 고지대 선점해 점사.
+        /// 고지형 유저 → 기동형이 유저 선호 고지대를 먼저 접수.
+        /// true 반환 시: step=이동 한 걸음, step=null이면 현 위치 사수.
+        private bool TryCounterTactic(IWorldView world, ActorState me, out Cell? step)
+        {
+            step = null;
+            var human = FindHuman(world);
+            if (!human.HasValue) return false;
+            var style = _predictor.GetStyle(human.Value.Id);
+
+            if (style == PlayStyle.ZoneRusher)
+            {
+                if (me.Class != ClassId.Sniper && me.Class != ClassId.Grenadier) return false;
+                if (OnHighland(world, me.Pos)) return true; // 고지 점거 완료 — 점사 태세
+                var high = NearestHighland(world, me.Pos);
+                if (!high.HasValue) return false;
+                step = GreedyStep(world, me, high.Value);
+                return step.HasValue;
+            }
+
+            if (style == PlayStyle.HighlandHolder)
+            {
+                if (me.Class != ClassId.Assassin && me.Class != ClassId.Balance) return false;
+                if (!_predictor.TryGetFavoriteHighland(human.Value.Id, out var fav)) return false;
+                var favCell = new Cell(fav.X, fav.Y);
+                if (me.Pos.Equals(favCell)) return true; // 유저 단골 고지 접수 완료 — 사수
+                step = GreedyStep(world, me, favCell);
+                return step.HasValue;
+            }
+            return false;
+        }
+
+        /// 원거리 계열이 지정 칸에 캐스팅 가능하면 예측 표식 달아서 반환.
+        private AiCommand TryRangedCast(ActorState me, Cell cell)
+        {
+            if (cell.Equals(me.Pos)) return AiCommand.None;
+            switch (me.Class)
+            {
+                case ClassId.Grenadier:
+                    if (Manhattan(me.Pos, cell) <= _cfg.GrenadeRange)
+                        return AiCommand.Of(CommandType.Heavy, cell, predicted: true);
+                    break;
+                case ClassId.Sniper:
+                    if ((cell.X == me.Pos.X || cell.Y == me.Pos.Y) && Chebyshev(me.Pos, cell) <= _cfg.SnipeRange)
+                        return AiCommand.Of(CommandType.Heavy, cell, predicted: true);
+                    break;
+            }
+            return AiCommand.None;
+        }
+
+        private static ActorState? FindHuman(IWorldView world)
+        {
+            foreach (var a in world.Actors)
+                if (a.IsHuman && a.Alive) return a;
+            return null;
+        }
+
+        private bool OnHighland(IWorldView world, Cell pos)
+        {
+            foreach (var h in world.Highlands)
+                if (h.Equals(pos)) return true;
+            return false;
+        }
+
+        private Cell? NearestHighland(IWorldView world, Cell from)
+        {
+            Cell? best = null;
+            int bd = int.MaxValue;
+            foreach (var h in world.Highlands)
+            {
+                if (!world.IsWalkable(h) && !h.Equals(from)) continue; // 점유된 고지는 제외
+                int d = Manhattan(from, h);
+                if (d < bd) { bd = d; best = h; }
+            }
+            return best;
+        }
+
+        /// 범용 그리디 한 걸음 — 가까워지는 이웃 우선, 없으면 옆걸음(직전 칸 제외).
+        private Cell? GreedyStep(IWorldView world, ActorState me, Cell targetCell)
+        {
+            int curDist = Manhattan(me.Pos, targetCell);
+            Cell? best = null;
+            Cell? sidestep = null;
+            int bestDist = curDist;
+            foreach (var n in OrthoNeighbors(me.Pos))
+            {
+                if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
+                int d = Manhattan(n, targetCell);
+                if (d < bestDist) { bestDist = d; best = n; }
+                else if (d == curDist && sidestep == null && !(_hasPrevPos && n.Equals(_prevPos)))
+                    sidestep = n;
+            }
+            return best ?? sidestep;
         }
 
         private AiCommand TrySkill(IWorldView world, ActorState me, float ap, ActorState target, Cell aim)
@@ -160,12 +300,17 @@ namespace SeoYuGi.Ai
             return best;
         }
 
-        private Cell AimCell(ActorState target)
+        private Cell AimCell(ActorState target, out bool predicted)
         {
+            predicted = false;
             if (_predictor != null)
             {
                 var preds = _predictor.PredictNextCells(target.Id, 1);
-                if (preds.Count > 0) return preds[0].Cell;
+                if (preds.Count > 0)
+                {
+                    predicted = true;
+                    return preds[0].Cell;
+                }
             }
             return target.Pos;
         }
@@ -191,9 +336,34 @@ namespace SeoYuGi.Ai
 
             var patch = goal.Value.Cells ?? new[] { goal.Value.Cell };
 
-            // 목표 패치 위면 정지 — 점거(또는 수비) 유지. 공격은 상위 우선순위가 알아서 한다.
+            bool onPatch = false;
             foreach (var c in patch)
-                if (c.Equals(me.Pos)) return null;
+                if (c.Equals(me.Pos)) { onPatch = true; break; }
+
+            if (onPatch)
+            {
+                // 경합(적도 패치 위) 중인데 공격각이 안 나오면 적에게 한 걸음 — 눌러앉기 교착 방지
+                foreach (var a in world.Actors)
+                {
+                    if (!a.Alive || a.Team == me.Team) continue;
+                    bool intruder = false;
+                    foreach (var c in patch)
+                        if (c.Equals(a.Pos)) { intruder = true; break; }
+                    if (!intruder) continue;
+                    if (IsOrthoAdjacent(me.Pos, a.Pos)) return null; // 이미 붙음 — 공격은 상위 우선순위 몫
+
+                    Cell? approach = null;
+                    int bd = Manhattan(me.Pos, a.Pos);
+                    foreach (var n in OrthoNeighbors(me.Pos))
+                    {
+                        if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
+                        int d = Manhattan(n, a.Pos);
+                        if (d < bd) { bd = d; approach = n; }
+                    }
+                    if (approach.HasValue) return approach;
+                }
+                return null; // 경합 없음 — 점거 유지
+            }
 
             // 목표 = 비어 있는 가장 가까운 패치 칸 (아군끼리 분산 진입)
             Cell? targetCell = null;
@@ -243,7 +413,7 @@ namespace SeoYuGi.Ai
                 if (lead < _cfg.MinDodgeLead) continue;     // 너무 늦음 — 인간적 반응 한계
                 uint h = (uint)(t.Cell.X * 73856093 ^ t.Cell.Y * 19349663
                                 ^ (int)(t.ImpactTime * 997f) ^ _actorId * 83492791);
-                if (h % 100 < _cfg.DodgeChance * 100f) return true;
+                if (h % 100 < EffectiveDodgeChance(world) * 100f) return true;
             }
             return false;
         }

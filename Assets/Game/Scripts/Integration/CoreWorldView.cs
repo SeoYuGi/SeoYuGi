@@ -25,6 +25,7 @@ namespace SeoYuGi.Integration
         readonly List<ActorState> actors = new List<ActorState>();
         readonly List<ZoneState> zones = new List<ZoneState>();
         readonly List<Telegraph> telegraphs = new List<Telegraph>();
+        readonly List<AiCell> highlands = new List<AiCell>(); // 라운드 내 불변 — 생성 시 1회 스캔
         AiCell[][] zoneCellCache; // 거점 칸은 라운드 내 불변 — 1회 변환
 
         public CoreWorldView(BattleState state, CombatSystem combat, RoundSystem round,
@@ -38,6 +39,13 @@ namespace SeoYuGi.Integration
             this.matchRound = matchRound;
             this.hack = hack;
             animalTeam = state.GetUnit(humanUnitId)?.team ?? 0;
+
+            for (int x = 0; x < state.Grid.Width; x++)
+                for (int y = 0; y < state.Grid.Height; y++)
+                {
+                    var c = new Coord(x, y);
+                    if (state.Grid.IsHighland(c)) highlands.Add(new AiCell(x, y));
+                }
         }
 
         /// <summary>브레인 틱 전에 매 프레임 1회 호출 — 액터/예고 스냅샷 갱신.</summary>
@@ -93,6 +101,7 @@ namespace SeoYuGi.Integration
         public IReadOnlyList<ActorState> Actors => actors;
         public IReadOnlyList<ZoneState> Zones => zones;
         public IReadOnlyList<Telegraph> Telegraphs => telegraphs;
+        public IReadOnlyList<AiCell> Highlands => highlands;
 
         public float GetAp(int actorId) => state.GetUnit(actorId)?.ap ?? 0f;
 

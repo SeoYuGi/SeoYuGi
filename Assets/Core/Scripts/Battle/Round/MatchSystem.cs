@@ -1,13 +1,13 @@
 namespace SeoYuGi.Battle
 {
     /// <summary>
-    /// 매치 = 라운드 × 3, 2선승 (기획서 §05).
+    /// 매치 = 라운드 × 5, 3선승. 학습 커브(관찰→적용→조건부)는 R3에서 만렙 — R4~5는 만렙 AI 유지.
     /// 라운드 사이 브리핑·Predictor.SetRound는 바깥(러너)이 처리 — 여기는 스코어만.
     /// </summary>
     public class MatchSystem
     {
-        public const int MaxRounds = 3;
-        public const int WinsNeeded = 2;
+        public const int MaxRounds = 5;
+        public const int WinsNeeded = 3;
 
         /// <summary>진행 중인 라운드 번호 1..3. 라운드 결과 기록 시 자동 전진.</summary>
         public int CurrentRound { get; private set; } = 1;

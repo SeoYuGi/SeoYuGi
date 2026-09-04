@@ -16,7 +16,7 @@ namespace SeoYuGi.BattleView
     {
         enum Overlay { None, Briefing, MatchEnd }
 
-        [SerializeField] float hudScale = 1.35f;
+        [SerializeField] float hudScale = 1.6f; // 1080p 기준 배율 — 해상도는 아래서 자동 보정
 
         BattleState battle;
         RoundSystem round;
@@ -44,9 +44,12 @@ namespace SeoYuGi.BattleView
         Texture2D texSlot, texPanel, texInfo, texChip, texBanner;           // 프레임류 — 없으면 GUI.Box 폴백
         UnitMoveInput moveInput; // 선택 상태 조회용 — 같은 GO에서 자동 연결
 
-        // hudScale 적용 후 논리 화면 크기
-        float W => Screen.width / hudScale;
-        float H => Screen.height / hudScale;
+        // 해상도 대응: 세로 1080 기준 비례 스케일 × hudScale — 어느 기기든 화면 대비 같은 크기
+        float UiScale => Screen.height / 1080f * hudScale;
+
+        // 스케일 적용 후 논리 화면 크기
+        float W => Screen.width / UiScale;
+        float H => Screen.height / UiScale;
 
         public void Init(BattleState battle, RoundSystem round, CombatConfig combatConfig, MatchSystem match,
             int playerUnitId, Color[] teamColors, string playerName = null)
@@ -98,8 +101,30 @@ namespace SeoYuGi.BattleView
                         if (lum < 30) px[i].a = 0;
                         else if (lum < 60) px[i].a = (byte)((lum - 30) * 255 / 30);
                     }
-                    var tex = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
-                    tex.SetPixels32(px);
+
+                    // 내용 바운딩 박스 크롭 — 생성 이미지의 캔버스 여백 때문에
+                    // 프레임이 rect보다 작게 그려져 텍스트가 뚫고 나가는 문제 해결
+                    int w = src.width, h = src.height;
+                    int minX = w, minY = h, maxX = -1, maxY = -1;
+                    for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        if (px[y * w + x].a > 12)
+                        {
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                        }
+
+                    if (maxX <= minX || maxY <= minY) { minX = 0; minY = 0; maxX = w - 1; maxY = h - 1; }
+                    int cw = maxX - minX + 1, ch = maxY - minY + 1;
+                    var cropped = new Color32[cw * ch];
+                    for (int y = 0; y < ch; y++)
+                    for (int x = 0; x < cw; x++)
+                        cropped[y * cw + x] = px[(y + minY) * w + (x + minX)];
+
+                    var tex = new Texture2D(cw, ch, TextureFormat.RGBA32, false);
+                    tex.SetPixels32(cropped);
                     tex.Apply();
                     result = tex;
                 }
@@ -162,7 +187,8 @@ namespace SeoYuGi.BattleView
         {
             if (battle == null) return;
             EnsureStyles();
-            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(hudScale, hudScale, 1f));
+            float s = UiScale;
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(s, s, 1f));
 
             DrawTopBar();
             if (overlay == Overlay.None)
@@ -198,26 +224,45 @@ namespace SeoYuGi.BattleView
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             subStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
             subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+
+            // 폰트: 어그로체 = 타이틀·배너·자막 임팩트, SUIT = HUD 전반
+            GameFonts.Apply(bannerStyle, GameFonts.Title);      // 매치 승/패 배너
+            GameFonts.Apply(subtitleStyle, GameFonts.Title);    // 관제 자막
+            GameFonts.Apply(bannerTextStyle, GameFonts.Title);  // 안내 배너
+            GameFonts.Apply(briefTitleStyle, GameFonts.Title);  // 브리핑 제목
+            GameFonts.Apply(timerStyle, GameFonts.HudHeavy);    // 남은시간 숫자
+            GameFonts.Apply(bigNumStyle, GameFonts.HudHeavy);   // AP 숫자
+            GameFonts.Apply(timerLabelStyle, GameFonts.Hud);
+            GameFonts.Apply(dotStyle, GameFonts.Hud);
+            GameFonts.Apply(chipStyle, GameFonts.HudHeavy);
+            GameFonts.Apply(roundStyle, GameFonts.Hud);
+            GameFonts.Apply(labelStyle, GameFonts.Hud);
+            GameFonts.Apply(briefLineStyle, GameFonts.Hud);
+            GameFonts.Apply(keyStyle, GameFonts.Hud);
+            GameFonts.Apply(slotNameStyle, GameFonts.Hud);
+            GameFonts.Apply(slotCostStyle, GameFonts.Hud);
+            GameFonts.Apply(slotCoolStyle, GameFonts.HudHeavy);
+            GameFonts.Apply(subStyle, GameFonts.Hud);
         }
 
         // ── 상단 바: 생존·스코어 | 남은시간 | 거점 칩 ─────────────────
 
         void DrawTopBar()
         {
-            // 남은시간 (탱고파이브 중앙 타이머)
-            var timerBox = new Rect(W / 2f - 70, 6, 140, 48);
+            // 남은시간 (탱고파이브 중앙 타이머) — 프레임 아트의 테두리 여백만큼 텍스트를 안쪽에
+            var timerBox = new Rect(W / 2f - 84, 2, 168, 62);
             DrawFrame(timerBox, texInfo);
             if (round.SuddenDeath)
             {
                 GUI.color = new Color(1f, 0.4f, 0.3f);
-                GUI.Label(new Rect(timerBox.x, timerBox.y + 4, timerBox.width, 40), "서든데스", timerStyle);
+                GUI.Label(new Rect(timerBox.x, timerBox.y + 12, timerBox.width, 38), "서든데스", timerStyle);
                 GUI.color = Color.white;
             }
             else
             {
                 float remain = Mathf.Max(0f, round.Config.roundSeconds - battle.time);
-                GUI.Label(new Rect(timerBox.x, timerBox.y + 3, timerBox.width, 14), "남은시간", timerLabelStyle);
-                GUI.Label(new Rect(timerBox.x, timerBox.y + 16, timerBox.width, 30),
+                GUI.Label(new Rect(timerBox.x, timerBox.y + 9, timerBox.width, 14), "남은시간", timerLabelStyle);
+                GUI.Label(new Rect(timerBox.x, timerBox.y + 23, timerBox.width, 30),
                     $"{(int)remain / 60}:{(int)remain % 60:00}", timerStyle);
             }
 
@@ -233,7 +278,7 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < zones.Count; i++)
             {
                 var z = zones[i];
-                var chipRect = new Rect(x0 + i * (chipW + gap), 60, chipW, 24);
+                var chipRect = new Rect(x0 + i * (chipW + gap), 70, chipW, 24);
                 GUI.color = z.owner == -1 ? new Color(0.55f, 0.55f, 0.6f)
                     : Color.Lerp(z.owner == playerTeam ? allyColor : enemyColor, Color.white, 0.25f);
                 if (texChip != null)
@@ -249,7 +294,7 @@ namespace SeoYuGi.BattleView
                 }
             }
 
-            GUI.Label(new Rect(W / 2f - 100, 86, 200, 16),
+            GUI.Label(new Rect(W / 2f - 100, 97, 200, 16),
                 $"ROUND {match.CurrentRound}/{MatchSystem.MaxRounds}", roundStyle);
         }
 
@@ -298,7 +343,8 @@ namespace SeoYuGi.BattleView
             else if (u.moveCooldown > 0f) msg = $"이동 쿨타임 {u.moveCooldown:0.0}s — 공격/방어는 가능합니다.";
             else msg = "타일 클릭 = 이동  ·  A 공격 조준 / S 스킬 조준 / D 방어";
 
-            var box = new Rect(W / 2f - 210, 108, 420, 26);
+            // 프레임 사선 컷 여백만큼 텍스트를 안쪽에 — 텍스트가 프레임을 뚫지 않게
+            var box = new Rect(W / 2f - 240, 118, 480, 34);
             GUI.color = bannerColor;
             if (texBanner != null)
             {
@@ -310,7 +356,7 @@ namespace SeoYuGi.BattleView
                 GUI.DrawTexture(box, Texture2D.whiteTexture);
                 GUI.color = new Color(0.05f, 0.15f, 0.2f);
             }
-            GUI.Label(box, msg, bannerTextStyle);
+            GUI.Label(new Rect(box.x + 30, box.y + 2, box.width - 60, box.height - 4), msg, bannerTextStyle);
             GUI.color = Color.white;
         }
 
@@ -422,26 +468,31 @@ namespace SeoYuGi.BattleView
             if (panelBriefing != null)
                 GUI.DrawTexture(box, panelBriefing, ScaleMode.StretchToFill); // 관제 터미널 배경
 
+            // 패널 아트의 상·하단 장식 밴드를 피해 텍스트는 중앙부에 + 반투명 백킹으로 가독성 확보
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(new Rect(box.x + 50, box.y + 44, box.width - 100, 30), Texture2D.whiteTexture);
             GUI.color = myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f);
-            GUI.Label(new Rect(box.x, box.y + 14, box.width, 26),
+            GUI.Label(new Rect(box.x, box.y + 46, box.width, 26),
                 $"ROUND {briefingRound} — {(myWin ? "승리" : "패배")}", briefTitleStyle);
             GUI.color = Color.white;
 
             GUI.color = new Color(1f, 0.55f, 0.4f);
-            GUI.Label(new Rect(box.x, box.y + 46, box.width, 20), "── AI 관제 로그 · 학습 브리핑 ──",
+            GUI.Label(new Rect(box.x, box.y + 78, box.width, 20), "── AI 관제 로그 · 학습 브리핑 ──",
                 new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
             GUI.color = Color.white;
 
-            float y = box.y + 76;
+            float y = box.y + 106;
             if (briefingLines != null)
                 foreach (var line in briefingLines)
                 {
-                    GUI.Label(new Rect(box.x + 28, y, box.width - 56, 40), $"▸ {line}", briefLineStyle);
-                    y += 44;
+                    GUI.Label(new Rect(box.x + 44, y, box.width - 88, 38), $"▸ {line}", briefLineStyle);
+                    y += 40;
                 }
 
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(new Rect(box.x + 50, box.y + box.height - 60, box.width - 100, 24), Texture2D.whiteTexture);
             GUI.color = new Color(1f, 0.85f, 0.25f);
-            GUI.Label(new Rect(box.x, box.y + box.height - 34, box.width, 22),
+            GUI.Label(new Rect(box.x, box.y + box.height - 58, box.width, 22),
                 "SPACE — 다음 라운드 (AI가 학습을 적용합니다)",
                 new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
             GUI.color = Color.white;
@@ -455,7 +506,7 @@ namespace SeoYuGi.BattleView
             GUI.color = new Color(0f, 0f, 0f, 0.65f);
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             GUI.color = new Color(0.55f, 0.95f, 1f); // 관제 AI 시안 톤
-            GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "- AI 관제 -",
+            GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "도시관리 AI",
                 new GUIStyle(subStyle) { fontStyle = FontStyle.Bold });
             GUI.Label(new Rect(box.x, box.y + 8, box.width, 32), subtitleText, subtitleStyle);
             GUI.color = Color.white;

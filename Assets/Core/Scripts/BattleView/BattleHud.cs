@@ -781,6 +781,7 @@ namespace SeoYuGi.BattleView
                     linesH += briefLineStyle.CalcHeight(new GUIContent($"▸ {line}"), LineW) + LineGap;
             float boxH = Mathf.Max(320f, 106f + linesH + 100f);
             var box = new Rect(W / 2f - 270, H / 2f - boxH / 2f, 540, boxH);
+            briefingBottomY = box.yMax; // 자막 겹침 방지용 — DrawSubtitle이 참조
             NeonPanel(box, myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));
             if (panelBriefing != null)
                 GUI.DrawTexture(box, panelBriefing, ScaleMode.StretchToFill); // 관제 터미널 배경
@@ -815,6 +816,7 @@ namespace SeoYuGi.BattleView
 
         // 다음 라운드 동의 현황 (멀티) — 러너가 갱신
         int readyCount, readyTotal;
+        float briefingBottomY; // 브리핑 패널 하단 y — 자막이 패널을 뚫지 않게
 
         public void SetReadyCount(int ready, int total)
         {
@@ -857,7 +859,10 @@ namespace SeoYuGi.BattleView
             float boxW = Mathf.Min(W - 40f, Mathf.Max(400f, subtitleStyle.CalcSize(content).x + 60f));
             float textH = subtitleStyle.CalcHeight(content, boxW - 40f);
             float boxH = textH + 22f;
-            var box = new Rect(W / 2f - boxW / 2f, H - 100f - boxH, boxW, boxH);
+            float boxY = H - 100f - boxH;
+            if (overlay == Overlay.Briefing) // 브리핑 패널과 겹침 방지 — 패널 바로 아래로 (2026-09-05)
+                boxY = Mathf.Min(H - boxH - 10f, briefingBottomY + 12f);
+            var box = new Rect(W / 2f - boxW / 2f, boxY, boxW, boxH);
             NeonPanel(box, new Color(0.55f, 0.95f, 1f));
             GUI.color = new Color(0.55f, 0.95f, 1f); // 관제 AI 시안 톤
             GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "도시관리 AI",

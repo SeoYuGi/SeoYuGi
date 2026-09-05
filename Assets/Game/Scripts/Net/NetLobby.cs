@@ -46,6 +46,8 @@ namespace SeoYuGi.Net
 
         public static event Action OnChanged;    // 슬롯 상태 갱신 — UI 리프레시용
         public static event Action OnMatchStart; // 시작 브로드캐스트 수신
+        public static event Action<int[]> OnHumansLeftGame; // 호스트: 이탈 인간의 unitId들 — 인게임 봇 승계용
+        public static event Action OnHostDisconnected;      // 클라: 호스트가 방을 파괴/이탈 — 타이틀 복귀용
         public static event Action<string, string> OnChat; // 로비 팀 채팅 수신 — (콜사인, 텍스트)
 
         static bool hooked;
@@ -256,16 +258,26 @@ namespace SeoYuGi.Net
         static void OnClientDisconnected(ulong clientId)
         {
             var nm = NetworkManager.Singleton;
-            if (nm == null || !nm.IsHost || Slots == null) return;
+            if (nm == null || Slots == null) return;
 
+            // 클라 시점: 이 콜백은 "내가 서버에서 끊겼다"는 뜻 — 호스트가 방을 파괴했거나 접속이 죽었다
+            if (!nm.IsHost)
+            {
+                OnHostDisconnected?.Invoke();
+                return;
+            }
+
+            var left = new System.Collections.Generic.List<int>();
             for (int i = 0; i < Slots.Length; i++)
                 if (Slots[i].owner == SlotOwner.RemoteHuman && Slots[i].clientId == clientId)
                 {
                     Slots[i].owner = SlotOwner.Bot; // 이탈 → 봇 승격, 게임 안 깨짐
                     Slots[i].clientId = 0;
+                    left.Add(Slots[i].unitId);
                 }
             AssignBotClasses();
             Broadcast();
+            if (left.Count > 0) OnHumansLeftGame?.Invoke(left.ToArray()); // 인게임이면 러너가 봇 드라이버 승계
             OnChanged?.Invoke();
         }
 

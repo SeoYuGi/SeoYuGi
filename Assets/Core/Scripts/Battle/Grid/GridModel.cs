@@ -93,6 +93,16 @@ namespace SeoYuGi.Battle
             cells[Index(c)].occupantUnitId = unitId;
         }
 
+        /// <summary>스냅샷 강제 동기 — 호스트 권위 덮어쓰기 전용. 클라 상태가 어긋나 있어도
+        /// (밀침 미반영·늦은 합류·프레임 순서) 절대 던지지 않는다. walkable 검사도 생략 — 호스트가 진실.</summary>
+        public void ForceMove(int unitId, Coord from, Coord to)
+        {
+            if (InBounds(from) && cells[Index(from)].occupantUnitId == unitId)
+                cells[Index(from)].occupantUnitId = Cell.NoUnit;
+            if (InBounds(to))
+                cells[Index(to)].occupantUnitId = unitId;
+        }
+
         public void RemoveUnit(Coord c)
         {
             if (!InBounds(c)) throw new ArgumentOutOfRangeException(nameof(c));

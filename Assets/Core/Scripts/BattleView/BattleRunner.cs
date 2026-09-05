@@ -386,6 +386,8 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatRequest += HostOnRemoteChat;
             NetSync.OnChatShow += ShowChatVisual;
             NetSync.OnPingRequest += HostOnRemotePing;
+            NetLobby.OnHumansLeftGame += HostOnHumansLeft;
+            NetLobby.OnHostDisconnected += ClientOnHostGone;
             NetSync.OnPingShow += ShowPingFromNet;
             NetSync.OnReadyRequest += HostOnReadyRequest;                  // 클라 SPACE 동의 집계
             NetSync.OnReadyState += (ready, total) => hud.SetReadyCount(ready, total);
@@ -476,6 +478,8 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatRequest -= HostOnRemoteChat;
             NetSync.OnChatShow -= ShowChatVisual;
             NetSync.OnPingRequest -= HostOnRemotePing;
+            NetLobby.OnHumansLeftGame -= HostOnHumansLeft;
+            NetLobby.OnHostDisconnected -= ClientOnHostGone;
             NetSync.OnPingShow -= ShowPingFromNet;
             NetSync.OnMoved -= OnNetMoved;
             NetSync.OnHacked -= OnNetHacked;
@@ -561,6 +565,34 @@ namespace SeoYuGi.BattleView
             if (!NetBoot.IsHost || phase != Phase.Playing) return;
             if (!OwnsUnit(sender, unitId)) return;
             ShowPing(unitId, new Coord(x, y), type); // 호스트 화면 표시 + 팀 배달 (발신 클라 포함)
+        }
+
+        /// <summary>호스트 — 인간 이탈: 전투 중이면 그 유닛에 봇 드라이버를 즉시 승계 (2026-09-05).</summary>
+        void HostOnHumansLeft(int[] unitIds)
+        {
+            if (!NetBoot.IsHost || phase != Phase.Playing || matchSetup == null) return;
+            foreach (var uid in unitIds)
+            {
+                bool hasDriver = false;
+                foreach (var d in aiDrivers) if (d.UnitId == uid) { hasDriver = true; break; }
+                if (hasDriver) continue;
+                foreach (var slot in matchSetup.slots)
+                    if (slot.unitId == uid)
+                    {
+                        aiDrivers.Add(new AiSlotDriver(uid, slot.cls, slot.team, intentSink, predictor));
+                        hud.PushEvent($"{slot.callsign} 이탈 — 봇이 대신합니다", new Color(0.7f, 0.75f, 0.85f));
+                        break;
+                    }
+            }
+        }
+
+        /// <summary>클라 — 호스트가 방을 파괴/이탈: 정리하고 타이틀로 (2026-09-05 "같이 나가지게").</summary>
+        void ClientOnHostGone()
+        {
+            NetBoot.Shutdown();
+            hud.Hide();
+            UIManager.Instance.CloseAllPopupUI();
+            ShowTitle();
         }
 
         // 휠 홀드 상태 — 누른 순간의 칸·스크린 좌표 고정, 끌기 방향으로 종류 선택
@@ -1705,7 +1737,8 @@ namespace SeoYuGi.BattleView
             hud.PushEvent(killerName != null ? $"{killerName}이(가) {victimName} 처치!" : $"{victimName} 처치됨",
                 feedColor); // 상단 배너 전황 로그
             hud.PingEdge(gridView.CoordToWorld(dead.pos), feedColor); // 프레임 밖 킬 — 가장자리 방향 화살표 (가시성 패스 D)
-            battleAudio.PlayVoice(dead.team == playerTeam ? "Voice_AllyDown" : "Voice_EnemyDown");
+            if (!IsNetClient) // 보이스 파일 미보유 — 격파 SFX로 대체 (클라는 OnNetDeath가 이미 재생)
+                battleAudio.PlaySfx(dead.team == playerTeam ? "S10a_DeathAlly" : "S10b_DeathEnemy", 1.5f);
         }
 
         /// <summary>클라 — 호스트 처치 릴레이 수신. 킬피드·음성 동일하게.</summary>

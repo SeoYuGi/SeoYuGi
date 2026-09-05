@@ -565,10 +565,11 @@ namespace SeoYuGi.Net
                 var newPos = new Coord(x, y);
                 if (!predicted && !u.pos.Equals(newPos))
                 {
-                    if (u.alive) battle.Grid.MoveOccupant(u.pos, newPos); // 점유 맵 동기 — 시야 계산 입력
+                    // 관용 동기 (2026-09-05 2클라 테스트 예외) — 클라 점유 맵이 어긋나 있어도 던지지 않는다
+                    if (u.alive) battle.Grid.ForceMove(id, u.pos, newPos);
                     u.pos = newPos;
                 }
-                if (!alive && u.alive) battle.Grid.RemoveUnit(u.pos);
+                if (!alive && u.alive && battle.Grid.GetUnitAt(u.pos) == id) battle.Grid.RemoveUnit(u.pos);
                 u.hp = hp;
                 u.alive = alive;
                 u.attackReadyAt = attackReadyAt;

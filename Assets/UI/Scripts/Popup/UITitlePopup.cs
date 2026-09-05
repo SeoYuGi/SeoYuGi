@@ -1,6 +1,7 @@
 using System;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
@@ -122,7 +123,11 @@ public class UITitlePopup : UIPopup
             searchText = MakeText("Searching", "", 26, FontStyle.Normal, new Color(0.6f, 0.9f, 1f),
                 new Vector2(0.5f, 0.5f), new Vector2(0f, -130f), new Vector2(700f, 60f), GameFonts.Title);
 
-            var ringSprite = UISkin.Load("UI/Ring_Zone");
+            // 검정 배경 키잉 로드 — 링 텍스처는 plain black 위에 생성돼 그냥 쓰면 검정 사각형이 보인다
+            var ringTex = BattleHud.LoadKeyed("UI/Ring_Zone");
+            var ringSprite = ringTex != null
+                ? Sprite.Create(ringTex, new Rect(0, 0, ringTex.width, ringTex.height), new Vector2(0.5f, 0.5f))
+                : null;
             if (ringSprite != null)
             {
                 var go = new GameObject("SearchRing", typeof(RectTransform), typeof(Image));
@@ -161,7 +166,9 @@ public class UITitlePopup : UIPopup
         if (btnOutline != null) btnOutline.effectColor = Color.Lerp(Cyan * 0.7f, Cyan, pulse);
         if (logoImg != null) logoImg.color = Color.Lerp(new Color(0.92f, 0.92f, 0.92f), Color.white, pulse);
 
-        if (!searching && Input.GetKeyDown(KeyCode.Return)) Pick();
+        if (!searching && Keyboard.current != null &&
+            (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame))
+            Pick(); // 신 Input System — 구 Input API는 이 프로젝트에서 예외를 던진다
         if (searching && searchRing != null) searchRing.Rotate(0f, 0f, -120f * Time.unscaledDeltaTime);
     }
 

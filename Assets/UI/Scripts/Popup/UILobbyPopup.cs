@@ -47,6 +47,9 @@ public class UILobbyPopup : UIPopup
     InputField chatInput;
     readonly Text[] slotLabels = new Text[6];
     readonly Image[] slotPortraits = new Image[6];
+    readonly RectTransform[] slotRoots = new RectTransform[6]; // 팀별 표시/숨김 + 상단 재배치용
+    // 상단 줄 위치 3칸 — 내 팀은 항상 여기로, 상대팀 줄은 통째로 숨김 (2026-09-05)
+    static readonly Vector2[] TopSlotPos = { new Vector2(-220f, 245f), new Vector2(0f, 245f), new Vector2(220f, 245f) };
     readonly Image[] pickBackings = new Image[5];
     readonly System.Collections.Generic.List<string> chatLog = new System.Collections.Generic.List<string>();
     static readonly Sprite[] cardSprites = new Sprite[5]; // 세션 캐시
@@ -71,16 +74,18 @@ public class UILobbyPopup : UIPopup
                 portrait.color = Color.white;
                 portrait.preserveAspect = false;
             }
-            // 캐릭터 선택 팝업과 같은 카드 — 로비 픽 칸 크기에 맞춰 축소
+            // 캐릭터 선택 팝업과 같은 풀 카드 — 상대팀 줄을 숨겨 확보한 공간만큼 키워서 재배치.
+            // (슬롯 크기 축소판은 스탯이 깨알이라 폐기 — 2026-09-05 "너무작아")
             var rt = (RectTransform)pick.transform;
-            float scale = Mathf.Clamp(rt.sizeDelta.y / SeoYuGi.UI.ClassCard.BaseH, 0.3f, 1f);
-            SeoYuGi.UI.ClassCard.Build(rt, i, scale);
+            SeoYuGi.UI.ClassCard.Build(rt, i, 0.62f);
+            rt.anchoredPosition = new Vector2((i - 2) * 195f, -120f);
         }
 
         for (int i = 0; i < 6; i++)
         {
             var slot = transform.Find($"Slot{i + 1}");
             if (slot == null) continue;
+            slotRoots[i] = (RectTransform)slot;
             slotLabels[i] = slot.Find("LabelBack/Label")?.GetComponent<Text>();
             slotPortraits[i] = slot.Find("Portrait")?.GetComponent<Image>();
         }
@@ -95,6 +100,13 @@ public class UILobbyPopup : UIPopup
             var label = qc.GetComponentInChildren<Text>();
             if (label != null) label.text = line;
         }
+        // 채팅 컬럼 왼쪽으로 — 확대된 픽 카드(좌측 끝 -477)와 겹침 (2026-09-05)
+        foreach (var n in new[] { "ChatBack", "ChatLog", "ChatInput", "QC1", "QC2", "QC3", "QC4", "QC5", "QC6" })
+        {
+            var t = transform.Find(n) as RectTransform;
+            if (t != null) t.anchoredPosition = new Vector2(-720f, t.anchoredPosition.y);
+        }
+
         chatLogText = transform.Find("ChatLog")?.GetComponent<Text>();
         balanceText = transform.Find("BalanceText")?.GetComponent<Text>();
         chatInput = transform.Find("ChatInput")?.GetComponent<InputField>();
@@ -232,10 +244,20 @@ public class UILobbyPopup : UIPopup
                 break;
             }
 
+        // 상대팀 줄은 통째로 숨기고(조합 비공개 + 픽 카드 공간 확보), 내 팀은 항상 상단 줄에 (2026-09-05)
+        int topIdx = 0;
         for (int i = 0; i < slotLabels.Length && i < slots.Length; i++)
         {
             var s = slots[i];
             bool me = s.owner != SlotOwner.Bot && s.clientId == localId;
+
+            if (slotRoots[i] != null)
+            {
+                bool enemyRow = myTeam >= 0 && s.team != myTeam;
+                slotRoots[i].gameObject.SetActive(!enemyRow);
+                if (!enemyRow && topIdx < TopSlotPos.Length)
+                    slotRoots[i].anchoredPosition = TopSlotPos[topIdx++];
+            }
 
             if (slotLabels[i] != null)
             {

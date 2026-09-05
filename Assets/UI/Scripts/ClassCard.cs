@@ -35,17 +35,19 @@ namespace SeoYuGi.UI
         /// <summary>카드 RectTransform에 클래스 i의 카드를 그린다. sizeDelta를 scale에 맞춰 설정한다.</summary>
         public static void Build(RectTransform card, int i, float scale = 1f)
         {
+            // 작은 슬롯(로비 픽 칸 등)은 풀 카드 스탯이 깨알이 돼 못 읽는다 —
+            // 초상+이름만 있는 컴팩트 카드로 분기. 글씨는 스케일 무관 고정 크기. (2026-09-05 "너무작아")
+            if (scale < 0.5f) { BuildCompact(card, i); return; }
+
             var meta = Meta[i];
             var def = ClassCatalog.Get((UnitClass)i);
             float W = BaseW * scale, H = BaseH * scale;
+            // 앵커를 중앙 고정 — 프리팹 슬롯이 stretch 앵커면 sizeDelta가 오프셋이 돼
+            // 슬롯 비율대로 카드가 찌그러진다(홀쭉). 원본 280:700 비율 강제. (2026-09-05)
+            card.anchorMin = card.anchorMax = card.pivot = new Vector2(0.5f, 0.5f);
             card.sizeDelta = new Vector2(W, H);
 
-            // 프리팹의 구 텍스트(Name/Desc) 제거
-            foreach (var n in new[] { "Name", "Desc" })
-            {
-                var old = card.Find(n);
-                if (old != null) UnityEngine.Object.Destroy(old.gameObject);
-            }
+            ClearChildren(card);
 
             var rootImg = card.GetComponent<Image>();
             if (rootImg != null) { rootImg.sprite = null; rootImg.color = CardBg; }
@@ -116,6 +118,44 @@ namespace SeoYuGi.UI
             SkillRow(card, def.skills[0], below - 142f * scale, W, scale);
             if (def.skills.Length > 1)
                 SkillRow(card, def.skills[1], below - 176f * scale, W, scale);
+        }
+
+        /// <summary>프리팹 기존 자식 전부 제거 — 옛 이름(치즈태비)·초상·라벨 잔재가
+        /// 이름 규칙과 무관하게 남아 카드를 뚫고 보이던 문제. ClassCard가 전부 새로 그린다.</summary>
+        static void ClearChildren(RectTransform card)
+        {
+            for (int c = card.childCount - 1; c >= 0; c--)
+                UnityEngine.Object.Destroy(card.GetChild(c).gameObject);
+        }
+
+        /// <summary>컴팩트 카드 — 슬롯 크기 그대로(비율 강제 없음), 초상 + 하단 이름 스트립.
+        /// 로비 픽 칸(190×250)처럼 풀 카드가 안 읽히는 크기용. 상세 스탯은 큰 카드에서.</summary>
+        static void BuildCompact(RectTransform card, int i)
+        {
+            var meta = Meta[i];
+            card.anchorMin = card.anchorMax = card.pivot = new Vector2(0.5f, 0.5f);
+            ClearChildren(card);
+
+            var rootImg = card.GetComponent<Image>();
+            if (rootImg != null) { rootImg.sprite = null; rootImg.color = CardBg; }
+            MakeNeonBorder(card, meta.color, 0.7f);
+
+            float W = card.sizeDelta.x, H = card.sizeDelta.y;
+            const float NameH = 34f;
+
+            var portraitTex = Resources.Load<Texture2D>("UI/" + Portraits[i]);
+            if (portraitTex != null)
+                Img(card, ToSprite(portraitTex), Color.white,
+                    new Vector2(0f, NameH / 2f), new Vector2(W - 10f, H - NameH - 12f));
+
+            // 하단 이름 스트립 — 글씨는 고정 17px (스케일 무관하게 읽힌다)
+            Img(card, null, new Color(0.02f, 0.03f, 0.07f, 0.92f),
+                new Vector2(0f, -H / 2f + NameH / 2f + 5f), new Vector2(W - 8f, NameH - 4f));
+            var strip = Img(card, null, meta.color,
+                new Vector2(0f, -H / 2f + NameH + 4f), new Vector2(W - 8f, 2f));
+            AddGlow(strip, meta.color, 2f);
+            Txt(card, meta.name, 17, FontStyle.Bold, Color.Lerp(Color.white, meta.color, 0.2f), TextAnchor.MiddleCenter,
+                new Vector2(0f, -H / 2f + NameH / 2f + 5f), new Vector2(W - 8f, NameH - 4f), GameFonts.Hud);
         }
 
         /// <summary>선택 하이라이트 — 밝은 외곽 글로우 + 살짝 확대. 카드마다 1개만 유지.</summary>

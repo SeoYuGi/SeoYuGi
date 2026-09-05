@@ -109,9 +109,9 @@ namespace SeoYuGi.BattleView
         /// <summary>
         /// 생성 이미지의 검정 배경을 투명 처리해서 로드 (프레임류는 plain black 위에 생성됨).
         /// 순수 검정(합 &lt; 30)만 제거, 30~60은 페더 — 건메탈 아트(합 130+)는 안전.
-        /// Read/Write 꺼져 있으면 원본 그대로 (검정 배경 노출 폴백).
+        /// Read/Write 꺼져 있으면 원본 그대로 (검정 배경 노출 폴백). 타이틀 매칭 링 등 외부도 사용.
         /// </summary>
-        static Texture2D LoadKeyed(string path)
+        public static Texture2D LoadKeyed(string path)
         {
             if (keyedCache.TryGetValue(path, out var cached)) return cached;
             var src = Resources.Load<Texture2D>(path);

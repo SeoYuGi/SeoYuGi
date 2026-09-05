@@ -213,8 +213,7 @@ namespace SeoYuGi.BattleView
             if (IsUnitVisibleToPlayer(unitId))
                 SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam);
             var v = viewRegistry.Get(unitId);
-            if (v != null && v.gameObject.activeInHierarchy)
-                FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
+            // 스킬명 텍스트 제거 (가독성 패스 2026-09-05) — 예고 스킬 아이콘이 대체, 머리 위는 데미지·상태 전용
             if (kind == SkillKind.Blink)
             {
                 // 출발지 사라짐 연출 — 위치 동기는 스냅샷 도착 시 SyncPresentation이 스냅
@@ -571,8 +570,7 @@ namespace SeoYuGi.BattleView
             hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[owner]);
 
             var center = gridView.CoordToWorld(zone.Center);
-            RingWave.Spawn(center, teamColors[owner], 5f, 0.7f);
-            ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f));
+            ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f)); // 링 제거 — 기둥 전용 (가독성 패스)
         }
 
         /// <summary>맵 랜덤 확정 + 맵 종속 상태 조립 → 클래스 선택으로.</summary>
@@ -917,11 +915,8 @@ namespace SeoYuGi.BattleView
                 bool ours = zone.owner == playerTeam;
                 battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
 
-                // 어그로 — 거점에서 맵 전체로 팀색 네온 띠가 두 겹 퍼져 나간다 (놓칠 수 없게)
-                var pulseColor = StrikeVfx.TeamColor(ours);
-                float mapReach = Mathf.Max(map.Width, map.Height) * 1.2f;
-                RingWave.Spawn(gridView.CoordToWorld(zone.Center), pulseColor, mapReach, 0.9f);
-                RingWave.Spawn(gridView.CoordToWorld(zone.Center), Color.Lerp(pulseColor, Color.white, 0.5f), mapReach * 0.6f, 0.55f);
+                // 맵 전체 링 제거 (가독성 패스 2026-09-05) — 링은 충격파 전용으로 회수.
+                // 거점의 시그니처 = 빛기둥 + 상단 공지 + 보이스로 이미 3중.
 
                 // 거점 글자(A/B/C) 찾기 + 중앙 멘트
                 int zi = -1;
@@ -935,9 +930,8 @@ namespace SeoYuGi.BattleView
                 hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[zone.owner]);
                 battleAudio.PlayVoice(ours ? "Voice_ZoneCaptured" : "Voice_ZoneLost"); // 음성만 (자막은 배너가)
 
-                // 탈환 완료 순간 — 팀 색 충격파가 패치 밖으로 퍼진다
+                // 탈환 완료 순간 — 빛기둥 (링은 충격파 전용으로 회수)
                 var center = gridView.CoordToWorld(zone.Center);
-                RingWave.Spawn(center, teamColors[zone.owner], 5f, 0.7f);
                 ImpactVfx.Pillar(center, Color.Lerp(teamColors[zone.owner], Color.white, 0.4f));
                 CameraShaker.Shake(0.2f);
             };
@@ -1138,9 +1132,8 @@ namespace SeoYuGi.BattleView
                     if (hit)
                     {
                         hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
-                        // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽혔다"가 읽힌다.
+                        // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽혔다"가 읽힌다. (링 제거 — 기둥이 시그니처)
                         ImpactVfx.Pillar(focus, new Color(0.8f, 0.45f, 1f));
-                        RingWave.Spawn(focus, new Color(0.75f, 0.4f, 1f, 0.9f), 3.2f, 0.5f);
                         ImpactFx.Punch(0.85f);
                         CameraShaker.Shake(0.4f);
                     }
@@ -1225,9 +1218,14 @@ namespace SeoYuGi.BattleView
                     // 내가 맞았을 때만 아주 짧은 셰이크 — "내 문제"는 몸으로 알아야 하니까.
                     if (unitId == playerUnitId) CameraShaker.Shake(0.12f);
                     var hitPos = gridView.CoordToWorld(victim.pos);
-                    ImpactVfx.Sparks(hitPos, machine: victim.team == 1, scale: 1.4f);
+                    // 관련도 위계 (가독성 패스 2026-09-05): 내 유닛에서 먼 전투는 작게 — 내 일만 크게 터진다.
+                    // 칸플래시는 제거 — 스파크·리코일·숫자와 겹쳐 "번쩍임의 벽"만 만들었다.
+                    var me = Battle.GetUnit(playerUnitId);
+                    int prox = me != null && me.alive
+                        ? Math.Max(Math.Abs(victim.pos.x - me.pos.x), Math.Abs(victim.pos.y - me.pos.y)) : 99;
+                    float fxScale = unitId == playerUnitId || prox <= 4 ? 1.4f : 0.8f;
+                    ImpactVfx.Sparks(hitPos, machine: victim.team == 1, scale: fxScale);
                     StrikeVfx.HitReaction(hitPos, machine: victim.team == 1);
-                    CellFlash.Spawn(hitPos, victim.team == playerTeam ? new Color(1f, 0.45f, 0.35f) : Color.white, 0.22f, 1f); // 피격 칸 번쩍 — 어디가 맞았는지
                     battleAudio.PlayThump(big: false);
                 }
             };
@@ -1237,8 +1235,7 @@ namespace SeoYuGi.BattleView
             {
                 var v = viewRegistry.Get(unitId);
                 bool viewActive = v != null && v.gameObject.activeInHierarchy;
-                if (viewActive)
-                    FloatingText.Spawn(v.transform.position, SkillLabel(kind), new Color(1f, 0.9f, 0.4f));
+                // 스킬명 텍스트 제거 (가독성 패스 2026-09-05) — 예고 스킬 아이콘이 대체
 
                 if (kind == SkillKind.Blink)
                 {
@@ -1323,8 +1320,7 @@ namespace SeoYuGi.BattleView
                 if (u.team == playerTeam || playerVisibleFn(u.pos))
                 {
                     var world = gridView.CoordToWorld(u.pos);
-                    CellFlash.Spawn(world, StunVfx.Gold);
-                    RingWave.Spawn(world, StunVfx.Gold, 1.6f, 0.4f); // 스턴 적중 충격파 — 준 쪽도 성공을 본다
+                    // 링·칸플래시 제거 (가독성 패스 2026-09-05) — 스턴의 시그니처는 머리 위 별. 링은 충격파 전용으로 회수.
                     FloatingText.Spawn(world, "스턴!", StunVfx.Gold, 0.9f, 0.7f);
                     var view = viewRegistry.Get(unitId);
                     if (view != null) StunVfx.Ensure(view.transform, seconds);
@@ -1620,24 +1616,6 @@ namespace SeoYuGi.BattleView
             hackSystem = NewHackSystem(); // 해킹 충전도 새 매치에 리셋
             if (NetBoot.IsOnline) { hud.Hide(); ShowPickBackground(); ShowLobby(); } // 온라인 — 로비로 복귀
             else ShowClassSelect(); // 싱글 — 다시 픽 + 적팀 재롤
-        }
-
-        static string SkillLabel(SkillKind kind)
-        {
-            switch (kind)
-            {
-                case SkillKind.ShieldPush: return "방패 밀어붙이기!";
-                case SkillKind.Smash: return "강타!";
-                case SkillKind.Dash: return "돌파!";
-                case SkillKind.Scream: return "비명 교란!";
-                case SkillKind.Blink: return "그림자 도약!";
-                case SkillKind.Claw: return "발톱 쥐어짜기!";
-                case SkillKind.Burst: return "파열탄!";
-                case SkillKind.BombDeliver: return "폭탄 배달!";
-                case SkillKind.KnockShot: return "넉백샷!";
-                case SkillKind.Snipe: return "조준 사격!";
-                default: return "스킬!";
-            }
         }
 
         static float ViewScale(UnitClass cls)

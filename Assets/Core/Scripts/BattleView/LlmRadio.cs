@@ -107,7 +107,7 @@ namespace SeoYuGi.BattleView
                 catch (Exception e)
                 {
                     Debug.LogWarning($"LlmRadio 파싱 실패: {e.Message}");
-                    result = SquadOrders.NotUnderstood("응답이 깨졌습니다 — 다시 말해 주십시오.");
+                    result = SquadOrders.NotUnderstood("응답이 깨졌습니다. 다시 말해 주십시오.");
                 }
                 finally { req.Dispose(); }
                 onDone(result);
@@ -185,10 +185,10 @@ $"거점 zoneIndex: {zones}.\n\n" +
         {
             switch (req.responseCode)
             {
-                case 401: return "무전기 인증 실패(401) — API 키가 거부됐습니다.";
-                case 429: return "회선 포화(429) — 한도 초과. 잠시 뒤 다시.";
-                case 0: return "무전이 닿지 않습니다 — 네트워크 연결 실패.";
-                default: return $"무전이 닿지 않습니다 — 잡음뿐입니다. ({req.responseCode})";
+                case 401: return "무전기 인증 실패(401). API 키가 거부됐습니다.";
+                case 429: return "회선 포화(429). 한도 초과, 잠시 뒤 다시.";
+                case 0: return "무전이 닿지 않습니다. 네트워크 연결 실패.";
+                default: return $"무전이 닿지 않습니다. 잡음뿐입니다. ({req.responseCode})";
             }
         }
 

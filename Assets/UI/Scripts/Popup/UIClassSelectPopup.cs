@@ -130,9 +130,9 @@ public class UIClassSelectPopup : UIPopup
     readonly Text[] diffTexts = new Text[3];
     static readonly (string label, AiDifficulty diff, Color color)[] DiffOptions =
     {
-        ("하 · EASY",   AiDifficulty.Easy,   new Color(0.35f, 0.8f, 0.45f)),
-        ("중 · NORMAL", AiDifficulty.Normal, new Color(0.4f, 0.7f, 1f)),
-        ("상 · HARD",   AiDifficulty.Hard,   new Color(1f, 0.45f, 0.35f)),
+        ("하 / EASY",   AiDifficulty.Easy,   new Color(0.35f, 0.8f, 0.45f)),
+        ("중 / NORMAL", AiDifficulty.Normal, new Color(0.4f, 0.7f, 1f)),
+        ("상 / HARD",   AiDifficulty.Hard,   new Color(1f, 0.45f, 0.35f)),
     };
 
     void BuildDifficultyBar()
@@ -206,7 +206,7 @@ public class UIClassSelectPopup : UIPopup
         MakeText(btn, "출격  (Enter)", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
             new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(180f, ChipH), GameFonts.Hud);
 
-        MakeText(transform, "칩을 고르고 카드를 클릭하면 그 칸에 배정됩니다 · 상대 조합은 시작 전까지 비공개", 14,
+        MakeText(transform, "칩을 고르고 카드를 클릭하면 그 칸에 배정됩니다 / 상대 조합은 시작 전까지 비공개", 14,
             FontStyle.Normal, DimText, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f),
             new Vector2(0f, StripY - 46f), new Vector2(800f, 22f), GameFonts.Hud);
     }
@@ -217,7 +217,7 @@ public class UIClassSelectPopup : UIPopup
         {
             var meta = ClassCard.Meta[(int)teamCls[i]];
             bool sel = i == editIdx;
-            chipTexts[i].text = $"{teamNames[i]} · {(i == 0 ? "나" : "봇")}\n" +
+            chipTexts[i].text = $"{teamNames[i]} / {(i == 0 ? "나" : "봇")}\n" +
                                 $"<b><color=#{ColorUtility.ToHtmlStringRGB(meta.color)}>{meta.name}</color></b>";
             chipBgs[i].color = sel ? Color.Lerp(CardBg, meta.color, 0.3f) : CardBg;
             chipOutlines[i].effectColor = sel ? Color.Lerp(meta.color, Color.white, 0.4f) : new Color(0.25f, 0.3f, 0.4f);
@@ -286,6 +286,7 @@ public class UIClassSelectPopup : UIPopup
         rt.anchoredPosition = pos; rt.sizeDelta = sizeDelta;
         var t = go.GetComponent<Text>();
         t.text = text;
+        GameFonts.Resolve(ref font, ref style); // Bold 요청 → 볼드 파일, 가짜 볼드 없음
         t.font = font != null ? font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         t.fontSize = size; t.fontStyle = style; t.color = color; t.alignment = align;
         t.supportRichText = rich;

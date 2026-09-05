@@ -405,7 +405,7 @@ namespace SeoYuGi.BattleView
             NeonPanel(box, red, 0.6f + 0.4f * beat);
             Fill(new Rect(box.x + 1, box.y + 1, box.width - 2, box.height - 2), new Color(0.6f, 0.05f, 0.02f, 0.25f + 0.2f * beat));
             ShadowLabel(new Rect(box.x, box.y + 6, box.width, 36),
-                $"⚠ 피격 예고  {Mathf.Max(0f, threatRemain):0.0}s — 피해!", subtitleStyle,
+                $"피격 예고 {Mathf.Max(0f, threatRemain):0.0}s. 피하세요!", subtitleStyle,
                 Color.Lerp(Color.white, red, 0.25f * beat));
         }
 
@@ -428,7 +428,7 @@ namespace SeoYuGi.BattleView
         /// <summary>킬피드 한 줄 — 우상단. color = 가해자 팀 색. killer=null이면 환경사("처치됨").</summary>
         public void AddKill(string killer, string victim, Color color)
         {
-            string text = string.IsNullOrEmpty(killer) ? $"{victim} 처치됨" : $"{killer}  ⚔  {victim}";
+            string text = string.IsNullOrEmpty(killer) ? $"{victim} 처치됨" : $"{killer}: {victim} 처치";
             killFeed.Add(new ChatEntry { text = text, color = color, until = Time.time + 6f });
             if (killFeed.Count > KillFeedMax) killFeed.RemoveAt(0);
         }
@@ -474,9 +474,9 @@ namespace SeoYuGi.BattleView
             stylesReady = true;
             timerStyle = new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             timerLabelStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
-            dotStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            dotStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter };
             // 유니티 기본 회색 박스 대신 어두운 판 + 흰 글자 — 호버 시 살짝 밝게
-            chipStyle = new GUIStyle(GUI.skin.box) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            chipStyle = new GUIStyle(GUI.skin.box) { fontSize = 14, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter };
             chipStyle.normal.background = Solid(new Color(0.04f, 0.07f, 0.13f, 0.92f));
             chipStyle.normal.textColor = new Color(0.85f, 0.92f, 1f);
             chipStyle.hover.background = Solid(new Color(0.08f, 0.14f, 0.24f, 0.95f));
@@ -484,22 +484,22 @@ namespace SeoYuGi.BattleView
             chipStyle.active.background = Solid(new Color(0.1f, 0.2f, 0.3f, 0.95f));
             chipStyle.active.textColor = HudCyan;
             roundStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
-            bannerTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            bannerTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter };
             labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
-            killStyle = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+            killStyle = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleRight };
             announceStyle = new GUIStyle(GUI.skin.label) { fontSize = 30, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, wordWrap = true };
             bannerStyle = new GUIStyle(GUI.skin.label) { fontSize = 44, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefLineStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleLeft, wordWrap = true };
-            keyStyle = new GUIStyle(GUI.skin.box) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            keyStyle = new GUIStyle(GUI.skin.box) { fontSize = 12, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter };
             keyStyle.normal.background = Solid(new Color(0.06f, 0.1f, 0.18f, 0.95f)); // 키캡 — 회색 박스 대체
             keyStyle.normal.textColor = HudCyan;
-            slotNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Overflow };
+            slotNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Overflow };
             slotCostStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
-            slotCoolStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            slotCoolStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter };
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             subStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
-            subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+            subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Normal, alignment = TextAnchor.MiddleCenter, wordWrap = true };
 
             // 폰트: 어그로체 = 타이틀·배너·자막 임팩트, SUIT = HUD 전반
             GameFonts.Apply(bannerStyle, GameFonts.Title);      // 매치 승/패 배너
@@ -596,7 +596,7 @@ namespace SeoYuGi.BattleView
                 var chipRect = new Rect(W / 2f - 110, 131, 220, 20);
                 Fill(chipRect, new Color(0.04f, 0.06f, 0.1f, 0.85f));
                 Edge(chipRect, new Color(1f, 0.78f, 0.25f, 0.5f));
-                ShadowLabel(chipRect, $"◆ {roundRuleChip}", chipStyle2, new Color(1f, 0.85f, 0.45f));
+                ShadowLabel(chipRect, $"규칙: {roundRuleChip}", chipStyle2, new Color(1f, 0.85f, 0.45f));
             }
         }
 
@@ -669,9 +669,9 @@ namespace SeoYuGi.BattleView
             var bannerColor = new Color(0.2f, 0.75f, 0.85f, 0.85f); // 기본 = 탱고파이브 시안
             if ((u == null || !u.alive) && skipHint)
             {
-                msg = skipActive ? "▶▶ 빨리감기 중 (6×) — SPACE: 해제"
-                    : GameModeState.IsCommander ? "격파됨 — Enter 무전·숫자키로 분대 지휘 계속 · SPACE 빨리감기"
-                    : "격파됨 — SPACE: 라운드 결과까지 빨리감기";
+                msg = skipActive ? "빨리감기 중 (6배속). SPACE: 해제"
+                    : GameModeState.IsCommander ? "격파됨. Enter 무전, 숫자키로 분대 지휘 계속. SPACE 빨리감기"
+                    : "격파됨. SPACE: 라운드 결과까지 빨리감기";
                 if (skipActive) bannerColor = new Color(1f, 0.78f, 0.25f, 0.9f); // 호박색 — 비정상 속도 표시
             }
             else if (!string.IsNullOrEmpty(eventText) && Time.time < eventUntil)
@@ -718,7 +718,7 @@ namespace SeoYuGi.BattleView
             // HP 세그먼트 (탱고파이브 좌측 캐릭터 정보 자리)
             var hpSeg = new Rect(x0, y, segW, slotH);
             GUI.color = Color.Lerp(allyColor, Color.white, 0.4f);
-            GUI.Label(new Rect(hpSeg.x, hpSeg.y + 2, hpSeg.width, 18), $"{DisplayName()} — {u.unitClass}", slotNameStyle);
+            GUI.Label(new Rect(hpSeg.x, hpSeg.y + 2, hpSeg.width, 18), $"{DisplayName()} / {u.unitClass}", slotNameStyle);
             GUI.color = Color.white;
             Bar(new Rect(hpSeg.x + 14, hpSeg.y + 26, hpSeg.width - 28, 12), u.hp / (float)u.maxHp,
                 new Color(0.3f, 0.9f, 0.4f), segments: u.maxHp); // HP 칸 눈금 — 이산 수치가 읽힌다
@@ -773,7 +773,7 @@ namespace SeoYuGi.BattleView
             GUI.Label(new Rect(hackSeg.x, hackSeg.y + 2, hackSeg.width, 30), $"{charge * 100f:0}%", bigNumStyle);
             GUI.color = Color.white;
             GUI.Label(new Rect(hackSeg.x, hackSeg.y + 30, hackSeg.width, 14),
-                hackReady ? "시야해킹 준비 완료 — H" : "시야해킹 게이지", subStyle);
+                hackReady ? "시야해킹 준비 완료: H" : "시야해킹 게이지", subStyle);
             Bar(new Rect(hackSeg.x + 14, hackSeg.y + 48, hackSeg.width - 28, 8), charge, hackColor, segments: 4);
         }
 
@@ -941,7 +941,7 @@ namespace SeoYuGi.BattleView
             }
             GUI.color = myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f);
             GUI.Label(new Rect(box.x, box.y + 46, box.width, 26),
-                $"ROUND {briefingRound} — {(myWin ? "승리" : "패배")}", briefTitleStyle);
+                $"ROUND {briefingRound}  {(myWin ? "승리" : "패배")}", briefTitleStyle);
             if (!string.IsNullOrEmpty(briefingReason))
             {
                 GUI.color = Color.white;
@@ -957,8 +957,8 @@ namespace SeoYuGi.BattleView
             GUI.DrawTexture(new Rect(box.x + 50, box.y + box.height - 60, box.width - 100, 24), Texture2D.whiteTexture);
             GUI.color = new Color(1f, 0.85f, 0.25f);
             string footer = readyTotal > 1
-                ? $"SPACE — 다음 라운드 동의  ({readyCount}/{readyTotal})"
-                : "SPACE — 다음 라운드";
+                ? $"SPACE: 다음 라운드 동의  ({readyCount}/{readyTotal})"
+                : "SPACE: 다음 라운드";
             GUI.Label(new Rect(box.x, box.y + box.height - 58, box.width, 22),
                 footer, new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
             GUI.color = Color.white;
@@ -1137,7 +1137,7 @@ namespace SeoYuGi.BattleView
             const float btnW = 96f, btnH = 26f, rowH = 30f, panelW = 170f;
             float x0 = W - panelW - 12f, toggleY = 12f;
 
-            if (GUI.Button(new Rect(W - btnW - 12f, toggleY, btnW, btnH), chatPanelOpen ? "빠른채팅 ▾" : "빠른채팅 ▸", chipStyle))
+            if (GUI.Button(new Rect(W - btnW - 12f, toggleY, btnW, btnH), chatPanelOpen ? "빠른채팅 닫기" : "빠른채팅 열기", chipStyle))
                 chatPanelOpen = !chatPanelOpen;
 
             if (!chatPanelOpen && !ShowChatCheatsheet) return;
@@ -1152,7 +1152,7 @@ namespace SeoYuGi.BattleView
             if (texCheatsheet != null) // 치트시트 프레임 아트 — 반투명 백킹 위에 겹침
                 GUI.DrawTexture(new Rect(x0 - 6, y0 - 6, panelW + 12, panelH + 12), texCheatsheet, ScaleMode.StretchToFill);
             GUI.color = new Color(0.55f, 0.95f, 1f);
-            GUI.Label(new Rect(x0, y0 + 4, panelW, 20), "빠른채팅 — 클릭 or 숫자키", subStyle);
+            GUI.Label(new Rect(x0, y0 + 4, panelW, 20), "빠른채팅: 클릭 또는 숫자키", subStyle);
             GUI.color = Color.white;
 
             for (int i = 0; i < lines.Length; i++)
@@ -1320,8 +1320,8 @@ namespace SeoYuGi.BattleView
                     }
                     x += GroupGap;
                 }
-                string closing = myWin ? "도시 관리 AI 소탕 완료" : "작전 실패 — 재정비하라";
-                if (!string.IsNullOrEmpty(matchEndReason)) closing = $"{matchEndReason}  ·  {closing}"; // 왜인지 (2026-09-05)
+                string closing = myWin ? "도시 관리 AI 소탕 완료" : "작전 실패. 재정비하라";
+                if (!string.IsNullOrEmpty(matchEndReason)) closing = $"{matchEndReason}. {closing}"; // 왜인지 (2026-09-05)
                 ShadowLabel(new Rect(0, cy + 168f, W, 24f),
                     closing,
                     new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
@@ -1419,10 +1419,10 @@ namespace SeoYuGi.BattleView
                 foreach (var e3 in matchStats)
                 { topK = Mathf.Max(topK, e3.kills); topD = Mathf.Max(topD, e3.damage); topC = Mathf.Max(topC, e3.captureSec); }
                 string why;
-                if (m.kills > 0 && m.kills >= topK) why = $"매치 최다 처치 — {m.kills}킬 {m.deaths}데스";
-                else if (m.captureSec > 0f && m.captureSec >= topC) why = $"점령의 주역 — 거점 기여 {Mathf.RoundToInt(m.captureSec)}초";
-                else if (m.damage > 0 && m.damage >= topD) why = $"화력의 중심 — 총 피해 {m.damage}";
-                else why = $"팀의 기둥 — {m.kills}킬 · 피해 {m.damage}";
+                if (m.kills > 0 && m.kills >= topK) why = $"매치 최다 처치. {m.kills}킬 {m.deaths}데스";
+                else if (m.captureSec > 0f && m.captureSec >= topC) why = $"점령의 주역. 거점 기여 {Mathf.RoundToInt(m.captureSec)}초";
+                else if (m.damage > 0 && m.damage >= topD) why = $"화력의 중심. 총 피해 {m.damage}";
+                else why = $"팀의 기둥. {m.kills}킬 / 피해 {m.damage}";
                 ShadowLabel(new Rect(0, big.yMax + 86f + rise * 0.3f, W, 20f), why,
                     new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
                     new Color(0.88f, 0.9f, 0.96f, mvpT));
@@ -1430,9 +1430,9 @@ namespace SeoYuGi.BattleView
                 // 부문 수상 3종 — 학살 / 점령 / 화력 각 1등 (수치 0이면 생략)
                 var awardStyle = new GUIStyle(roundStyle) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
                 string[] awardTexts = new string[3];
-                int ak = ArgBest(matchStats, e4 => e4.kills); if (ak >= 0 && matchStats[ak].kills > 0) awardTexts[0] = $"학살  {matchStats[ak].name} · {matchStats[ak].kills}킬";
-                int ac = ArgBest(matchStats, e4 => e4.captureSec); if (ac >= 0 && matchStats[ac].captureSec > 1f) awardTexts[1] = $"점령  {matchStats[ac].name} · {Mathf.RoundToInt(matchStats[ac].captureSec)}초";
-                int ad = ArgBest(matchStats, e4 => e4.damage); if (ad >= 0 && matchStats[ad].damage > 0) awardTexts[2] = $"화력  {matchStats[ad].name} · 피해 {matchStats[ad].damage}";
+                int ak = ArgBest(matchStats, e4 => e4.kills); if (ak >= 0 && matchStats[ak].kills > 0) awardTexts[0] = $"학살  {matchStats[ak].name} / {matchStats[ak].kills}킬";
+                int ac = ArgBest(matchStats, e4 => e4.captureSec); if (ac >= 0 && matchStats[ac].captureSec > 1f) awardTexts[1] = $"점령  {matchStats[ac].name} / {Mathf.RoundToInt(matchStats[ac].captureSec)}초";
+                int ad = ArgBest(matchStats, e4 => e4.damage); if (ad >= 0 && matchStats[ad].damage > 0) awardTexts[2] = $"화력  {matchStats[ad].name} / 피해 {matchStats[ad].damage}";
                 float ax = W / 2f - 277f;
                 for (int bi = 0; bi < 3; bi++)
                 {
@@ -1443,7 +1443,7 @@ namespace SeoYuGi.BattleView
                     ShadowLabel(ar, awardTexts[bi], awardStyle, new Color(0.9f, 0.92f, 0.98f, mvpT));
                 }
 
-                string rHint = readyTotal > 1 ? $"R — 새 매치 동의  ({readyCount}/{readyTotal})" : "R — 새 매치";
+                string rHint = readyTotal > 1 ? $"R: 새 매치 동의  ({readyCount}/{readyTotal})" : "R: 새 매치";
                 ShadowLabel(new Rect(0, big.yMax + 142f + rise * 0.3f, W, 20f), rHint,
                     new GUIStyle(roundStyle) { fontSize = 14, alignment = TextAnchor.MiddleCenter },
                     new Color(0.6f, 0.68f, 0.78f, (0.6f + 0.4f * Mathf.Sin(age * 3f)) * mvpT));

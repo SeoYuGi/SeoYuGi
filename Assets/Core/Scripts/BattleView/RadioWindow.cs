@@ -131,7 +131,7 @@ namespace SeoYuGi.BattleView
             if (!LlmRadio.HasKey)
             {
                 GUI.Label(new Rect(x, yField, w, fieldH),
-                    "자유 무전 오프라인 — API 키 없음. 퀵챗(숫자키)은 동작한다.", hintStyle);
+                    "자유 무전 오프라인. API 키 없음. 퀵챗(숫자키)은 동작한다.", hintStyle);
                 return;
             }
 
@@ -145,10 +145,10 @@ namespace SeoYuGi.BattleView
                 GUI.DrawTexture(back, texBar, ScaleMode.StretchToFill);
 
             string ack = ackProvider != null ? ackProvider() : "";
-            string topLine = waiting ? "…교신 중"
-                : guided ? "이렇게 말하면 알아듣습니다 — 입력하거나 V를 누른 채 말하세요"
+            string topLine = waiting ? "...교신 중"
+                : guided ? "이렇게 말하면 알아듣습니다. 입력하거나 V를 누른 채 말하세요"
                 : !string.IsNullOrEmpty(ack) ? "> " + ack
-                : "무전 · Enter 발신 · ESC 취소";
+                : "무전 / Enter 발신 / ESC 취소";
             GUI.Label(new Rect(x, yField - 28f * s, w, 26f * s), topLine,
                 waiting || string.IsNullOrEmpty(ack) ? hintStyle : ackStyle);
 

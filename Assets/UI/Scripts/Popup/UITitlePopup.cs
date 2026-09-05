@@ -266,7 +266,7 @@ public class UITitlePopup : UIPopup
         var t = tgo.GetComponent<Text>();
         t.text = label;
         t.fontSize = 20;
-        t.fontStyle = FontStyle.Bold;
+        t.fontStyle = FontStyle.Normal; // Title = A2Z Bold 파일 - 가짜 볼드 없음
         t.color = Cyan;
         t.alignment = TextAnchor.MiddleCenter;
         t.font = GameFonts.Title != null ? GameFonts.Title : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -342,6 +342,7 @@ public class UITitlePopup : UIPopup
         rt.anchorMin = rt.anchorMax = anchor;
         rt.anchoredPosition = pos; rt.sizeDelta = sizeDelta;
         var t = go.GetComponent<Text>();
+        GameFonts.Resolve(ref font, ref style); // Bold 요청 → 볼드 파일, 가짜 볼드 없음
         t.text = text; t.fontSize = size; t.fontStyle = style; t.color = color;
         t.alignment = TextAnchor.MiddleCenter;
         t.horizontalOverflow = HorizontalWrapMode.Overflow;

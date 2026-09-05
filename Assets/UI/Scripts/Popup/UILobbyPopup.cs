@@ -256,7 +256,7 @@ public class UILobbyPopup : UIPopup
         var src = template.GetComponent<RectTransform>();
         rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, src.sizeDelta.y + 14f);
         var label = go.GetComponentInChildren<Text>();
-        if (label != null) { label.text = "팀 변경 ⇄"; label.fontSize = 17; label.alignment = TextAnchor.MiddleCenter; }
+        if (label != null) { label.text = "팀 변경"; label.fontSize = 17; label.alignment = TextAnchor.MiddleCenter; }
         // 복제 시점이 ApplySkin보다 앞이라 민짜로 남는다 — 버튼 판 스킨 직접 적용 (2026-09-05)
         var plate = UISkin.ButtonPlate();
         var img2 = go.GetComponent<Image>();
@@ -363,7 +363,7 @@ public class UILobbyPopup : UIPopup
             if (slotLabels[i] != null)
             {
                 string who = s.owner == SlotOwner.Bot ? "봇" : me ? "나" : "플레이어";
-                slotLabels[i].text = $"{s.callsign} · {who}";
+                slotLabels[i].text = $"{s.callsign} / {who}";
                 slotLabels[i].color = s.owner == SlotOwner.Bot ? new Color(0.6f, 0.6f, 0.6f)
                     : me ? new Color(0.5f, 1f, 0.6f) : Color.white;
             }
@@ -414,7 +414,7 @@ public class UILobbyPopup : UIPopup
         for (int c = 0; c < counts.Length; c++)
             if (counts[c] > 1) warns.Add($"{ClassName((UnitClass)c)} 중복 픽");
 
-        balanceText.text = warns.Count == 0 ? "" : "⚠ 팀 밸런스 부족\n" + string.Join("\n", warns);
+        balanceText.text = warns.Count == 0 ? "" : "팀 밸런스 부족\n" + string.Join("\n", warns);
     }
 
     static string ClassName(UnitClass cls)

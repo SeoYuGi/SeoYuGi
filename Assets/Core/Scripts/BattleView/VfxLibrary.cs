@@ -80,7 +80,7 @@ namespace SeoYuGi.BattleView
         {
             if (cache.TryGetValue(path, out var p)) return p;
             p = Resources.Load<GameObject>(path);
-            if (p == null) Debug.LogWarning($"VfxLibrary — 프리팹 없음: {path} (코드 연출 폴백)");
+            if (p == null) Debug.LogWarning($"VfxLibrary. 프리팹 없음: {path} (코드 연출 폴백)");
             cache[path] = p; // null도 캐시 — 경고 1회만
             return p;
         }

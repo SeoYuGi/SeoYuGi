@@ -133,7 +133,7 @@ namespace SeoYuGi.BattleView
             y += 64f;
             if (GUI.Button(new Rect(box.x + padX, y, w, 56f), "게임 종료", itemStyle)) Quit();
 
-            GUI.Label(new Rect(box.x, box.yMax - 36f, box.width, 20f), "ESC — 계속하기", hintStyle);
+            GUI.Label(new Rect(box.x, box.yMax - 36f, box.width, 20f), "ESC. 계속하기", hintStyle);
         }
 
         void DrawSettings(Rect box, float padX)
@@ -157,7 +157,7 @@ namespace SeoYuGi.BattleView
 
             if (GUI.Button(new Rect(box.x + padX, box.yMax - 76f, w, 48f), "뒤로", itemStyle))
                 inSettings = false;
-            GUI.Label(new Rect(box.x, box.yMax - 26f, box.width, 20f), "ESC — 뒤로", hintStyle);
+            GUI.Label(new Rect(box.x, box.yMax - 26f, box.width, 20f), "ESC. 뒤로", hintStyle);
         }
 
         float Slider(float x, ref float y, float w, string label, float value)

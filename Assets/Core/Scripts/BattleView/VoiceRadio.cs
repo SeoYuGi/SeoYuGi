@@ -166,10 +166,10 @@ namespace SeoYuGi.BattleView
                 GUI.DrawTexture(new Rect(box.x + 10f * s, box.y + 6f * s, h - 12f * s, h - 12f * s),
                     texMic, ScaleMode.ScaleToFit);
                 GUI.color = prev;
-                GUI.Label(box, "녹음 중 — 손 떼면 발신", recStyle);
+                GUI.Label(box, "녹음 중. 손 떼면 발신", recStyle);
             }
             else
-                GUI.Label(box, (blink ? "● " : "   ") + "녹음 중 — 손 떼면 발신", recStyle);
+                GUI.Label(box, (blink ? "REC " : "   ") + "녹음 중. 손 떼면 발신", recStyle);
         }
     }
 }

@@ -31,21 +31,21 @@ namespace SeoYuGi.Battle
         {
             [UnitClass.Tank] = new Persona
             {
-                trait = "멍청하고 우직함. 말을 더듬는다(어, 어… / 그, 그럼요). 명령은 무조건 잘 듣는다. 반문 없음.",
-                prefixes = new[] { "어, 어… ", "음, 그… ", "네, 네! " },
+                trait = "멍청하고 우직함. 말을 더듬는다(어, 어... / 그, 그럼요). 명령은 무조건 잘 듣는다. 반문 없음.",
+                prefixes = new[] { "어, 어... ", "음, 그... ", "네, 네! " },
                 suffixes = new[] { " 그, 그럼요.", " 하, 할게요.", "" },
                 refuseChance = 0f, grumbleChance = 0f,
             },
             [UnitClass.Balance] = new Persona
             {
                 trait = "막가파. 말을 잘 안 듣고 무조건 돌격하려 든다. 말버릇 \"끼에엑!\". 열에 셋은 명령을 무시하고 돌격을 선언한다(compliance refuse).",
-                prefixes = new[] { "끼에엑! ", "끼엑— ", "" },
+                prefixes = new[] { "끼에엑! ", "끼엑! ", "" },
                 suffixes = new[] { " 끼에엑!", " 가자아!", " 끼엑." },
                 refuseChance = 0.3f, grumbleChance = 0f,
             },
             [UnitClass.Assassin] = new Persona
             {
-                trait = "충직하고 차분함. 필요한 말만 짧게 한다 — \"네.\" \"확인.\" \"이동합니다.\" 수준. 반문 거의 없음.",
+                trait = "충직하고 차분함. 필요한 말만 짧게 한다. \"네.\" \"확인.\" \"이동합니다.\" 수준. 반문 거의 없음.",
                 prefixes = new[] { "" },
                 suffixes = new[] { "" },
                 refuseChance = 0f, grumbleChance = 0f,
@@ -53,15 +53,15 @@ namespace SeoYuGi.Battle
             [UnitClass.Grenadier] = new Persona
             {
                 trait = "성격이 드러움. \"엥?\" \"앙?\" 하며 지휘관에게 자꾸 되묻고 툴툴대지만 결국 따른다(compliance는 obey, ack만 투덜). 말버릇 \"국.구국.\" \"구구.\"",
-                prefixes = new[] { "엥? ", "앙? ", "하… " },
-                suffixes = new[] { " 구구.", " 국.구국.", " …구구." },
+                prefixes = new[] { "엥? ", "앙? ", "하... " },
+                suffixes = new[] { " 구구.", " 국.구국.", " ...구구." },
                 refuseChance = 0f, grumbleChance = 0.6f,
             },
             [UnitClass.Sniper] = new Persona
             {
-                trait = "영리하고 침착함. 말을 잘 듣고, 명백히 틀린 명령(이미 잃은 거점·자살행위)에만 짧게 반문한다(question). 군용 무전처럼 정확하게.",
+                trait = "영리하고 침착함. 말을 잘 듣고, 명백히 틀린 명령(이미 잃은 거점, 자살행위)에만 짧게 반문한다(question). 군용 무전처럼 정확하게.",
                 prefixes = new[] { "", "확인. " },
-                suffixes = new[] { " — 이해했습니다.", " 정확히.", "" },
+                suffixes = new[] { ". 이해했습니다.", " 정확히.", "" },
                 refuseChance = 0f, grumbleChance = 0f,
             },
         };
@@ -96,7 +96,7 @@ namespace SeoYuGi.Battle
         /// <summary>툴툴 — 되묻지만 따른다 (비둘기).</summary>
         public static string GrumbleLine(UnitClass cls, int team, string ack, Random rng)
         {
-            string[] forms = { $"엥? 꼭 그래야 해요? …알았어요. {ack} 구구.", $"앙? 지금요? 하… {ack} 국.구국.", $"또요? …{ack} 구구." };
+            string[] forms = { $"엥? 꼭 그래야 해요? ...알았어요. {ack} 구구.", $"앙? 지금요? 하... {ack} 국.구국.", $"또요? ...{ack} 구구." };
             string line = forms[rng.Next(forms.Length)];
             return team == 1 ? "[모방] " + line : line;
         }
@@ -104,7 +104,7 @@ namespace SeoYuGi.Battle
         /// <summary>불복종 — 명령 무시하고 돌격 선언 (고라니).</summary>
         public static string RefuseLine(UnitClass cls, int team, Random rng)
         {
-            string[] forms = { "끼에엑! 그런 거 몰라, 그냥 박는다!", "끼엑— 됐어, 앞에 적 있잖아! 돌격!", "끼에엑! 내 맘대로 할게!" };
+            string[] forms = { "끼에엑! 그런 거 몰라, 그냥 박는다!", "끼엑! 됐어, 앞에 적 있잖아! 돌격!", "끼에엑! 내 맘대로 할게!" };
             string line = forms[rng.Next(forms.Length)];
             return team == 1 ? "[모방] " + line : line;
         }

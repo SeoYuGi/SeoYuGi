@@ -40,14 +40,14 @@ namespace SeoYuGi.BattleView
         [SerializeField] RoundConfig roundConfig = new RoundConfig();
         [SerializeField] PickupConfig pickupConfig = new PickupConfig();
 
-        [Header("Map — BattleMaps 고정 6장 중 랜덤")]
+        [Header("Map. BattleMaps 고정 6장 중 랜덤")]
         [SerializeField] int mapIndex = 0;
 
         [Header("Camera (자동 프레이밍)")]
         [SerializeField] float cameraPitch = 55f;
         [SerializeField] float cameraDistanceScale = 0.95f;
 
-        [Header("슬롯 — 내 조작은 1기, 나머지는 AI (기획서 §04)")]
+        [Header("슬롯. 내 조작은 1기, 나머지는 AI (기획서 §04)")]
         [SerializeField] int playerUnitId = 2; // 브라보 (밸런스)
         [SerializeField] Color[] teamColors = { new Color(0.25f, 0.5f, 1f), new Color(1f, 0.3f, 0.25f) };
 
@@ -161,9 +161,9 @@ namespace SeoYuGi.BattleView
                     if (IsNetClient && result.understood) NetSync.ClientSendOrders(result); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
                     int speaker = result.orders.Count > 0 ? result.orders[0].unitId
                                 : squad.Count > 0 ? squad[0] : playerUnitId;
-                    ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "…수신 불량." : result.ack);
+                    ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "...수신 불량." : result.ack);
                     if (result.refused) // 불복종 — 분대가 명령을 물렸다. 채팅 로그와 별개로 전황 배너에도 남긴다
-                        hud.PushEvent($"[무전] {FindSlot(speaker).callsign}: 명령 거부 — {result.ack}", new Color(1f, 0.78f, 0.25f));
+                        hud.PushEvent($"[무전] {FindSlot(speaker).callsign}: 명령 거부. {result.ack}", new Color(1f, 0.78f, 0.25f));
                     ShowOrderMarkers(result.orders);
                     if (radio != null) radio.SetWaiting(false);
                 });
@@ -267,7 +267,7 @@ namespace SeoYuGi.BattleView
                         }
                     speaker = id; // 거부한 놈이 말한다 — 안 그러면 왜 혼자 딴 데 가는지 모른다
                     built.ack = Personas.RefuseLine(slot.cls, slot.team, personaRng);
-                    hud.PushEvent($"[무전] {slot.callsign}: 명령 무시 — 돌격", new Color(1f, 0.78f, 0.25f));
+                    hud.PushEvent($"[무전] {slot.callsign}: 명령 무시. 돌격", new Color(1f, 0.78f, 0.25f));
                     return speaker;
                 }
                 if (roll == Personas.Reply.Grumble && id == speaker)
@@ -314,7 +314,7 @@ namespace SeoYuGi.BattleView
                         for (int i = 0; i < zoneCount; i++) if (Rule.ZoneEnabled(i)) { open = i; break; }
                         var locked = new List<string>();
                         for (int i = 0; i < zoneCount; i++) if (!Rule.ZoneEnabled(i)) locked.Add(OrderPresets.ZoneName(i));
-                        line = $"{string.Join("·", locked)} 봉쇄 확인. {OrderPresets.ZoneName(System.Math.Max(open, 0))} 거점부터 갑니다.";
+                        line = $"{string.Join(", ", locked)} 봉쇄 확인. {OrderPresets.ZoneName(System.Math.Max(open, 0))} 거점부터 갑니다.";
                         orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.GatherZone, zone = System.Math.Max(open, 0) }, bots, zoneCount);
                         break;
                     }
@@ -333,7 +333,7 @@ namespace SeoYuGi.BattleView
                         orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
                         break;
                     default: // NoTakeback
-                        line = "탈환 불가 — 첫 점령이 전부입니다. 빈 거점부터 찍습니다.";
+                        line = "탈환 불가. 첫 점령이 전부입니다. 빈 거점부터 찍습니다.";
                         orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
                         break;
                 }
@@ -359,7 +359,7 @@ namespace SeoYuGi.BattleView
             var mySlot = FindSlot(playerUnitId);
             sb.Append("지휘관(나, \"").Append(mySlot.callsign).Append("\")");
             if (me != null && me.alive) sb.Append(" 위치: (").Append(me.pos.x).Append(',').Append(me.pos.y).Append(")");
-            else sb.Append(" — 전사, 관전 중 지휘");
+            else sb.Append(". 전사, 관전 중 지휘");
             sb.Append('\n');
             // 호칭은 뭐로 불러도 대응해야 한다 (2026-09-05): 별명·동물 이름·기계 이름·클래스명·역할 전부 나열.
             sb.Append("아군 분대 (unitId: \"별명\" = 다른 호칭들):\n");
@@ -375,14 +375,14 @@ namespace SeoYuGi.BattleView
                   .Append(" | 성격: ").Append(Personas.PromptBlock(s.cls)).Append('\n');
             }
             // 적은 편성만 준다 — 위치·HP는 시야 밖 정보라 새면 안 된다 (실제 사격도 시야 규칙을 탄다)
-            sb.Append("적군 (생존, 위치 불명 — unitId: \"별명\" = 다른 호칭들):\n");
+            sb.Append("적군 (생존, 위치 불명. unitId: \"별명\" = 다른 호칭들):\n");
             foreach (var id in enemies)
             {
                 var s = FindSlot(id);
                 sb.Append(id).Append(": \"").Append(s.callsign).Append("\" = ")
                   .Append(ClassNames.For(0, s.cls)).Append('/').Append(ClassNames.For(1, s.cls)).Append('/')
                   .Append(s.cls).Append('/').Append(RoleWord(s.cls));
-                if (s.IsHuman) sb.Append(" — 상대 지휘관(사람이 조종)");
+                if (s.IsHuman) sb.Append(". 상대 지휘관(사람이 조종)");
                 sb.Append('\n');
             }
             if (Round != null)
@@ -392,7 +392,7 @@ namespace SeoYuGi.BattleView
                     string owner = z.owner < 0 ? "중립" : z.owner == playerTeam ? "아군" : "적군";
                     sb.Append("거점 ").Append(OrderPresets.ZoneName(i)).Append('(').Append(i)
                       .Append("): ").Append(owner)
-                      .Append(" — 중심 (").Append(z.Center.x).Append(',').Append(z.Center.y).Append(")\n");
+                      .Append(". 중심 (").Append(z.Center.x).Append(',').Append(z.Center.y).Append(")\n");
                 }
             return sb.ToString();
         }
@@ -682,7 +682,7 @@ namespace SeoYuGi.BattleView
             HackVfx.Play(this, origin, HackSystem.Duration);
             battleAudio.PlaySfx("S27_Hack", 2.2f); // 시야해킹 전용음
             hud.ShowSubtitle(u != null && u.team == playerTeam
-                ? "시야해킹 — 적 예측 마비" : "시야해킹 감지 — 예측 교란", 2.4f);
+                ? "시야해킹. 적 예측 마비" : "시야해킹 감지. 예측 교란", 2.4f);
         }
 
         void OnDestroy()
@@ -762,8 +762,8 @@ namespace SeoYuGi.BattleView
                 bool guidedClosed = radioTimeGuided && radio != null && !radio.IsOpen; // 가이드 무전은 발신/ESC 하면 바로 재개
                 if (remain <= 0f || (!online && !radioTimeGuided) || guidedClosed) { EndRadioTime(); return; } // 호스트 종료 통보가 보통 먼저 오고, 이건 상한
                 hud.ShowAnnounce(radioTimeGuided
-                        ? $"첫 무전 {Mathf.CeilToInt(remain)} — 분대에 말로 지시해 보세요"
-                        : $"무전 타임 {Mathf.CeilToInt(remain)} — Enter 무전 · 숫자키/패널 프리셋",
+                        ? $"첫 무전 {Mathf.CeilToInt(remain)}. 분대에 말로 지시해 보세요"
+                        : $"무전 타임 {Mathf.CeilToInt(remain)}. Enter 무전 / 숫자키/패널 프리셋",
                     StrikeVfx.MineNeon, 0.6f);
                 return;
             }
@@ -775,7 +775,7 @@ namespace SeoYuGi.BattleView
                 radioTimeGuided = true;
                 BeginRadioTime(Guide.RadioLength);
                 if (radio != null && radio.enabled) radio.OpenGuided();
-                hud.PushEvent("튜토리얼 3/3 — 지휘: 분대에 말로 지시하면 알아듣고 움직인다", StrikeVfx.MineNeon);
+                hud.PushEvent("튜토리얼 3/3. 지휘: 분대에 말로 지시하면 알아듣고 움직인다", StrikeVfx.MineNeon);
                 return;
             }
             if (!online || !NetBoot.IsHost || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
@@ -837,7 +837,7 @@ namespace SeoYuGi.BattleView
             {
                 var pts = new List<Vector3>();
                 foreach (var z in Round.Zones) pts.Add(gridView.CoordToWorld(z.Center));
-                GuideSpotlight.Set(ScreenRectAround(pts, 110f * s), "거점 — 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다");
+                GuideSpotlight.Set(ScreenRectAround(pts, 110f * s), "거점. 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다");
                 return;
             }
             if (radioTimeGuided && radio != null && radio.IsOpen) // ③ 무전창 (RadioWindow 배치와 같은 계산)
@@ -846,7 +846,7 @@ namespace SeoYuGi.BattleView
                 float w = Mathf.Min(560f * rs, Screen.width * 0.5f), fieldH = 42f * rs, pad = 10f * rs;
                 float x = 24f * rs, yField = Screen.height - 205f * rs;
                 GuideSpotlight.Set(new Rect(x - pad - 6f, yField - 30f * rs - pad - 6f, w + pad * 2 + 12f, fieldH + 30f * rs + pad * 2 + 12f),
-                    "무전 — 이렇게 말하면 분대가 알아듣고 움직인다");
+                    "무전. 이렇게 말하면 분대가 알아듣고 움직인다");
                 return;
             }
             if (Guide.Active && !GameFreeze.Active) // ② 조작 — 내 유닛
@@ -855,7 +855,7 @@ namespace SeoYuGi.BattleView
                 var view = me != null && me.alive ? viewRegistry.Get(playerUnitId) : null;
                 if (view != null && (!Guide.MoveDone || !Guide.AttackDone))
                 {
-                    string cap = !Guide.MoveDone ? "내 유닛 — 파란 칸을 클릭해 이동" : "A 누르고 적 칸 클릭 = 공격";
+                    string cap = !Guide.MoveDone ? "내 유닛. 파란 칸을 클릭해 이동" : "A 누르고 적 칸 클릭 = 공격";
                     var p = view.transform.position;
                     GuideSpotlight.Set(ScreenRectAround(new[] { p + new Vector3(-2.2f, 0f, -2.2f), p + new Vector3(2.2f, 1.2f, 2.2f) }, 20f * s), cap);
                     return;
@@ -876,10 +876,10 @@ namespace SeoYuGi.BattleView
             if (!guideStep2Announced)
             {
                 guideStep2Announced = true;
-                hud.PushEvent("튜토리얼 2/3 — 조작: 파란 칸 클릭 = 이동 · A 누르고 적 칸 클릭 = 공격", StrikeVfx.MineNeon);
+                hud.PushEvent("튜토리얼 2/3. 조작: 파란 칸 클릭 = 이동 / A 누르고 적 칸 클릭 = 공격", StrikeVfx.MineNeon);
             }
             string hint = null;
-            if (!Guide.MoveDone) hint = "▼ 파란 칸 클릭 = 이동";
+            if (!Guide.MoveDone) hint = "파란 칸 클릭 = 이동";
             else if (!Guide.AttackDone)
             {
                 foreach (var u in Battle.Units)
@@ -933,13 +933,13 @@ namespace SeoYuGi.BattleView
             radioTimeActive = false;
             GameFreeze.Pop();
             if (NetBoot.IsOnline && NetBoot.IsHost) NetSync.HostSendRadioTime(false, 0f);
-            hud.ShowAnnounce("교신 종료 — 전투 재개", StrikeVfx.MineNeon, 1.2f);
+            hud.ShowAnnounce("교신 종료. 전투 재개", StrikeVfx.MineNeon, 1.2f);
             if (radioTimeGuided)
             {
                 radioTimeGuided = false;
                 if (radio != null && radio.IsOpen) radio.Close();
                 Guide.Finish(); // 가이드 마지막 단계 — 다시 안 뜬다 (튜토리얼 버튼으로는 언제든)
-                hud.ShowAnnounce("튜토리얼 완료 — 이대로 계속 싸우거나, ESC 메뉴에서 타이틀로", StrikeVfx.MineNeon, 4.5f);
+                hud.ShowAnnounce("튜토리얼 완료. 이대로 계속 싸우거나, ESC 메뉴에서 타이틀로", StrikeVfx.MineNeon, 4.5f);
             }
         }
 
@@ -1026,7 +1026,7 @@ namespace SeoYuGi.BattleView
                     if (slot.unitId == uid)
                     {
                         aiDrivers.Add(new AiSlotDriver(uid, slot.cls, slot.team, intentSink, predictor));
-                        hud.PushEvent($"{slot.callsign} 이탈 — 봇이 대신합니다", new Color(0.7f, 0.75f, 0.85f));
+                        hud.PushEvent($"{slot.callsign} 이탈. 봇이 대신합니다", new Color(0.7f, 0.75f, 0.85f));
                         break;
                     }
             }
@@ -1194,7 +1194,7 @@ namespace SeoYuGi.BattleView
                 }
                 if (!NetBoot.IsOnline)
                 {
-                    Debug.LogWarning("세션 성사됐지만 NGO 미시작(10s) — 봇전으로");
+                    Debug.LogWarning("세션 성사됐지만 NGO 미시작(10s). 봇전으로");
                     matched = false;
                 }
             }
@@ -1241,7 +1241,7 @@ namespace SeoYuGi.BattleView
             if (playerUnitId < 0)
             {
                 // 최후 방어 — 여기서 던지면 매치 시작 자체가 무너진다. 첫 슬롯 폴백 + 원인 로그 (2026-09-05)
-                Debug.LogError("매치 시작: 내 슬롯 미발견 (시작 페이로드·로비 미러 모두 미스) — 첫 슬롯 폴백");
+                Debug.LogError("매치 시작: 내 슬롯 미발견 (시작 페이로드, 로비 미러 모두 미스). 첫 슬롯 폴백");
                 playerUnitId = setup.slots[0].unitId;
             }
             playerTeam = FindSlot(playerUnitId).team;
@@ -1398,7 +1398,7 @@ namespace SeoYuGi.BattleView
             gridConfig = new GridConfig { width = map.Width, height = map.Height };
             predictor = NewPredictor();
             hackSystem = NewHackSystem();
-            Debug.Log($"맵 랜덤 → [{map.Name}] ({map.Width}×{map.Height})");
+            Debug.Log($"맵 랜덤 → [{map.Name}] ({map.Width}x{map.Height})");
             ShowClassSelect();
         }
 
@@ -1575,7 +1575,7 @@ namespace SeoYuGi.BattleView
                         }
                 battleAudio.PlaySfx("S27_Hack", 2.2f); // 시야해킹 전용음
                 hud.ShowSubtitle(u != null && u.team == playerTeam
-                    ? "시야해킹 — 적 예측 마비" : "시야해킹 감지 — 예측 교란", 2.4f);
+                    ? "시야해킹. 적 예측 마비" : "시야해킹 감지. 예측 교란", 2.4f);
                 // 팀 자동 통보 — 성공 지점에서 쏴야 원격 클라·봇 해킹도 커버 (쿨다운 무시 규칙은 QuickChat이)
                 quickChat.TrySend(unitId, QuickChat.HackLine, Time.time);
                 if (NetBoot.IsOnline && NetBoot.IsHost)
@@ -1619,7 +1619,7 @@ namespace SeoYuGi.BattleView
                 foreach (var go in zoneLabels)
                     if (go != null) Destroy(go);
                 zoneLabels.Clear();
-                Debug.Log($"맵 로테이션 → [{map.Name}] ({map.Width}×{map.Height})");
+                Debug.Log($"맵 로테이션 → [{map.Name}] ({map.Width}x{map.Height})");
             }
 
             var grid = new GridModel(gridConfig);
@@ -2330,22 +2330,22 @@ namespace SeoYuGi.BattleView
             {
                 trainingDummyHome = map.Spawns[TrainingDummyId];
                 trainingLastHitAt = Time.time;
-                hud.ShowAnnounce("훈련장 — F1~F5 캐릭터 교체 · 허수아비는 죽지 않음 · ESC 메뉴로 나가기", Color.white, 6f);
+                hud.ShowAnnounce("훈련장. F1~F5 캐릭터 교체 / 허수아비는 죽지 않음 / ESC 메뉴로 나가기", Color.white, 6f);
             }
             else if (Guide.Wanted)
             {
                 // ① 가이드 — 거점부터. 목표 문구 대신 규칙 한 줄 + 거점 링 (싱글은 정지를 5.5초로 늘려 읽을 시간)
-                hud.ShowAnnounce("거점을 밟으면 게이지가 찬다 — 더 많이 가진 팀이 이긴다", Color.white, 5.5f);
+                hud.ShowAnnounce("거점을 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다", Color.white, 5.5f);
                 foreach (var z in Round.Zones)
                     RingWave.Spawn(gridView.CoordToWorld(z.Center), new Color(1f, 1f, 1f, 0.9f), 2.6f, 1.6f);
                 if (GameModeState.IsCommander && !NetBoot.IsOnline && Match.CurrentRound <= 1)
                 {
                     Guide.Begin(); // ②③은 싱글 지휘관만
-                    hud.PushEvent("튜토리얼 1/3 — 거점: 밟으면 게이지가 찬다, 더 많이 가진 팀이 이긴다", StrikeVfx.MineNeon);
+                    hud.PushEvent("튜토리얼 1/3. 거점: 밟으면 게이지가 찬다, 더 많이 가진 팀이 이긴다", StrikeVfx.MineNeon);
                     guideStep2Announced = false;
                 }
             }
-            else hud.ShowAnnounce("목표 — 거점을 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
+            else hud.ShowAnnounce("목표. 거점을 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             killStreaks.Clear(); // 멀티킬 스트릭 리셋
             roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋
@@ -2370,8 +2370,8 @@ namespace SeoYuGi.BattleView
             if (Rule != null)
             {
                 // 규칙은 라운드 개시 자막 뒤에 이어 붙인다 — 전술을 정하기 전에 읽혀야 한다
-                hud.ShowSubtitle($"◆ {Rule.title} ◆  {Rule.detail}", 5f);
-                Debug.Log($"라운드 규칙: {Rule.title} — {Rule.detail}");
+                hud.ShowSubtitle($"[{Rule.title}] {Rule.detail}", 5f);
+                Debug.Log($"라운드 규칙: {Rule.title}. {Rule.detail}");
             }
             // 기계팀 지휘관 — 분대가 상대 동물을 스캔해 모방한다는 컨셉 대사 (성격도 같은 동물을 따른다)
             if (GameModeState.IsCommander && playerTeam == 1)
@@ -2509,7 +2509,7 @@ namespace SeoYuGi.BattleView
 
             spectateUnitId = alive[idx].unitId;
             cam.Spectate(viewRegistry.Get(spectateUnitId).transform);
-            hud.ShowAnnounce($"{alive[idx].name} 시점 관전  ( ← / → 전환 )", new Color(0.7f, 0.8f, 0.9f), 1.6f);
+            hud.ShowAnnounce($"{alive[idx].name} 시점 관전  (좌우 화살표로 전환)", new Color(0.7f, 0.8f, 0.9f), 1.6f);
         }
 
         /// <summary>매치 확정 스탯 와이어 — (unitId, 킬, 데스, 피해, 점령초). 매치오버 릴레이용 (2026-09-05).</summary>
@@ -2566,7 +2566,7 @@ namespace SeoYuGi.BattleView
                 killStreaks[killerId] = (st, Time.time + 7f);
                 if (st >= 2)
                 {
-                    hud.ShowAnnounce($"{killerName} — {(st == 2 ? "더블 킬!" : "트리플 킬!")}", feedColor, 2.2f);
+                    hud.ShowAnnounce($"{killerName}. {(st == 2 ? "더블 킬!" : "트리플 킬!")}", feedColor, 2.2f);
                     battleAudio.PlayThump(big: true);
                     CameraShaker.Shake(0.25f);
                 }
@@ -2684,10 +2684,10 @@ namespace SeoYuGi.BattleView
             {
                 case RoundSystem.EndReason.Elimination: return myWin ? "적 전멸!" : "아군 전멸";
                 case RoundSystem.EndReason.AllZones: return myWin ? "거점 전체 장악!" : "거점을 모두 내줬다";
-                case RoundSystem.EndReason.TimeoutZones: return myWin ? "시간 종료 — 거점 우세" : "시간 종료 — 거점 열세";
-                case RoundSystem.EndReason.TimeoutAlive: return myWin ? "시간 종료 — 생존 우세" : "시간 종료 — 생존 열세";
-                case RoundSystem.EndReason.OvertimeKill: return "추가시간 — 결정적 킬";
-                case RoundSystem.EndReason.OvertimeCapture: return "추가시간 — 거점 탈환";
+                case RoundSystem.EndReason.TimeoutZones: return myWin ? "시간 종료. 거점 우세" : "시간 종료. 거점 열세";
+                case RoundSystem.EndReason.TimeoutAlive: return myWin ? "시간 종료. 생존 우세" : "시간 종료. 생존 열세";
+                case RoundSystem.EndReason.OvertimeKill: return "추가시간. 결정적 킬";
+                case RoundSystem.EndReason.OvertimeCapture: return "추가시간. 거점 탈환";
                 default: return null;
             }
         }
@@ -2757,7 +2757,7 @@ namespace SeoYuGi.BattleView
             nextRadioTimeAt = -1f;
             Time.timeScale = 1f; // 빨리감기 중 끝났으면 정상 속도로
             hud.SetSkipHint(false, false);
-            Debug.Log($"라운드 {Match.CurrentRound} 종료 — 팀 {winnerTeam} 승리");
+            Debug.Log($"라운드 {Match.CurrentRound} 종료. 팀 {winnerTeam} 승리");
             battleAudio.SetCaptureLoop(false);
             battleAudio.PlaySfx("S14_RoundEnd", 1.5f);
 
@@ -2787,7 +2787,7 @@ namespace SeoYuGi.BattleView
                     hud.SetMatchStats(BuildMatchStats());
                     hud.ShowMatchEnd();
                     battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
-                    if (myWin) PlayVoiceLine("Voice_MatchWin", "예측 초과 — 통제 불능");
+                    if (myWin) PlayVoiceLine("Voice_MatchWin", "예측 초과. 통제 불능");
                     else PlayVoiceLine("Voice_MatchLose", "구역 통제권 회수됨");
                 }));
             }
@@ -2967,7 +2967,7 @@ namespace SeoYuGi.BattleView
             // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
             bool spectatingNow = Spectating;
             if (spectatingNow && !spectatingPrev && GameModeState.IsCommander)
-                hud.PushEvent("전사 — 무전(Enter)·숫자키로 분대 지휘는 계속됩니다", StrikeVfx.MineNeon);
+                hud.PushEvent("전사. 무전(Enter), 숫자키로 분대 지휘는 계속됩니다", StrikeVfx.MineNeon);
             spectatingPrev = spectatingNow;
 
             bool radioOpen = radio != null && radio.IsOpen;
@@ -3000,7 +3000,7 @@ namespace SeoYuGi.BattleView
             bool hackReadyNow = hackSystem.IsReady(playerUnitId);
             if (hackReadyNow && !hackReadyAnnounced)
             {
-                hud.ShowAnnounce("시야해킹 준비 완료 — H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
+                hud.ShowAnnounce("시야해킹 준비 완료. H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
                 battleAudio.PlaySfx("S28_HackReady", 1f);
                 battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             }
@@ -3097,7 +3097,7 @@ namespace SeoYuGi.BattleView
                 bool onHigh = Battle.Grid.IsHighland(me.pos);
                 if (onHigh && !playerWasOnHighland)
                 {
-                    hud.ShowAnnounce("고지대 확보 — 시야 +2 · 사거리 +2 · 이동 +1", teamColors[playerTeam], 2.2f);
+                    hud.ShowAnnounce("고지대 확보. 시야 +2 / 사거리 +2 / 이동 +1", teamColors[playerTeam], 2.2f);
                     battleAudio.PlaySfx("S34_Highland", 1.2f);
                 }
                 playerWasOnHighland = onHigh;
@@ -3113,10 +3113,10 @@ namespace SeoYuGi.BattleView
             if (prevMyZones >= 0 && (myZones != prevMyZones || enemyZones != prevEnemyZones))
             {
                 if (myZones == 2 && prevMyZones < 2)
-                    hud.ShowAnnounce("아군 거점 2개 확보 — 하나 남았습니다!", teamColors[playerTeam], 2.6f);
+                    hud.ShowAnnounce("아군 거점 2개 확보. 하나 남았습니다!", teamColors[playerTeam], 2.6f);
                 else if (enemyZones == 2 && prevEnemyZones < 2)
                 {
-                    hud.ShowAnnounce("위험 — 적이 거점 2개 장악!", new Color(1f, 0.35f, 0.25f), 2.6f);
+                    hud.ShowAnnounce("위험. 적이 거점 2개 장악!", new Color(1f, 0.35f, 0.25f), 2.6f);
                     battleAudio.PlaySfx("S33_ZoneContest", 2f);
                 }
             }
@@ -3141,8 +3141,8 @@ namespace SeoYuGi.BattleView
                 if (meUnit != null && meUnit.alive && Time.time >= nextZoneRuleHint && z.cells.Contains(meUnit.pos))
                 {
                     string hint = null;
-                    if (!z.active) hint = "봉쇄된 거점 — 이전 거점부터 점령하세요";
-                    else if (z.owner >= 0 && z.owner != playerTeam && Rule != null && Rule.NoTakebacks) hint = "탈환 불가 라운드 — 이미 굳은 거점입니다";
+                    if (!z.active) hint = "봉쇄된 거점. 이전 거점부터 점령하세요";
+                    else if (z.owner >= 0 && z.owner != playerTeam && Rule != null && Rule.NoTakebacks) hint = "탈환 불가 라운드. 이미 굳은 거점입니다";
                     if (hint != null)
                     {
                         nextZoneRuleHint = Time.time + 4f;

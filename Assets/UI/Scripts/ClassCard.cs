@@ -222,7 +222,7 @@ namespace SeoYuGi.UI
 
         static string SkillDesc(SkillKind k) => k switch
         {
-            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "5칸 던지기·벽꿍", SkillKind.Dash => "대시·충돌 스턴",
+            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "5칸 던지기, 벽꿍", SkillKind.Dash => "대시, 충돌 스턴",
             SkillKind.Scream => "주변 1초 스턴", SkillKind.Blink => "2칸 점멸", SkillKind.Claw => "고위력 근접",
             SkillKind.Burst => "십자 5칸", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적을 끌어옴",
             SkillKind.KnockShot => "밀쳐내는 사격", SkillKind.Snipe => "1열 관통", _ => ""
@@ -336,6 +336,7 @@ namespace SeoYuGi.UI
             rt.anchoredPosition = pos; rt.sizeDelta = sizeDelta;
             var t = go.GetComponent<Text>();
             t.text = text;
+            GameFonts.Resolve(ref font, ref style); // Bold 요청 → 볼드 파일, 가짜 볼드 없음
             t.font = font != null ? font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             t.fontSize = size; t.fontStyle = style; t.color = color; t.alignment = align;
             t.supportRichText = rich;

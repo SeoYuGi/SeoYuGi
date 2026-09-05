@@ -48,8 +48,12 @@ public class UILobbyPopup : UIPopup
     readonly Text[] slotLabels = new Text[6];
     readonly Image[] slotPortraits = new Image[6];
     readonly RectTransform[] slotRoots = new RectTransform[6]; // 팀별 표시/숨김 + 상단 재배치용
+    // 분대 슬롯 치수 — 프리팹 190x250은 1배 카드(윗단 ~113)와 겹쳤다 → 150x198, 줄을 살짝 올림 (2026-09-06 "슬롯 좀 더 작게").
+    // 캐릭터 선택 팝업(UIClassSelectPopup)이 같은 값으로 런타임 슬롯을 만든다.
+    public const float SlotW = 150f, SlotH = 198f, SlotY = 262f, SlotGap = 175f;
+    public const int SlotLabelFont = 15;
     // 상단 줄 위치 3칸 — 내 팀은 항상 여기로, 상대팀 줄은 통째로 숨김 (2026-09-05)
-    static readonly Vector2[] TopSlotPos = { new Vector2(-220f, 245f), new Vector2(0f, 245f), new Vector2(220f, 245f) };
+    static readonly Vector2[] TopSlotPos = { new Vector2(-SlotGap, SlotY), new Vector2(0f, SlotY), new Vector2(SlotGap, SlotY) };
     readonly Image[] pickBackings = new Image[5];
     readonly System.Collections.Generic.List<string> chatLog = new System.Collections.Generic.List<string>();
     static readonly Sprite[] cardSprites = new Sprite[5]; // 세션 캐시
@@ -86,7 +90,9 @@ public class UILobbyPopup : UIPopup
             var slot = transform.Find($"Slot{i + 1}");
             if (slot == null) continue;
             slotRoots[i] = (RectTransform)slot;
+            slotRoots[i].sizeDelta = new Vector2(SlotW, SlotH);
             slotLabels[i] = slot.Find("LabelBack/Label")?.GetComponent<Text>();
+            if (slotLabels[i] != null) slotLabels[i].fontSize = SlotLabelFont; // 좁아진 칸에 "너굴 / 팀원(자동)"이 들어가게
             slotPortraits[i] = slot.Find("Portrait")?.GetComponent<Image>();
             int slotIdx = i;
             BindEvent(slot.gameObject, _ => SelectSlot(slotIdx)); // 내 팀 슬롯 클릭 = 그 칸 다시 고르기
@@ -320,6 +326,19 @@ public class UILobbyPopup : UIPopup
 
     Text commanderLabel;
 
+    /// <summary>분대 슬롯 선택 표시 — 밝은 테두리(Outline) + 1.08배. 라벨 색만으론 어느 칸을 고르는 중인지 안 읽혔다
+    /// (2026-09-06 "선택된 게 더 잘 보이게"). 캐릭터 선택 팝업도 같은 함수를 쓴다.</summary>
+    public static void SetSlotSelected(RectTransform root, bool on)
+    {
+        root.localScale = on ? Vector3.one * 1.08f : Vector3.one;
+        var ol = root.GetComponent<Outline>();
+        if (ol == null) ol = root.gameObject.AddComponent<Outline>();
+        ol.enabled = on;
+        ol.effectColor = new Color(0.45f, 1f, 0.95f, 0.95f); // 조준 슬롯·편집 라벨과 같은 틸
+        ol.effectDistance = new Vector2(4f, -4f);
+        ol.useGraphicAlpha = false;
+    }
+
     /// <summary>하단 버튼 줄 공통 치수 — 캐릭터 선택 팝업(UIClassSelectPopup)의 출격 버튼도 같은 값 (2026-09-06).</summary>
     public static readonly Vector2 BottomButtonSize = new Vector2(220f, 78f);
     public const int BottomButtonFont = 20;
@@ -439,7 +458,7 @@ public class UILobbyPopup : UIPopup
                 slotRoots[i].gameObject.SetActive(!enemyRow);
                 if (!enemyRow && topIdx < TopSlotPos.Length)
                     slotRoots[i].anchoredPosition = TopSlotPos[topIdx++];
-                slotRoots[i].localScale = editing ? Vector3.one * 1.08f : Vector3.one; // 지금 고르는 칸 살짝 크게
+                SetSlotSelected(slotRoots[i], editing); // 지금 고르는 칸 — 밝은 테두리 + 살짝 크게
             }
 
             if (slotLabels[i] != null)

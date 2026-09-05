@@ -36,8 +36,8 @@ public class UIClassSelectPopup : UIPopup
     float deadline = -1f; // Time.unscaledTime 기준. <0 = 무제한
     Text timerText;
 
-    // 분대 슬롯 — 로비 Slot 프리팹과 같은 치수·스킨 (190x250, 윗줄 y245, 간격 220)
-    const float SlotW = 190f, SlotH = 250f, SlotY = 245f, SlotGap = 220f;
+    // 분대 슬롯 — 로비와 같은 치수·스킨 (UILobbyPopup.SlotSize / TopSlotPos). 프리팹 190x250은 카드 윗단과 겹쳤다 (2026-09-06 "슬롯 좀 더 작게")
+    const float SlotW = UILobbyPopup.SlotW, SlotH = UILobbyPopup.SlotH, SlotY = UILobbyPopup.SlotY, SlotGap = UILobbyPopup.SlotGap;
     const float StatusY = -420f, ButtonY = -485f;
     readonly List<RectTransform> slotRoots = new List<RectTransform>();
     readonly List<Image> slotPortraits = new List<Image>();
@@ -209,7 +209,7 @@ public class UIClassSelectPopup : UIPopup
             var lbImg = labelBack.GetComponent<Image>();
             lbImg.color = new Color(0f, 0f, 0f, 0.55f); lbImg.raycastTarget = false;
 
-            var label = MakeText(lbRt, "", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+            var label = MakeText(lbRt, "", UILobbyPopup.SlotLabelFont, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
                 new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(SlotW - 24f, 48f), GameFonts.Hud);
             slotLabels.Add(label);
         }
@@ -233,7 +233,7 @@ public class UIClassSelectPopup : UIPopup
         for (int i = 0; i < slotRoots.Count; i++)
         {
             bool editing = i == editIdx;
-            slotRoots[i].localScale = editing ? Vector3.one * 1.08f : Vector3.one; // 지금 고르는 칸 살짝 크게
+            UILobbyPopup.SetSlotSelected(slotRoots[i], editing); // 밝은 테두리 + 살짝 크게 (로비와 동일)
             slotPortraits[i].sprite = ClassCard.CardSprite((int)teamCls[i]);
             slotPortraits[i].color = i == 0 ? Color.white : new Color(0.7f, 0.7f, 0.7f); // 봇은 살짝 어둡게 (로비와 동일)
             slotLabels[i].text = $"{teamNames[i]} / {(i == 0 ? "나" : "팀원")}";

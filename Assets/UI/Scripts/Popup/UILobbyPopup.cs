@@ -330,6 +330,13 @@ public class UILobbyPopup : UIPopup
         var src = template.GetComponent<RectTransform>();
         rt.anchoredPosition = src.anchoredPosition + new Vector2(-480f, 0f);
         commanderLabel = go.GetComponentInChildren<Text>();
+        // 복제 시점이 ApplySkin보다 앞이라 민짜로 남는다 — 버튼 판 스킨·글자 크기 직접 적용 (2026-09-06)
+        var plate = UISkin.ButtonPlate();
+        var img2 = go.GetComponent<Image>();
+        if (plate != null && img2 != null) { img2.sprite = plate; img2.color = Color.white; img2.preserveAspect = false; }
+        foreach (var extra in go.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+            if (extra.gameObject != go && !(extra is Text)) extra.enabled = false;
+        if (commanderLabel != null) { commanderLabel.fontSize = 17; commanderLabel.alignment = TextAnchor.MiddleCenter; }
         BindEvent(go, _ =>
         {
             if (!NetBoot.IsHost) { if (statusText != null) statusText.text = "모드는 호스트가 정합니다"; return; }

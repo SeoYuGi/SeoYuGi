@@ -11,6 +11,8 @@ using UnityEngine.UI;
 /// <summary>
 /// 캐릭터 선택 — 카드 5장(ClassCard 공용 빌더) + 제한시간 카운트다운(롤/오버워치식).
 /// 팀 구성 모드: 나 + 봇 2의 클래스를 이 화면에서 짠다(적 조합 비공개). 시간 종료 시 자동 출격.
+/// 2026-09-06: 멀티 로비(UILobbyPopup)와 같은 화면 구성 — 상단 분대 슬롯 3칸(프레임 스킨) / 중앙 카드 / 하단 상태 문구·버튼.
+/// 싱글 전용 요소는 AI 난이도 바(슬롯 위)와 타이머뿐.
 /// </summary>
 public class UIClassSelectPopup : UIPopup
 {
@@ -34,10 +36,13 @@ public class UIClassSelectPopup : UIPopup
     float deadline = -1f; // Time.unscaledTime 기준. <0 = 무제한
     Text timerText;
 
-    const float ChipW = 250f, ChipH = 64f, ChipGap = 16f, StripY = -432f;
-    readonly List<Image> chipBgs = new List<Image>();
-    readonly List<Outline> chipOutlines = new List<Outline>();
-    readonly List<Text> chipTexts = new List<Text>();
+    // 분대 슬롯 — 로비 Slot 프리팹과 같은 치수·스킨 (190x250, 윗줄 y245, 간격 220)
+    const float SlotW = 190f, SlotH = 250f, SlotY = 245f, SlotGap = 220f;
+    const float StatusY = -420f, ButtonY = -485f;
+    readonly List<RectTransform> slotRoots = new List<RectTransform>();
+    readonly List<Image> slotPortraits = new List<Image>();
+    readonly List<Text> slotLabels = new List<Text>();
+    Text statusText;
 
     public override void Init()
     {
@@ -48,7 +53,7 @@ public class UIClassSelectPopup : UIPopup
             var rt = (RectTransform)Get<GameObject>(i).transform;
             cardRts[i] = rt;
             ClassCard.Build(rt, i, 1f);
-            rt.anchoredPosition = new Vector2((i - 2) * (ClassCard.BaseW + 22f), -10f); // 상단 난이도 바 자리 확보
+            rt.anchoredPosition = new Vector2((i - 2) * (ClassCard.BaseW + 22f), -125f); // 로비와 같은 자리 — 슬롯 줄 아래
             BindEvent(Get<GameObject>(i), _ => Pick(cls));
         }
     }
@@ -57,10 +62,10 @@ public class UIClassSelectPopup : UIPopup
     {
         if (TeamMode)
         {
-            teamCls[editIdx] = cls; // 자동 다음 칸 이동 없음 — 칩 클릭으로만 편집 칸 변경 (2026-09-05)
+            teamCls[editIdx] = cls; // 자동 다음 칸 이동 없음 — 슬롯 클릭으로만 편집 칸 변경 (2026-09-05)
             if (editIdx == 0) AutoBalanceBots(); // 내 픽이 바뀌면 봇들이 조합을 맞춘다 (2026-09-05)
             else botManual[editIdx - 1] = true;  // 봇 직접 지정 — 이후 자동 밸런스에서 제외 (2026-09-05)
-            RefreshTeamStrip();
+            RefreshTeamSlots();
             return;
         }
         UIManager.Instance.ClosePopupUI(this);
@@ -69,7 +74,7 @@ public class UIClassSelectPopup : UIPopup
 
     /// <summary>봇 클래스 자동 밸런스 — 내 픽 기준으로 탱·돌격·딜 한 축씩 채운다 (2026-09-05 솔로 모드).
     /// 역할: 너구리=탱 / 고라니=돌격형 / 검은냥·비둘기·까치=딜. 내가 뭘 잡든 나머지 두 축을 봇이 맡는다.</summary>
-    readonly bool[] botManual = new bool[2]; // 봇 칩 직접 지정 여부 — true면 자동 밸런스가 안 건드린다
+    readonly bool[] botManual = new bool[2]; // 봇 슬롯 직접 지정 여부 — true면 자동 밸런스가 안 건드린다
 
     void AutoBalanceBots()
     {
@@ -118,10 +123,10 @@ public class UIClassSelectPopup : UIPopup
         teamCls = (UnitClass[])initial.Clone();
         editIdx = 0;
         botManual[0] = botManual[1] = false;
-        AutoBalanceBots(); // 시작부터 밸런스 조합 — 봇 칸을 직접 바꾸면 그 선택이 유지된다
-        BuildTeamStrip();
+        AutoBalanceBots(); // 시작부터 밸런스 조합 — 봇 슬롯을 직접 바꾸면 그 선택이 유지된다
+        BuildTeamSlots();
         BuildDifficultyBar();
-        RefreshTeamStrip();
+        RefreshTeamSlots();
     }
 
     // ── AI 난이도 선택 (상/중/하) ─────────────────────────────
@@ -137,8 +142,8 @@ public class UIClassSelectPopup : UIPopup
 
     void BuildDifficultyBar()
     {
-        // 선택 카드는 1.06배 확대라 상단이 361까지 올라온다 — 그 위(372~408) 띠에 배치
-        const float bw = 150f, bh = 36f, gap = 10f, y = 390f;
+        // 제목(하단 ~410) 과 분대 슬롯(상단 370, 편집 확대 시 ~380) 사이 띠 (2026-09-06)
+        const float bw = 150f, bh = 36f, gap = 10f, y = 395f;
         float total = 3 * bw + 2 * gap;
         // MiddleRight도 pos는 rect "중심" — 오른쪽 끝이 바 왼쪽에 닿도록 중심을 라벨 반폭만큼 더 왼쪽에
         MakeText(transform, "AI 난이도", 16, FontStyle.Bold, DimText, TextAnchor.MiddleRight,
@@ -172,56 +177,74 @@ public class UIClassSelectPopup : UIPopup
         }
     }
 
-    void BuildTeamStrip()
+    // ── 분대 슬롯 — 로비 Slot 프리팹(프레임 + 초상 + 하단 라벨)과 같은 구성을 런타임으로 ──
+
+    void BuildTeamSlots()
     {
         int n = teamNames.Length;
-        float stripW = n * ChipW + (n - 1) * ChipGap;
-        float left = -stripW / 2f - 100f;
+        var frame = UISkin.SlotFrame();
+        // 로비 ApplySkin과 같은 내 팀(파랑) 틴트 — 프레임 디테일이 살아남게 밝게 끌어올린 값
+        var frameColor = frame != null ? Color.Lerp(new Color(0.45f, 0.6f, 1f), Color.white, 0.45f)
+                                       : new Color(0.14f, 0.2f, 0.32f, 0.95f);
 
         for (int i = 0; i < n; i++)
         {
             int idx = i;
-            float cx = left + ChipW / 2f + i * (ChipW + ChipGap);
-            var bg = MakeImage(transform, null, CardBg, new Vector2(0.5f, 0.5f),
-                new Vector2(cx, StripY), new Vector2(ChipW, ChipH));
-            bg.GetComponent<Image>().raycastTarget = true;
-            BindEvent(bg.gameObject, _ => { editIdx = idx; RefreshTeamStrip(); });
-            var ol = bg.gameObject.AddComponent<Outline>();
-            ol.effectDistance = new Vector2(2f, -2f);
-            chipBgs.Add(bg.GetComponent<Image>());
-            chipOutlines.Add(ol);
+            float cx = (i - (n - 1) * 0.5f) * SlotGap; // 3칸이면 -220/0/220, 1칸(훈련장)이면 가운데
+            var root = MakeImage(transform, frame, frameColor, new Vector2(0.5f, 0.5f), new Vector2(cx, SlotY), new Vector2(SlotW, SlotH));
+            root.GetComponent<Image>().raycastTarget = true;
+            BindEvent(root.gameObject, _ => { editIdx = idx; RefreshTeamSlots(); }); // 슬롯 클릭 = 그 칸 다시 고르기
+            slotRoots.Add(root);
 
-            var t = MakeText(bg, "", 16, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(ChipW, ChipH), GameFonts.Hud, rich: true);
-            chipTexts.Add(t);
+            var portrait = MakeStretch(root, "Portrait", new Vector2(16f, 20f), new Vector2(-16f, -16f));
+            var pImg = portrait.gameObject.AddComponent<Image>();
+            pImg.color = Color.white; pImg.preserveAspect = false; pImg.raycastTarget = false;
+            slotPortraits.Add(pImg);
+
+            var labelBack = new GameObject("LabelBack", typeof(RectTransform), typeof(Image));
+            var lbRt = (RectTransform)labelBack.transform;
+            lbRt.SetParent(root, false);
+            lbRt.anchorMin = new Vector2(0f, 0f); lbRt.anchorMax = new Vector2(1f, 0f); lbRt.pivot = new Vector2(0.5f, 0f);
+            lbRt.anchoredPosition = new Vector2(0f, 20f); lbRt.sizeDelta = new Vector2(-24f, 48f);
+            var lbImg = labelBack.GetComponent<Image>();
+            lbImg.color = new Color(0f, 0f, 0f, 0.55f); lbImg.raycastTarget = false;
+
+            var label = MakeText(lbRt, "", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(SlotW - 24f, 48f), GameFonts.Hud);
+            slotLabels.Add(label);
         }
 
-        float bx = left + stripW + 40f + 90f;
+        statusText = MakeText(transform, "", 26, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.5f), new Vector2(0f, StatusY), new Vector2(700f, 44f), GameFonts.Hud);
+
+        // 출격 — 로비 하단 버튼과 같은 판(220x60)·글자(17)
         var plate = UISkin.ButtonPlate();
         var btn = MakeImage(transform, plate, plate != null ? Color.white : new Color(0.16f, 0.7f, 0.55f),
-            new Vector2(0.5f, 0.5f), new Vector2(bx, StripY), new Vector2(180f, ChipH));
+            new Vector2(0.5f, 0.5f), new Vector2(0f, ButtonY), new Vector2(220f, 60f));
         btn.GetComponent<Image>().raycastTarget = true;
         btn.GetComponent<Image>().preserveAspect = false; // 키잉 플레이트 비율 변화 대응 (2026-09-05)
         BindEvent(btn.gameObject, _ => StartTeam());
-        MakeText(btn, "출격  (Enter)", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(180f, ChipH), GameFonts.Hud);
-
-        MakeText(transform, "칩을 고르고 카드를 클릭하면 그 칸에 배정됩니다 / 상대 조합은 시작 전까지 비공개", 14,
-            FontStyle.Normal, DimText, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f),
-            new Vector2(0f, StripY - 46f), new Vector2(800f, 22f), GameFonts.Hud);
+        MakeText(btn, "출격  (Enter)", 17, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(220f, 60f), GameFonts.Hud);
     }
 
-    void RefreshTeamStrip()
+    void RefreshTeamSlots()
     {
-        for (int i = 0; i < chipTexts.Count; i++)
+        for (int i = 0; i < slotRoots.Count; i++)
         {
-            var meta = ClassCard.Meta[(int)teamCls[i]];
-            bool sel = i == editIdx;
-            chipTexts[i].text = $"{teamNames[i]} / {(i == 0 ? "나" : "봇")}\n" +
-                                $"<b><color=#{ColorUtility.ToHtmlStringRGB(meta.color)}>{meta.name}</color></b>";
-            chipBgs[i].color = sel ? Color.Lerp(CardBg, meta.color, 0.3f) : CardBg;
-            chipOutlines[i].effectColor = sel ? Color.Lerp(meta.color, Color.white, 0.4f) : new Color(0.25f, 0.3f, 0.4f);
+            bool editing = i == editIdx;
+            slotRoots[i].localScale = editing ? Vector3.one * 1.08f : Vector3.one; // 지금 고르는 칸 살짝 크게
+            slotPortraits[i].sprite = ClassCard.CardSprite((int)teamCls[i]);
+            slotPortraits[i].color = i == 0 ? Color.white : new Color(0.7f, 0.7f, 0.7f); // 봇은 살짝 어둡게 (로비와 동일)
+            slotLabels[i].text = $"{teamNames[i]} / {(i == 0 ? "나" : "팀원")}";
+            slotLabels[i].color = editing ? new Color(0.45f, 1f, 0.95f)
+                : i == 0 ? new Color(0.5f, 1f, 0.6f) : new Color(0.75f, 0.75f, 0.75f);
         }
+        if (statusText != null)
+            statusText.text = slotRoots.Count <= 1 ? "내 캐릭터를 고르세요"
+                : editIdx == 0 ? $"1/{slotRoots.Count}  내 캐릭터를 고르세요"
+                : $"{editIdx + 1}/{slotRoots.Count}  팀원 {editIdx} 캐릭터를 고르세요 (슬롯 클릭 = 다시 고르기)";
+
         // 카드 하이라이트 — 지금 편집 칸에 배정된 클래스 카드
         int editCls = (int)teamCls[editIdx];
         for (int c = 0; c < cardRts.Length; c++)
@@ -260,7 +283,7 @@ public class UIClassSelectPopup : UIPopup
             StartTeam();
     }
 
-    // ── 로컬 uGUI 헬퍼 (팀 스트립·타이머용) ─────────────────
+    // ── 로컬 uGUI 헬퍼 (분대 슬롯·타이머용) ─────────────────
 
     static RectTransform MakeImage(Transform parent, Sprite sprite, Color color, Vector2 anchor, Vector2 pos, Vector2 size)
     {
@@ -272,6 +295,17 @@ public class UIClassSelectPopup : UIPopup
         rt.anchoredPosition = pos; rt.sizeDelta = size;
         var img = go.GetComponent<Image>();
         img.sprite = sprite; img.color = color; img.raycastTarget = false;
+        return rt;
+    }
+
+    /// <summary>부모에 꽉 채우는 빈 RectTransform — offsetMin/Max로 안쪽 여백.</summary>
+    static RectTransform MakeStretch(Transform parent, string name, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = offsetMin; rt.offsetMax = offsetMax;
         return rt;
     }
 

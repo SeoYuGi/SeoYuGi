@@ -1,5 +1,4 @@
-﻿using System;
-using SeoYuGi.Battle;
+﻿using SeoYuGi.Battle;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,25 +7,29 @@ namespace SeoYuGi.UI
 {
     /// <summary>
     /// 캐릭터 카드 공용 빌더 — 캐릭터 선택 팝업·멀티 로비가 같은 카드를 쓴다.
-    /// 네온 테두리 + 헤더 + 3:4 초상 + HP 바 + 공/방/기 도트 + 스킬 2행.
+    /// 네온 테두리 + 헤더(이름·역할 배지) + 4:3 상반신 초상 + HP 바 + 기동 도트 + 스킬 2행.
     /// 수치는 ClassCatalog 실데이터라 밸런스 패치가 자동 반영. scale로 크기 조절.
+    /// 2026-09-06: 700→450 축소 — 초상 상반신 크롭, 공격/방어 행 제거, 역할을 아이콘 배지로.
     /// </summary>
     public static class ClassCard
     {
-        public const float BaseW = 280f, BaseH = 700f; // scale 1 기준
+        public const float BaseW = 280f, BaseH = 450f; // scale 1 기준
 
         // enum 순서: 이름·역할·네온 색
-        public static readonly (string name, string roleEn, Color color)[] Meta =
+        public static readonly (string name, string role, Color color)[] Meta =
         {
-            ("너구리",      "TANKER",    new Color(1f, 0.54f, 0.16f)),
-            ("고라니",      "BRUISER",   new Color(0.64f, 0.42f, 1f)),
-            ("검은 고양이", "ASSASSIN",  new Color(0.21f, 0.84f, 1f)),
-            ("비둘기",      "SUPPORT",   new Color(0.29f, 0.87f, 0.37f)),
-            ("까치",        "MARKSMAN",  new Color(0.23f, 0.51f, 0.96f)),
+            ("너구리",      "탱커",   new Color(1f, 0.54f, 0.16f)),
+            ("고라니",      "브루저", new Color(0.64f, 0.42f, 1f)),
+            ("검은 고양이", "암살자", new Color(0.21f, 0.84f, 1f)),
+            ("비둘기",      "서포터", new Color(0.29f, 0.87f, 0.37f)),
+            ("까치",        "저격수", new Color(0.23f, 0.51f, 0.96f)),
         };
 
         static readonly string[] Portraits =
             { "Card_Tank", "Card_Balance", "Card_Assassin", "Card_Grenadier", "Card_Sniper" };
+        // 역할 배지 아이콘 — 흰색 글리프, 클래스 색으로 틴트 (Resources/UI/Icon_Role_*)
+        static readonly string[] RoleIcons =
+            { "Icon_Role_Tank", "Icon_Role_Balance", "Icon_Role_Assassin", "Icon_Role_Grenadier", "Icon_Role_Sniper" };
 
         static readonly Color CardBg = new Color(0.02f, 0.03f, 0.07f, 0.97f);
         static readonly Color DimText = new Color(0.55f, 0.62f, 0.72f);
@@ -60,29 +63,35 @@ namespace SeoYuGi.UI
             Img(card, null, new Color(meta.color.r, meta.color.g, meta.color.b, 0.16f),
                 new Vector2(0f, top - 90f * scale), new Vector2(W - 8f * scale, 180f * scale));
 
-            // 헤더: 이름 + 역할 + 우상단 썸네일 + 언더라인
+            // 헤더: 이름 + 역할 배지(아이콘 + 한글 역할명) + 언더라인
             var nameColor = Color.Lerp(Color.white, meta.color, 0.25f);
             NeonTxt(card, meta.name, R(27, scale), nameColor, meta.color,
                 new Vector2(-W / 2f + 18f * scale, top - 32f * scale), new Vector2(200f, 36f), GameFonts.Hud);
-            Txt(card, meta.roleEn, R(13, scale), FontStyle.Bold, meta.color, TextAnchor.MiddleLeft,
-                new Vector2(-W / 2f + 18f * scale, top - 58f * scale), new Vector2(200f, 18f), GameFonts.Hud);
+            float roleX = -W / 2f + 18f * scale;
+            var roleIconTex = Resources.Load<Texture2D>("UI/" + RoleIcons[i]);
+            if (roleIconTex != null)
+            {
+                float ic = 18f * scale;
+                Img(card, ToSprite(roleIconTex), meta.color,
+                    new Vector2(roleX + ic / 2f, top - 58f * scale), new Vector2(ic, ic), aspect: true);
+                roleX += ic + 6f * scale;
+            }
+            Txt(card, meta.role, R(14, scale), FontStyle.Bold, meta.color, TextAnchor.MiddleLeft,
+                new Vector2(roleX, top - 58f * scale), new Vector2(200f, 18f), GameFonts.Hud);
             var uline = Img(card, null, meta.color,
                 new Vector2(-W / 2f + 90f * scale, top - 74f * scale), new Vector2(150f * scale, 2f));
             AddGlow(uline, meta.color, 3f * scale);
-            if (portraitTex != null)
-                Img(card, ToSprite(portraitTex), Color.white,
-                    new Vector2(W / 2f - 32f * scale, top - 34f * scale), new Vector2(40f * scale, 40f * scale), aspect: true);
 
-            // 초상 슬롯 3:4
+            // 초상 슬롯 4:3 — 카드 아트의 윗부분(상반신)만 크롭. 전신 3:4는 카드가 너무 길어졌다 (2026-09-06)
             float slotTop = 84f * scale;
             float slotW = W - 32f * scale;
-            float slotH = slotW * 4f / 3f;
+            float slotH = slotW * 3f / 4f;
             float slotCenterY = top - slotTop - slotH * 0.5f;
             var slot = Img(card, null, new Color(0.05f, 0.07f, 0.12f, 1f),
                 new Vector2(0f, slotCenterY), new Vector2(slotW, slotH));
             AddGlow(slot, meta.color, 2f * scale);
             if (portraitTex != null)
-                Img(card, ToSprite(portraitTex), Color.white,
+                Img(card, BustSprite(portraitTex), Color.white,
                     new Vector2(0f, slotCenterY), new Vector2(slotW - 6f * scale, slotH - 6f * scale));
 
             // HP 바
@@ -101,23 +110,18 @@ namespace SeoYuGi.UI
             Txt(card, def.maxHp.ToString(), R(17, scale), FontStyle.Bold, Color.white, TextAnchor.MiddleRight,
                 new Vector2(W / 2f - 16f * scale, y), new Vector2(44f, 22f), GameFonts.Hud, pivotRight: true);
 
-            // 스탯 3행
-            int atk = 0;
-            foreach (var s in def.skills) atk = Math.Max(atk, s.damage);
-            int dfn = Mathf.Clamp(Mathf.RoundToInt(def.maxHp / 3f), 1, 5);
+            // 기동 1행 — 공격/방어 도트는 HP·스킬 설명과 겹치는 정보라 뺐다 (2026-09-06)
             int mob = Mathf.Clamp(def.move.maxRange, 1, 5);
-            StatRow(card, "공격", atk, meta.color, below - 34f * scale, W, scale);
-            StatRow(card, "방어", dfn, new Color(0.35f, 0.85f, 0.45f), below - 62f * scale, W, scale);
-            StatRow(card, "기동", mob, meta.color, below - 90f * scale, W, scale);
+            StatRow(card, "기동", mob, meta.color, below - 34f * scale, W, scale);
 
             // 구분선
             Img(card, null, new Color(0.2f, 0.25f, 0.33f, 1f),
-                new Vector2(0f, below - 116f * scale), new Vector2(W - 32f * scale, 1.5f));
+                new Vector2(0f, below - 60f * scale), new Vector2(W - 32f * scale, 1.5f));
 
             // 스킬 2행
-            SkillRow(card, def.skills[0], below - 142f * scale, W, scale);
+            SkillRow(card, def.skills[0], below - 86f * scale, W, scale);
             if (def.skills.Length > 1)
-                SkillRow(card, def.skills[1], below - 176f * scale, W, scale);
+                SkillRow(card, def.skills[1], below - 120f * scale, W, scale);
         }
 
         /// <summary>프리팹 기존 자식 전부 제거 — 옛 이름(치즈태비)·초상·라벨 잔재가
@@ -222,10 +226,10 @@ namespace SeoYuGi.UI
 
         static string SkillDesc(SkillKind k) => k switch
         {
-            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "5칸 던지기, 벽꿍", SkillKind.Dash => "대시, 충돌 스턴",
-            SkillKind.Scream => "주변 1초 스턴", SkillKind.Blink => "2칸 점멸", SkillKind.Claw => "고위력 근접",
-            SkillKind.Burst => "십자 폭격, 3초 둔화", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적을 끌어옴",
-            SkillKind.KnockShot => "밀쳐내는 사격", SkillKind.Snipe => "1열 관통", _ => ""
+            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "5칸 투척, 벽 충돌", SkillKind.Dash => "돌진, 충돌 스턴",
+            SkillKind.Scream => "주변 스턴", SkillKind.Blink => "3칸 점멸", SkillKind.Claw => "근접 강타",
+            SkillKind.Burst => "십자 폭격, 둔화", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적 끌어오기",
+            SkillKind.KnockShot => "밀치는 사격", SkillKind.Snipe => "1열 관통", _ => ""
         };
 
         static string SkillIconName(SkillKind k) => k switch
@@ -241,6 +245,26 @@ namespace SeoYuGi.UI
 
         static string Colored(string s, Color c) => $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{s}</color>";
         static Sprite ToSprite(Texture2D t) => Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f));
+
+        static readonly Sprite[] cardSprites = new Sprite[5];
+
+        /// <summary>클래스 i의 전신 카드 아트 — 분대 슬롯 초상용. 세션 캐시.</summary>
+        public static Sprite CardSprite(int i)
+        {
+            if (cardSprites[i] == null)
+            {
+                var tex = Resources.Load<Texture2D>("UI/" + Portraits[i]);
+                if (tex != null) cardSprites[i] = ToSprite(tex);
+            }
+            return cardSprites[i];
+        }
+
+        /// <summary>상반신 크롭 — 세로 카드 아트의 윗부분을 4:3으로 잘라낸다 (텍스처 원점은 아래).</summary>
+        static Sprite BustSprite(Texture2D t)
+        {
+            float h = Mathf.Min(t.height, t.width * 3f / 4f);
+            return Sprite.Create(t, new Rect(0f, t.height - h, t.width, h), new Vector2(0.5f, 0.5f));
+        }
 
         static Sprite dotSprite;
 

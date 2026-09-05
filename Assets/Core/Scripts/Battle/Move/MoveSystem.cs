@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace SeoYuGi.Battle
@@ -43,7 +43,7 @@ namespace SeoYuGi.Battle
             foreach (var unit in state.Units)
             {
                 if (unit.profile == null) unit.profile = config.defaultProfile;
-                unit.moveGauge = unit.profile.freeRange;
+                unit.moveGauge = unit.profile.freeRange * MoveScale;
             }
         }
 
@@ -60,7 +60,7 @@ namespace SeoYuGi.Battle
                     if (unit.moveCooldown <= 0f)
                     {
                         unit.moveCooldown = 0f;
-                        unit.moveGauge = p.freeRange; // 쿨타임 종료 → 풀 게이지 복귀
+                        unit.moveGauge = p.freeRange * MoveScale; // 쿨타임 종료 → 풀 게이지 복귀
                     }
                 }
                 else if (unit.regenDelay > 0f)
@@ -69,7 +69,7 @@ namespace SeoYuGi.Battle
                 }
                 else
                 {
-                    unit.moveGauge = Math.Min(p.freeRange,
+                    unit.moveGauge = Math.Min(p.freeRange * MoveScale,
                         unit.moveGauge + p.gaugeRegenPerSecond * deltaTime);
                 }
             }
@@ -130,9 +130,14 @@ namespace SeoYuGi.Battle
             return new MoveAttempt { success = true, isYellow = yellow, path = path };
         }
 
+        /// <summary>이번 라운드 규칙. null이면 평범한 라운드. 러너가 조립 때 꽂는다.</summary>
+        public RoundRule Rule { get; set; }
+
+        float MoveScale => Rule != null ? Rule.MoveScale : 1f;
+
         /// <summary>고지대 위 유닛은 이동 범위 +1 — 시야·사거리 보너스와 한 세트 (2026-09-05).</summary>
         int MaxRange(UnitState unit) =>
-            unit.profile.maxRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0);
+            (int)Math.Round((unit.profile.maxRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0)) * MoveScale);
 
         HashSet<Coord> OtherUnitCells(int exceptUnitId)
         {

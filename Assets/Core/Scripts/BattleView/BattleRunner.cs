@@ -84,6 +84,9 @@ namespace SeoYuGi.BattleView
         /// <summary>지휘관 모드 — 내 팀 봇에게 내린 상시 명령. 멀티 모드에선 항상 비어 있다(= 완전 자율).</summary>
         public CommandState Orders { get; } = new CommandState();
 
+        /// <summary>이번 라운드 규칙. null이면 평범한 라운드 — HUD가 이걸 보고 배너를 띄운다.</summary>
+        public RoundRule Rule { get; private set; }
+
         RadioWindow radio; // 지휘관 모드 전용 무전 채팅바. 멀티 모드에선 비활성.
         PauseMenu pauseMenu; // ESC 일시정지 — 모드 무관
         VoiceRadio voice;  // 음성 무전 (V 꾹 — push-to-talk). 지휘관 모드 전용.
@@ -1106,7 +1109,21 @@ namespace SeoYuGi.BattleView
 
             Move = new MoveSystem(Battle, moveConfig);
             Combat = new CombatSystem(Battle, combatConfig);
-            Round = new RoundSystem(Battle, roundConfig, map.Zones);
+
+            // 라운드 규칙 — 매 라운드 추첨. 시드는 매치 롤 시드 + 라운드라 호스트·클라가 같은 규칙을 뽑는다.
+            // 제한시간은 규칙이 깎을 수 있으므로 사본을 만들어 쓴다(원본 설정은 그대로 둔다).
+            Rule = RoundRules.Roll(Match.CurrentRound, map.Zones.Count, enemyRollSeed + Match.CurrentRound * 7919);
+            var roundCfg = new RoundConfig
+            {
+                captureSeconds = roundConfig.captureSeconds,
+                captureStackBonus = roundConfig.captureStackBonus,
+                decaySeconds = roundConfig.decaySeconds,
+                roundSeconds = roundConfig.roundSeconds + (Rule != null ? Rule.RoundSecondsDelta : 0f)
+            };
+            Round = new RoundSystem(Battle, roundCfg, map.Zones) { Rule = Rule };
+            Round.SyncZoneActive();
+            Combat.Rule = Rule;
+            Move.Rule = Rule;
 
             // 해킹 궁게이지 — 슬롯 확보(충전은 라운드 넘겨 유지) + 적중 데미지 충전 배선.
             // Combat은 라운드마다 새로 나므로 매번 재구독 (이전 Combat은 통째로 버려짐).
@@ -1721,6 +1738,12 @@ namespace SeoYuGi.BattleView
             battleAudio.PlayBgm(Match.CurrentRound >= 3 ? "B2_Round3" : "B1_Round1");
             battleAudio.PlaySfx("S13_RoundStart", 1.5f);
             PlayVoiceLine("Voice_RoundStart", "라운드 개시");
+            if (Rule != null)
+            {
+                // 규칙은 라운드 개시 자막 뒤에 이어 붙인다 — 전술을 정하기 전에 읽혀야 한다
+                hud.ShowSubtitle($"◆ {Rule.title} ◆  {Rule.detail}", 5f);
+                Debug.Log($"라운드 규칙: {Rule.title} — {Rule.detail}");
+            }
             Debug.Log($"라운드 {Match.CurrentRound} 시작 (Predictor round={predictor.Round})");
         }
 

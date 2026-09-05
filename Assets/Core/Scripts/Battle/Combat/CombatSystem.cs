@@ -62,6 +62,17 @@ namespace SeoYuGi.Battle
         /// <summary>판정 대기 중인 예고 — 테스트·연출 조회용 (읽기 전용).</summary>
         public IReadOnlyList<TelegraphStrike> PendingStrikes => strikes;
 
+        /// <summary>이번 라운드 규칙. null이면 평범한 라운드다.</summary>
+        public RoundRule Rule { get; set; }
+
+        /// <summary>
+        /// 고지 장악 규칙의 피해 배율 — 시전 시점에 굳힌다.
+        /// 예고가 긴 스킬은 판정 때 시전자가 이미 내려와 있을 수 있는데,
+        /// "고지대에서 쐈다"가 기준이면 쏘는 순간이 맞다.
+        /// </summary>
+        int HighlandScale(UnitState caster) =>
+            Rule != null && State.Grid.IsHighland(caster.pos) ? Rule.HighlandDamageScale : 1;
+
         public CombatSystem(BattleState state, CombatConfig config)
         {
             State = state;
@@ -152,8 +163,8 @@ namespace SeoYuGi.Battle
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             unit.attackReadyAt = State.time + Config.attackCooldownSeconds;
-            int damage = (def.basicAttackDamage > 0 ? def.basicAttackDamage : Config.attackDamage)
-                + (unit.attackBuffUntil > State.time ? Config.blinkBuffBonus : 0);
+            int damage = ((def.basicAttackDamage > 0 ? def.basicAttackDamage : Config.attackDamage)
+                + (unit.attackBuffUntil > State.time ? Config.blinkBuffBonus : 0)) * HighlandScale(unit);
             Place(new TelegraphStrike
             {
                 attackerId = unitId,
@@ -240,7 +251,7 @@ namespace SeoYuGi.Battle
                 cells = { target },
                 aimCell = target,
                 impactTime = State.time + telegraph,
-                damage = skill.damage,
+                damage = skill.damage * HighlandScale(unit),
                 pushDir = pushCells > 0 ? new Coord(Math.Sign(d.x), Math.Sign(d.y)) : Coord.Zero,
                 pushCells = pushCells,
                 wallBonusDamage = wallBonus
@@ -272,7 +283,7 @@ namespace SeoYuGi.Battle
                     if (occupant.team != unit.team && !hitIds.Contains(occupantId) && !IsFlying(occupant))
                     {
                         hitIds.Add(occupantId);
-                        Damage(occupant, skill.damage, dir, unit.id);
+                        Damage(occupant, skill.damage * HighlandScale(unit), dir, unit.id);
                         dealt += skill.damage;
                         if (occupant.alive)
                         {
@@ -312,7 +323,7 @@ namespace SeoYuGi.Battle
                 team = unit.team,
                 aimCell = unit.pos, // 자기 중심 광역
                 impactTime = State.time + skill.telegraphSeconds,
-                damage = skill.damage,
+                damage = skill.damage * HighlandScale(unit),
                 stunSeconds = skill.stunSeconds
             };
             int r = skill.range; // 인접8 고정이 아니라 표를 따른다 — 사거리 +1이 광역에도 반영된다
@@ -356,7 +367,7 @@ namespace SeoYuGi.Battle
                 team = unit.team,
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
-                damage = skill.damage
+                damage = skill.damage * HighlandScale(unit)
             };
             strike.cells.Add(target);
             foreach (var dir in Coord.Directions4)
@@ -384,7 +395,7 @@ namespace SeoYuGi.Battle
                 team = unit.team,
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
-                damage = skill.damage
+                damage = skill.damage * HighlandScale(unit)
             };
             strike.cells.Add(target);
             foreach (var dir in Coord.Directions4)
@@ -417,7 +428,7 @@ namespace SeoYuGi.Battle
                 cells = { target },      // 단일 칸 — 광역이 아니다
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
-                damage = skill.damage
+                damage = skill.damage * HighlandScale(unit)
             });
             return ActDenied.None;
         }
@@ -458,7 +469,7 @@ namespace SeoYuGi.Battle
                 var victim = State.GetUnit(victimId);
                 if (victim.team != unit.team && !IsFlying(victim))
                 {
-                    Damage(victim, skill.damage, dir, unit.id);
+                    Damage(victim, skill.damage * HighlandScale(unit), dir, unit.id);
                     OnDamageDealt?.Invoke(unit.id, skill.damage); // 즉발 명중도 예측 성공 취급
                 }
             }
@@ -481,7 +492,7 @@ namespace SeoYuGi.Battle
                 aimCell = target,
                 cells = { target },
                 impactTime = State.time + skill.telegraphSeconds,
-                damage = skill.damage
+                damage = skill.damage * HighlandScale(unit)
             };
             Place(strike);
             return ActDenied.None;

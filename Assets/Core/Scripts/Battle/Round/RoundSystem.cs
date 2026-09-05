@@ -20,6 +20,9 @@ namespace SeoYuGi.Battle
         public int owner = -1;
         public int capturingTeam = -1;
         public float progress; // 0..captureSeconds
+
+        /// <summary>거점 봉쇄 규칙으로 잠긴 거점은 false — 점령도 안 되고 승리 판정에서도 빠진다.</summary>
+        public bool active = true;
     }
 
     /// <summary>
@@ -44,6 +47,9 @@ namespace SeoYuGi.Battle
         /// 이 동안에는 다음 탈환이나 다음 킬이 곧바로 승부를 낸다.
         /// </summary>
         public bool Overtime { get; private set; }
+
+        /// <summary>이번 라운드 규칙. null이면 평범한 라운드. 러너가 조립 때 꽂는다.</summary>
+        public RoundRule Rule { get; set; }
 
         public event Action<Zone> OnZoneCaptured;
         public event Action<bool> OnOvertime;    // 추가시간 진입 — HUD 연출용
@@ -105,6 +111,9 @@ namespace SeoYuGi.Battle
         {
             foreach (var z in zones)
             {
+                if (!z.active) continue; // 봉쇄된 거점 — 밟아도 아무 일 없다
+                if (z.owner >= 0 && Rule != null && Rule.NoTakebacks) continue; // 탈환 불가 — 주인이 굳었다
+
                 // 이 거점이 쓸 진행량. 아래 '중화 후 이월'이 깎아도 다음 거점에 새면 안 되므로
                 // deltaTime(프레임 전체 몫)을 건드리지 않고 거점마다 사본을 쓴다.
                 float step = deltaTime;
@@ -156,6 +165,7 @@ namespace SeoYuGi.Battle
                     z.owner = team;
                     z.capturingTeam = -1;
                     z.progress = 0f;
+                    if (Rule != null) { Rule.OnZoneCaptured(zones.IndexOf(z)); SyncZoneActive(); }
                     OnZoneCaptured?.Invoke(z);
                     if (Overtime) { EndRound(team); return; } // 추가시간엔 탈환이 곧 승리
                 }
@@ -193,15 +203,18 @@ namespace SeoYuGi.Battle
             if (alive[0] == 0) { EndRound(1); return; }
             if (alive[1] == 0) { EndRound(0); return; }
 
-            // 거점 독점 — 상대가 아직 거점을 밟고 있으면 추가시간: 발을 뗄 때까지 라운드 유지.
-            // 교착은 스스로 풀린다 — 혼자 밟으면 그 거점을 뺏어 독점이 깨지고, 같이 밟으면 교전,
-            // 그마저 길어지면 roundSeconds 타임아웃이 거점 수로 잘라준다.
+            // 거점 독점 — 활성 거점만 센다. 봉쇄된 거점을 세면 아무도 독점할 수 없어 라운드가 끝나지 않는다.
             var owned = new int[2];
+            int activeZones = 0;
             foreach (var z in zones)
+            {
+                if (!z.active) continue;
+                activeZones++;
                 if (z.owner >= 0) owned[z.owner]++;
+            }
 
-            if (owned[0] == zones.Count) { EndRound(0); return; }
-            if (owned[1] == zones.Count) { EndRound(1); return; }
+            if (activeZones > 0 && owned[0] == activeZones) { EndRound(0); return; }
+            if (activeZones > 0 && owned[1] == activeZones) { EndRound(1); return; }
 
             // 시간 초과 판정: 거점 수 → 생존 수 → 그래도 못 가리면 추가시간
             if (!Overtime && State.time >= Config.roundSeconds)
@@ -213,6 +226,13 @@ namespace SeoYuGi.Battle
                 Overtime = true;
                 OnOvertime?.Invoke(true);
             }
+        }
+
+        /// <summary>규칙의 활성 표를 거점에 반영. 봉쇄 규칙이 없으면 전부 활성.</summary>
+        public void SyncZoneActive()
+        {
+            for (int i = 0; i < zones.Count; i++)
+                zones[i].active = Rule == null || Rule.ZoneEnabled(i);
         }
 
         void CountAlive(int[] counts)

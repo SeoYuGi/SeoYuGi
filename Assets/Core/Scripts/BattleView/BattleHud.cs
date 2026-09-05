@@ -62,13 +62,20 @@ namespace SeoYuGi.BattleView
         const int KillFeedMax = 5;
 
         /// <summary>프리셋 치트시트 표시 — 러너가 진입 시 켠다. 접고 펴는 건 패널 버튼 (Tab은 무전창 것, 2026-09-06).</summary>
-        public bool ShowChatCheatsheet { get; set; }
+        /// <summary>빠른채팅 패널 열림 — 러너가 라운드 진입 때 true로 켜 둔다. 토글 버튼이 같은 값을 뒤집는다.
+        /// 예전엔 별도 플래그라 켜져 있는 동안 버튼으로 못 접었다 (2026-09-06 "열기/닫기 버튼 작동 안 함").</summary>
+        public bool ShowChatCheatsheet { get => chatPanelOpen; set => chatPanelOpen = value; }
 
         /// <summary>무전 패널의 문구 클릭 — lineId. 전송 경로는 러너가 배선.</summary>
         public event System.Action<int> OnChatClicked;
         /// <summary>해킹 게이지 클릭 — H키와 동일 경로. 러너가 배선.</summary>
         public event System.Action OnHackClicked;
         bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
+        // 빠른채팅 패널 치수 (좌상단). 채팅 로그가 이 패널 바로 밑에 붙는다 (2026-09-06)
+        const float ChatBtnW = 96f, ChatBtnH = 26f, ChatRowH = 30f, ChatPanelW = 170f, ChatX0 = 12f, ChatToggleY = 12f;
+        float ChatPanelBottom => chatPanelOpen
+            ? ChatToggleY + ChatBtnH + 6f + SeoYuGi.Chat.QuickChat.Lines.Length * ChatRowH + 30f + 6f // 패널 + 프레임 여백
+            : ChatToggleY + ChatBtnH;
         float idleHintUntil; // 기본 조작 안내(타일 클릭 = 이동)는 진입 후 15초만 — 그 뒤엔 화면 중앙을 비운다
 
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
@@ -1131,15 +1138,10 @@ namespace SeoYuGi.BattleView
                 hs[i] = Mathf.Max(26f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
                 total += hs[i];
             }
-            // 채팅 로그는 항상 무전 입력줄 바로 위 자리 — 롤 채팅처럼 한 덩어리 (2026-09-06 "따로 노는 느낌").
-            // 무전창이 닫혀도 같은 자리에 둔다. 열 때마다 위로 튀고 닫으면 내려가던 게 거슬린다 (2026-09-06 "위치 고정").
-            // RadioWindow와 같은 스케일·x·폭으로 맞춘다 (그쪽은 Screen 픽셀, 여기는 HUD 단위 → UiScale로 환산)
-            float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
-            float radioW = Mathf.Min(560f * rs, Screen.width * 0.5f), pad = 10f * rs;
-            float radioTopPx = Screen.height - (RadioWindow.FieldBottom + 30f) * rs - pad; // 입력줄 + 상단 안내줄(30) + 패드
-            float logX = (24f * rs - pad) / UiScale;
-            float logW = (radioW + pad * 2f) / UiScale;
-            float y = radioTopPx / UiScale - 6f - total;
+            // 채팅 로그는 빠른채팅 패널 바로 밑, 위에서 아래로 쌓인다 (2026-09-06 "채팅 너무 위쪽, 빠른채팅 슬롯 쬐끔 밑에").
+            // 패널을 접으면 토글 버튼 밑으로 따라 올라온다. 무전창 열림/닫힘과는 무관 — 자리가 안 튄다.
+            float logX = ChatX0, logW = boxW;
+            float y = ChatPanelBottom + 10f;
 
             var logBox = new Rect(logX, y - 4, logW, total + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));
@@ -1195,13 +1197,13 @@ namespace SeoYuGi.BattleView
         /// </summary>
         void DrawChatPanel()
         {
-            const float btnW = 96f, btnH = 26f, rowH = 30f, panelW = 170f;
-            float x0 = 12f, toggleY = 12f;
+            const float btnW = ChatBtnW, btnH = ChatBtnH, rowH = ChatRowH, panelW = ChatPanelW;
+            float x0 = ChatX0, toggleY = ChatToggleY;
 
             if (GUI.Button(new Rect(x0, toggleY, btnW, btnH), chatPanelOpen ? "빠른채팅 닫기" : "빠른채팅 열기", chipStyle))
                 chatPanelOpen = !chatPanelOpen;
 
-            if (!chatPanelOpen && !ShowChatCheatsheet) return;
+            if (!chatPanelOpen) return;
 
             var lines = SeoYuGi.Chat.QuickChat.Lines;
             float panelH = lines.Length * rowH + 30f;

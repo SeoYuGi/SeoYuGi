@@ -310,7 +310,11 @@ namespace SeoYuGi.BattleView
                         // 범위기(판정 2칸 이상)는 칸을 흰색으로 채운다 — 윤곽만으론 "1칸 때리는" 걸로 읽혔다 (2026-09-06).
                         // 단일 타겟은 그대로 윤곽 + 아이콘. 채움은 바닥 틴트라 아이콘·윤곽 밑에 깔린다.
                         if (aimImpact.Count > 1)
+                        {
                             foreach (var c in aimImpact) { cells.Add(c); colors.Add(aimFillColor); }
+                            gridView.ShowAimIcons(aimImpact, icon, aimImpactColor); // 판정 칸마다 아이콘 — 범위가 그림으로 읽힌다 (2026-09-06)
+                        }
+                        else gridView.HideAimIcons();
                         gridView.ShowCursorIcon(hover, icon, aimImpactColor);
                         ShowPushPreview(hover);
                     }
@@ -318,6 +322,7 @@ namespace SeoYuGi.BattleView
                     {
                         aimImpact.Clear();
                         gridView.ShowCursorIcon(hover, icon, aimInvalidColor); // 못 쏘는 곳 — 아이콘만 파랗게(클릭하면 이동)
+                        gridView.HideAimIcons();
                         ClearPushPreview();
                     }
                 }
@@ -325,6 +330,7 @@ namespace SeoYuGi.BattleView
                 {
                     aimImpact.Clear();
                     gridView.HideFootstep();
+                    gridView.HideAimIcons();
                     ClearPushPreview();
                 }
                 gridView.EndOutlines();
@@ -333,6 +339,7 @@ namespace SeoYuGi.BattleView
             {
                 aimImpact.Clear();
                 UpdateMarkers(aimImpact, aimImpactColor); // 비조준 — 마커 전부 숨김
+                gridView.HideAimIcons();
                 ClearPushPreview();
 
                 if (selectedUnitId != -1)

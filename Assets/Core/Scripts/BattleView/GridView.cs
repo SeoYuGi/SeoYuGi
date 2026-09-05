@@ -532,6 +532,53 @@ namespace SeoYuGi.BattleView
             if (footstep != null && footstep.gameObject.activeSelf) footstep.gameObject.SetActive(false);
         }
 
+        // ── 범위기 조준 아이콘 (2026-09-06 "판정 칸 전부에 아이콘") — 커서 칸 하나만으론 범위가 안 읽혔다. 풀 재사용.
+        readonly List<Transform> aimIcons = new List<Transform>();
+        Material aimIconMat;
+
+        /// <summary>판정 칸마다 스킬 아이콘 한 장 — 커서 아이콘보다 작게, 같은 색. 호출마다 목록을 통째로 갱신한다.</summary>
+        public void ShowAimIcons(IReadOnlyList<Coord> cells, Texture2D tex, Color color)
+        {
+            if (aimIconMat == null)
+            {
+                var sh = Shader.Find("Sprites/Default");
+                aimIconMat = sh != null ? new Material(sh) : null;
+            }
+            while (aimIcons.Count < cells.Count)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                go.name = "AimIcon";
+                Destroy(go.GetComponent<Collider>());
+                go.transform.SetParent(transform);
+                var r = go.GetComponent<Renderer>();
+                if (aimIconMat != null) r.sharedMaterial = aimIconMat;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+                aimIcons.Add(go.transform);
+            }
+            if (aimIconMat != null)
+            {
+                if (aimIconMat.mainTexture != tex) aimIconMat.mainTexture = tex;
+                aimIconMat.color = color;
+            }
+            float s = tileSize * 0.42f;
+            for (int i = 0; i < aimIcons.Count; i++)
+            {
+                bool on = i < cells.Count;
+                if (aimIcons[i].gameObject.activeSelf != on) aimIcons[i].gameObject.SetActive(on);
+                if (!on) continue;
+                aimIcons[i].position = CoordToWorld(cells[i]) + Vector3.up * 0.16f;
+                aimIcons[i].rotation = Quaternion.Euler(90f, 0f, 0f);
+                aimIcons[i].localScale = new Vector3(s, s, 1f);
+            }
+        }
+
+        public void HideAimIcons()
+        {
+            foreach (var t in aimIcons)
+                if (t.gameObject.activeSelf) t.gameObject.SetActive(false);
+        }
+
         /// <summary>거점 칸을 거점 텍스처로 표시. Build 이후 호출.</summary>
         readonly HashSet<Coord> zoneSet = new HashSet<Coord>(); // 거점 칸 — 배틀 매트 딤 제외 대상
 

@@ -140,6 +140,50 @@ namespace SeoYuGi.BattleView
 
         /// <summary>폭탄 배달 왕복 비행 — 떠올라 목표까지 날아가 폭탄을 놓고 원위치로 복귀.
         /// 시뮬 위치는 출발 칸 그대로 — 연출 내내 moving으로 잠가 SyncPresentation 간섭 차단.</summary>
+        /// <summary>
+        /// 던져진 궤적 — 현재 자리에서 to까지 포물선으로 날아간다(칸당 0.09s, 최소 0.22s).
+        /// 러너의 위치 동기화는 3.2 이내만 미끄러뜨리고 그 밖은 스냅하므로, 5칸 던지기가
+        /// 이 연출 없이는 순간이동으로 보였다. moving 코루틴이라 IsMoving=true — 동기화가 끼어들지 않는다.
+        /// wallCrash면 끝에서 짧게 튕긴다(불꽃·흔들림은 러너의 OnWallCrash가 낸다).
+        /// </summary>
+        public void PlayThrow(Coord to, bool wallCrash)
+        {
+            if (moving != null) StopCoroutine(moving);
+            moving = StartCoroutine(ThrowRoutine(WorldOf(to), wallCrash));
+        }
+
+        IEnumerator ThrowRoutine(Vector3 target, bool wallCrash)
+        {
+            Vector3 start = transform.position;
+            float dist = Vector3.Distance(start, target);
+            float dur = Mathf.Max(0.22f, dist * 0.09f);
+            float height = Mathf.Clamp(dist * 0.28f, 0.35f, 1.2f);
+            var back = dist > 0.01f ? (start - target).normalized : Vector3.zero;
+
+            for (float t = 0f; t < dur; t += Time.deltaTime)
+            {
+                float k = t / dur;
+                var p = Vector3.Lerp(start, target, k);   // 던져진 몸은 등속 — 감속 없음
+                p.y += height * 4f * k * (1f - k);       // 포물선
+                transform.position = p;
+                yield return null;
+            }
+            transform.position = target;
+
+            if (wallCrash)
+            {
+                // 벽에 처박힘 — 진행 반대로 짧게 튕겼다 돌아온다
+                const float bump = 0.12f;
+                for (float t = 0f; t < bump; t += Time.deltaTime)
+                {
+                    transform.position = target + back * (0.18f * Mathf.Sin(t / bump * Mathf.PI));
+                    yield return null;
+                }
+                transform.position = target;
+            }
+            moving = null;
+        }
+
         public void PlayBombFlight(Vector3 targetWorld, float outDuration, float backDuration)
         {
             if (moving != null) StopCoroutine(moving);

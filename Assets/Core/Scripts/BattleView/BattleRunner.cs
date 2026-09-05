@@ -1569,6 +1569,15 @@ namespace SeoYuGi.BattleView
                             NetSync.HostSendSkillCast(s.clientId, unitId, (int)kind);
                 }
             };
+            // 밀림 궤적 — 2칸 이상이거나 벽꿍이면 포물선. 1칸 밀침은 기존 미끄러짐(위치 동기화)이 자연스럽다.
+            Combat.OnPushed += (unitId, from, to, crashed) =>
+            {
+                int cells = Mathf.Max(Mathf.Abs(to.x - from.x), Mathf.Abs(to.y - from.y));
+                if (cells < 2 && !crashed) return;
+                var v = viewRegistry.Get(unitId);
+                if (v == null || !v.gameObject.activeInHierarchy) return; // 시야 밖 — 다시 보일 때 스냅
+                v.PlayThrow(to, crashed);
+            };
             Combat.OnWallCrash += unitId =>
             {
                 battleAudio.PlaySfx("S21_WallCrash", 0.6f);

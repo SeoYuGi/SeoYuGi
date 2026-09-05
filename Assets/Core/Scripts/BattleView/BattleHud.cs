@@ -801,7 +801,7 @@ namespace SeoYuGi.BattleView
             switch (ClassCatalog.Get(cls).skills[idx].kind)
             {
                 case SkillKind.ShieldPush: return "방패 밀어붙이기";
-                case SkillKind.Smash: return "강타";
+                case SkillKind.Smash: return "던져버리기";
                 case SkillKind.Dash: return "돌파";
                 case SkillKind.Scream: return "비명 교란";
                 case SkillKind.Blink: return "그림자 도약";

@@ -172,9 +172,8 @@ namespace SeoYuGi.BattleView
                     }
                     else if (strike.damage >= 2)
                     {
-                        // 강타 — 무거운 한 방: War FX 소형 폭발 + 팀색 광기둥
-                        VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.2f, 0.24f, hierarchyScale: true);
-                        ImpactVfx.Pillar(center, teamHi);
+                        // 던져버리기 — 붙잡아 내던지는 순간. 유닛은 이 칸을 떠나므로 출발점엔 링만 남기고
+                        // 궤적(UnitView.PlayThrow)과 벽꿍(OnWallCrash)이 나머지를 맡는다
                         RingWave.Spawn(center, new Color(teamHi.r, teamHi.g, teamHi.b, 0.85f), 4.5f, 0.45f);
                     }
                     else

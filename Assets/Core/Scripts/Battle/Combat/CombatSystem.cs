@@ -56,6 +56,8 @@ namespace SeoYuGi.Battle
         /// <summary>공격 팀 시야 판정 주입 — 러너가 VisionSystem을 연결. null이면 은신 페널티 없음 (테스트 기본).</summary>
         public Func<int, Coord, bool> TeamVisibleFn;
         public event Action<int> OnWallCrash;            // 밀침으로 벽/맵 경계 충돌
+        /// <summary>(unitId, from, to, wallCrash) — 밀침 한 번의 전체 이동. 뷰가 궤적을 그리는 데 쓴다.</summary>
+        public event Action<int, Coord, Coord, bool> OnPushed;
 
         readonly List<TelegraphStrike> strikes = new List<TelegraphStrike>();
 
@@ -822,7 +824,10 @@ namespace SeoYuGi.Battle
 
             var d = attacker.pos - victim.pos; // 피격자 → 공격자 방향
             float len = (float)Math.Sqrt(d.x * d.x + d.y * d.y);
-            if (len > 0.01f)
+            // 엄폐는 사격을 가리는 규칙이다. 붙어서 잡고 치는 근접(체비셰프 2 이내)은 옆의 벽이
+            // 막아줄 게 없다 — 여기까지 걸리면 던져버리기·발톱이 벽가에서 절반이 헛손질이 된다.
+            bool contact = Math.Max(Math.Abs(d.x), Math.Abs(d.y)) <= 2;
+            if (len > 0.01f && !contact)
                 foreach (var w in Coord.Directions4)
                 {
                     var c = victim.pos + w;
@@ -899,6 +904,8 @@ namespace SeoYuGi.Battle
         void Push(UnitState unit, Coord dir, int cells, int wallBonusDamage)
         {
             if (dir == Coord.Zero) return;
+            var from = unit.pos;
+            bool crashed = false;
             for (int i = 0; i < cells; i++)
             {
                 var next = unit.pos + dir;
@@ -906,11 +913,10 @@ namespace SeoYuGi.Battle
                 bool uphill = State.Grid.IsHighland(next) && !State.Grid.IsHighland(unit.pos);
                 if (!State.Grid.IsWalkableTerrain(next) || uphill)
                 {
-                    OnWallCrash?.Invoke(unit.id);
-                    if (wallBonusDamage > 0) Damage(unit, wallBonusDamage, dir);
-                    return;
+                    crashed = true;
+                    break;
                 }
-                if (State.Grid.GetUnitAt(next) != Cell.NoUnit) return; // 유닛에 막힘 — 추가 피해 없음
+                if (State.Grid.GetUnitAt(next) != Cell.NoUnit) break; // 유닛에 막힘 — 추가 피해 없음
 
                 bool falls = State.Grid.IsHighland(unit.pos) && !State.Grid.IsHighland(next);
                 State.Grid.MoveOccupant(unit.pos, next);
@@ -918,8 +924,18 @@ namespace SeoYuGi.Battle
                 if (falls)
                 {
                     Damage(unit, Config.fallDamage); // 고지대 낙하
-                    if (!unit.alive) return;
+                    if (!unit.alive) break;
                 }
+            }
+
+            // 이동 전체를 뷰에 한 번에 알린다 — 5칸 던지기가 순간이동으로 보이지 않게 궤적을 그리게.
+            // 벽꿍은 궤적 끝에서 터져야 하므로 알림이 먼저, 충돌 처리가 뒤다.
+            if (unit.pos != from || crashed)
+                OnPushed?.Invoke(unit.id, from, unit.pos, crashed);
+            if (crashed)
+            {
+                OnWallCrash?.Invoke(unit.id);
+                if (wallBonusDamage > 0) Damage(unit, wallBonusDamage, dir);
             }
         }
     }

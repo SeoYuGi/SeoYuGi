@@ -214,7 +214,7 @@ namespace SeoYuGi.UI
 
         static string SkillName(SkillKind k) => k switch
         {
-            SkillKind.ShieldPush => "방패 밀기", SkillKind.Smash => "강타", SkillKind.Dash => "돌파",
+            SkillKind.ShieldPush => "방패 밀기", SkillKind.Smash => "던져버리기", SkillKind.Dash => "돌파",
             SkillKind.Scream => "비명", SkillKind.Blink => "도약", SkillKind.Claw => "발톱",
             SkillKind.Burst => "파열탄", SkillKind.BombDeliver => "폭탄 배달", SkillKind.Snatch => "낚아채기",
             SkillKind.KnockShot => "넉백샷", SkillKind.Snipe => "저격", _ => k.ToString()
@@ -222,7 +222,7 @@ namespace SeoYuGi.UI
 
         static string SkillDesc(SkillKind k) => k switch
         {
-            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "밀침·벽충돌", SkillKind.Dash => "대시·충돌 스턴",
+            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "5칸 던지기·벽꿍", SkillKind.Dash => "대시·충돌 스턴",
             SkillKind.Scream => "주변 1초 스턴", SkillKind.Blink => "2칸 점멸", SkillKind.Claw => "고위력 근접",
             SkillKind.Burst => "십자 5칸", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적을 끌어옴",
             SkillKind.KnockShot => "밀쳐내는 사격", SkillKind.Snipe => "1열 관통", _ => ""

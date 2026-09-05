@@ -66,8 +66,7 @@ namespace SeoYuGi.BattleView
                     FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.4f, steel, 3f, 1f, 0.3f);
                     break;
 
-                case SkillKind.Smash: // 강타 — 하늘에서 내리꽂는 광기둥 + 바닥 파쇄 링 + 파편
-                    ImpactVfx.Pillar(origin, Hi(flame));
+                case SkillKind.Smash: // 던져버리기 — 붙잡는 순간: 바닥 링 + 파편. 광기둥은 내려찍기로 읽혀 뺐다
                     RingWave.Spawn(origin, Alpha(steel, 0.9f), 5f, 0.5f);
                     FxQuad.Burst(VfxTextures.Spark, origin, Hi(flame), 18, 1.4f, 5f);
                     FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.4f, flame, 4f, 0.9f, 0.3f);

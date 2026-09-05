@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace SeoYuGi.Chat
 {
     /// <summary>
-    /// 빠른채팅 — 숫자키 1~8로 즉시 전송하는 전술 무전 프리셋.
+    /// 빠른채팅 — 숫자키 1~7로 즉시 전송하는 전술 무전 프리셋.
     /// 방사형 휠 대신 숫자키인 이유: 실시간 게임이라 마우스가 조준에 묶여 있다.
     ///
     /// UnityEngine 비의존(시각은 호출부 담당) — 멀티에서 호스트가 검증할 때 그대로 재사용한다.
@@ -12,7 +12,7 @@ namespace SeoYuGi.Chat
     /// </summary>
     public class QuickChat
     {
-        /// <summary>숫자키 1~9,0에 대응. 전략 콜 2 + 거점 핑 A/B/C + 지시·사교 (2026-09-05 유저 구성).</summary>
+        /// <summary>숫자키 1~7에 대응. 전략 콜 2 + 거점 핑 A/B/C + 지시 2 (2026-09-06: 사교 3줄 삭제, 메뉴 다이어트).</summary>
         public static readonly string[] Lines =
         {
             "킬 먼저!",           // 1 — 교전 우선 전략
@@ -21,10 +21,7 @@ namespace SeoYuGi.Chat
             "B 거점으로!",        // 4
             "C 거점으로!",        // 5
             "지원 요청!",         // 6
-            "후퇴!",              // 7
-            "시야해킹 준비됐어!", // 8
-            "나이스!",            // 9
-            "미안!"               // 0
+            "후퇴!"               // 7
         };
 
         /// <summary>해킹 발동 시 자동 전송. 매치 1회뿐인 필살기라 수동 슬롯을 낭비하지 않는다.</summary>

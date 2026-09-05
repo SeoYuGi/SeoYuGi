@@ -61,7 +61,7 @@ namespace SeoYuGi.BattleView
         readonly List<ChatEntry> killFeed = new List<ChatEntry>();
         const int KillFeedMax = 5;
 
-        /// <summary>Tab 홀드 중 프리셋 치트시트 표시 — BattleRunner가 매 프레임 갱신.</summary>
+        /// <summary>프리셋 치트시트 표시 — 러너가 진입 시 켠다. 접고 펴는 건 패널 버튼 (Tab은 무전창 것, 2026-09-06).</summary>
         public bool ShowChatCheatsheet { get; set; }
 
         /// <summary>무전 패널의 문구 클릭 — lineId. 전송 경로는 러너가 배선.</summary>
@@ -86,6 +86,7 @@ namespace SeoYuGi.BattleView
         // 스케일 적용 후 논리 화면 크기
         float W => Screen.width / UiScale;
         float H => Screen.height / UiScale;
+        const float TopScale = 1.3f; // 상단바(타이머·핍·거점 칩·스코어)만 화면 위 중앙 기준 추가 확대 — "너무 작아서 안 보임" (2026-09-06)
 
         System.Func<float> hackCharge; // 내 유닛 해킹 게이지 0..1 — 러너가 주입 (HUD는 코어 비의존)
 
@@ -431,7 +432,7 @@ namespace SeoYuGi.BattleView
             if (Time.time >= threatUntil) return;
             float urgency = 1f - Mathf.Clamp01(threatRemain / 0.8f);
             float beat = 0.5f + 0.5f * Mathf.Sin(Time.time * (6f + 14f * urgency));
-            var box = new Rect(W / 2f - 190, 96, 380, 48);
+            var box = new Rect(W / 2f - 190, 205, 380, 48); // 96 → 205: 확대된 상단바 아래, 이벤트 배너와 같은 레인 (2026-09-06)
             var red = new Color(1f, 0.25f, 0.18f);
             NeonPanel(box, red, 0.6f + 0.4f * beat);
             Fill(new Rect(box.x + 1, box.y + 1, box.width - 2, box.height - 2), new Color(0.6f, 0.05f, 0.02f, 0.25f + 0.2f * beat));
@@ -477,7 +478,10 @@ namespace SeoYuGi.BattleView
             float s = UiScale;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(s, s, 1f));
 
+            var baseMtx = GUI.matrix; // 상단바만 1.3배 — 버튼이 없어 클릭 좌표 무관
+            GUI.matrix = baseMtx * Matrix4x4.TRS(new Vector3(W / 2f * (1f - TopScale), 0f, 0f), Quaternion.identity, new Vector3(TopScale, TopScale, 1f));
             DrawTopBar();
+            GUI.matrix = baseMtx;
             if (overlay == Overlay.None)
             {
                 DrawBanner();
@@ -580,8 +584,8 @@ namespace SeoYuGi.BattleView
             }
 
             // 좌 = 아군 생존 ● + 매치 승수, 우 = 적군 (탱고파이브 해골 카운터 자리)
-            DrawTeamStatus(new Rect(W / 2f - 250, 10, 170, 40), playerTeam, allyColor, rightAlign: false);
-            DrawTeamStatus(new Rect(W / 2f + 80, 10, 170, 40), 1 - playerTeam, enemyColor, rightAlign: true);
+            DrawTeamStatus(new Rect(W / 2f - 250, 10, 170, 48), playerTeam, allyColor, rightAlign: false);
+            DrawTeamStatus(new Rect(W / 2f + 80, 10, 170, 48), 1 - playerTeam, enemyColor, rightAlign: true);
 
             // 거점 칩 A/B/C (탱고파이브 상단 ABC)
             var zones = round.Zones;
@@ -631,50 +635,56 @@ namespace SeoYuGi.BattleView
                 $"ROUND {match.CurrentRound}/{MatchSystem.MaxRounds}", roundStyle);
             if (!string.IsNullOrEmpty(roundRuleChip))
             {
-                // 라운드 변형 규칙 상시 칩 (2026-09-05) — 시작 자막을 놓치면 "점령 안 되는 버그"가 된다
+                // 라운드 변형 규칙 상시 칩 (2026-09-05) — 제목 + 설명 한 줄. 시작 자막은 은퇴 (2026-09-06 "칩에 한 줄 적는 게 낫다")
                 var chipStyle2 = new GUIStyle(roundStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 13 };
-                var chipRect = new Rect(W / 2f - 110, 131, 220, 20);
-                Fill(chipRect, new Color(0.04f, 0.06f, 0.1f, 0.85f));
-                Edge(chipRect, new Color(1f, 0.78f, 0.25f, 0.5f));
-                ShadowLabel(chipRect, $"규칙: {roundRuleChip}", chipStyle2, new Color(1f, 0.85f, 0.45f));
+                float ruleW = Mathf.Max(220f, chipStyle2.CalcSize(new GUIContent(roundRuleChip)).x + 28f);
+                var ruleRect = new Rect(W / 2f - ruleW / 2f, 131, ruleW, 20);
+                Fill(ruleRect, new Color(0.04f, 0.06f, 0.1f, 0.85f));
+                Edge(ruleRect, new Color(1f, 0.78f, 0.25f, 0.5f));
+                ShadowLabel(ruleRect, roundRuleChip, chipStyle2, new Color(1f, 0.85f, 0.45f));
             }
         }
 
+        static readonly Dictionary<UnitClass, Texture2D> portraits = new Dictionary<UnitClass, Texture2D>();
+        static Texture2D Portrait(UnitClass cls)
+        {
+            if (!portraits.TryGetValue(cls, out var t))
+                portraits[cls] = t = Resources.Load<Texture2D>("UI/Portrait_" + cls);
+            return t;
+        }
+        static readonly Rect PortraitHead = new Rect(0.28f, 0.45f, 0.5f, 0.45f); // 초상에서 머리 부분만 (텍스처 좌표, 아래가 0)
+
         void DrawTeamStatus(Rect r, int team, Color color, bool rightAlign)
         {
-            int alive = 0, total = 0;
+            int total = 0;
             foreach (var u in battle.Units)
-                if (u.team == team)
-                {
-                    total++;
-                    if (u.alive) alive++;
-                }
+                if (u.team == team) total++;
 
-            // 생존 핍 — 텍스트 ●○ 대신 드로잉 (산 유닛 = 팀색 채움 + 밝은 윗변, 죽은 유닛 = 어두운 슬롯)
+            // 생존 표시 = 얼굴 (2026-09-06, 핍 → 초상). 산 유닛 = 원색 + 팀색 테두리, 죽은 유닛 = 회색 반투명.
+            // "몇 명"만이 아니라 "누가" 죽었는지까지 읽힌다.
             var style = new GUIStyle(dotStyle) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft };
-            const float pipW = 16f, pipH = 8f, pipGap = 4f;
-            float pipsW = total * pipW + (total - 1) * pipGap;
+            const float faceW = 30f, faceGap = 4f;
+            float facesW = total * faceW + (total - 1) * faceGap;
             float labelW = 46f;
-            float pipX = rightAlign ? r.xMax - labelW - 8f - pipsW : r.x + labelW + 8f;
+            float faceX = rightAlign ? r.xMax - labelW - 8f - facesW : r.x + labelW + 8f;
             ShadowLabel(new Rect(rightAlign ? r.xMax - labelW : r.x, r.y, labelW, 20),
                 team == playerTeam ? "아군" : "적군", new GUIStyle(style) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft }, color);
-            for (int i = 0; i < total; i++)
+            int i = 0;
+            foreach (var u in battle.Units)
             {
-                var pip = new Rect(pipX + i * (pipW + pipGap), r.y + 6f, pipW, pipH);
-                if (i < alive)
-                {
-                    Fill(pip, color);
-                    Fill(new Rect(pip.x, pip.y, pip.width, 2f), Color.Lerp(color, Color.white, 0.55f)); // 윗변 하이라이트
-                }
-                else
-                {
-                    Fill(pip, new Color(0.05f, 0.07f, 0.12f, 0.85f));
-                    Edge(pip, new Color(color.r, color.g, color.b, 0.35f));
-                }
+                if (u.team != team) continue;
+                var face = new Rect(faceX + i * (faceW + faceGap), r.y - 2f, faceW, faceW);
+                var tex = Portrait(u.unitClass);
+                GUI.color = u.alive ? Color.white : new Color(0.3f, 0.3f, 0.32f, 0.85f);
+                if (tex != null) GUI.DrawTextureWithTexCoords(face, tex, PortraitHead);
+                else Fill(face, GUI.color);
+                GUI.color = Color.white;
+                Edge(face, u.alive ? color : new Color(color.r, color.g, color.b, 0.3f));
+                i++;
             }
 
             string winsText = $"승리 {match.GetWins(team)}/{MatchSystem.WinsNeeded}"; // 3판 2선승
-            GUI.Label(new Rect(r.x, r.y + 20, r.width, 16),
+            GUI.Label(new Rect(r.x, r.y + 30, r.width, 16),
                 winsText, new GUIStyle(roundStyle) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft });
         }
 
@@ -702,14 +712,14 @@ namespace SeoYuGi.BattleView
             if ((u == null || !u.alive) && skipHint)
             {
                 msg = skipActive ? "빨리감기 중 (6배속). SPACE: 해제"
-                    : GameModeState.IsCommander ? "격파됨. Enter 무전, 숫자키로 분대 지휘 계속. SPACE 빨리감기"
+                    : GameModeState.IsCommander ? "격파됨. TAB 무전, 숫자키로 분대 지휘 계속. SPACE 빨리감기"
                     : "격파됨. SPACE: 라운드 결과까지 빨리감기";
                 if (skipActive) bannerColor = new Color(1f, 0.78f, 0.25f, 0.9f); // 호박색 — 비정상 속도 표시
             }
             else return; // 배너는 전사 후 빨리감기 안내 전용 — 전황 이벤트 로그는 은퇴 (2026-09-06)
 
             // 프레임 사선 컷 여백만큼 텍스트를 안쪽에 — 텍스트가 프레임을 뚫지 않게
-            var box = new Rect(W / 2f - 240, 158, 480, 34); // 118 → 158: ROUND 라벨·규칙 칩(131)과 겹침 (2026-09-05)
+            var box = new Rect(W / 2f - 240, 205, 480, 34); // 158 → 205: 상단바 1.3배 확대분 (2026-09-06)
             GUI.color = bannerColor;
             if (texBanner != null)
             {
@@ -756,7 +766,7 @@ namespace SeoYuGi.BattleView
             float moveCoolFrac = u.moveCooldown > 0f && u.profile.yellowCooldownSeconds > 0f
                 ? u.moveCooldown / u.profile.yellowCooldownSeconds : 0f;
             DrawSlot(new Rect(sx, y, slotW, slotH), "좌클릭", "이동",
-                $"게이지 {(int)u.moveGauge}", u.moveCooldown <= 0f, u.moveCooldown, moveCoolFrac, false, iconMove);
+                $"{(int)u.moveGauge}칸", u.moveCooldown <= 0f, u.moveCooldown, moveCoolFrac, false, iconMove);
 
             var aim = moveInput != null ? moveInput.CurrentAim : UnitMoveInput.AimMode.None;
             float atkCool = Mathf.Max(0f, u.attackReadyAt - battle.time);
@@ -1014,7 +1024,7 @@ namespace SeoYuGi.BattleView
             float boxW = Mathf.Min(W - 40f, Mathf.Max(640f, announceStyle.CalcSize(content).x + 80f));
             float textH = announceStyle.CalcHeight(content, boxW - 60f);
             float boxH = Mathf.Max(66f, textH + 26f);
-            var box = new Rect(W / 2f - boxW / 2f, H * 0.24f, boxW, boxH);
+            var box = new Rect(W / 2f - boxW / 2f, H * 0.37f, boxW, boxH); // 0.24 → 0.37: 확대된 상단바·이벤트 배너 아래 (2026-09-06)
             GUI.color = new Color(0f, 0f, 0f, 0.6f * a);
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             // 팀 색 상·하 액센트 바
@@ -1085,7 +1095,7 @@ namespace SeoYuGi.BattleView
             float boxW = Mathf.Min(W - 40f, Mathf.Max(400f, subtitleStyle.CalcSize(content).x + 60f));
             float textH = subtitleStyle.CalcHeight(content, boxW - 40f);
             float boxH = textH + 22f;
-            float boxY = H - 100f - boxH;
+            float boxY = H * 0.37f + 84f; // 하단 → 상단 큰 공지 바로 아래. 텍스트 레인을 위로 통일 (2026-09-06 "한번에 너무 낌")
             if (overlay == Overlay.Briefing) // 브리핑 패널과 겹침 방지 — 패널 바로 아래로 (2026-09-05)
                 boxY = Mathf.Min(H - boxH - 10f, briefingBottomY + 12f);
             else if (overlay == Overlay.MatchEnd) // MVP 페이지 문구와 겹침 방지 — 화면 맨 아래로 (2026-09-05)
@@ -1154,7 +1164,7 @@ namespace SeoYuGi.BattleView
             if (killFeed.Count == 0) return;
 
             const float lineH = 28f, boxW = 280f;
-            float x = W - boxW - 12f, y0 = 46f; // 빠른채팅 토글(y=12,h=26) 아래
+            float x = W - boxW - 12f, y0 = 12f; // 빠른채팅 토글이 좌측으로 가서 우상단 맨 위 (2026-09-06)
 
             for (int i = 0; i < killFeed.Count; i++)
             {
@@ -1177,15 +1187,15 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>
-        /// 무전 패널 — 우상단 [무전] 토글로 아래로 펼치고, 문구 클릭 = 전송 (단축키 병기).
-        /// Tab 홀드 중에도 임시로 펼쳐진다 (읽기 + 클릭 둘 다 가능).
+        /// 무전 패널 — 좌상단 [빠른채팅] 토글로 아래로 펼치고, 문구 클릭 = 전송 (단축키 병기).
+        /// 우상단 → 좌상단 (2026-09-06): 채팅 로그·무전창과 같이 "말하는 것"은 왼쪽, 킬피드 등 전황은 오른쪽.
         /// </summary>
         void DrawChatPanel()
         {
             const float btnW = 96f, btnH = 26f, rowH = 30f, panelW = 170f;
-            float x0 = W - panelW - 12f, toggleY = 12f;
+            float x0 = 12f, toggleY = 12f;
 
-            if (GUI.Button(new Rect(W - btnW - 12f, toggleY, btnW, btnH), chatPanelOpen ? "빠른채팅 닫기" : "빠른채팅 열기", chipStyle))
+            if (GUI.Button(new Rect(x0, toggleY, btnW, btnH), chatPanelOpen ? "빠른채팅 닫기" : "빠른채팅 열기", chipStyle))
                 chatPanelOpen = !chatPanelOpen;
 
             if (!chatPanelOpen && !ShowChatCheatsheet) return;
@@ -1216,7 +1226,8 @@ namespace SeoYuGi.BattleView
         public void SetBriefingReason(string r) => briefingReason = r;
         string matchEndReason; // 최종 종료 사유 (2026-09-05)
         public void SetMatchEndReason(string r) => matchEndReason = r;
-        public void SetRoundRule(string title) => roundRuleChip = title;
+        public void SetRoundRule(string title, string detail)
+            => roundRuleChip = string.IsNullOrEmpty(title) ? null : $"{title}. {detail}";
 
         /// <summary>매치엔드 통계 한 줄 — 초상+닉네임+K/D. 러너가 매치 종료 직전 채운다.</summary>
         public struct MatchStatEntry

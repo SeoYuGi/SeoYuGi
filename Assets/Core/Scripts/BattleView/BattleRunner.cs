@@ -78,7 +78,7 @@ namespace SeoYuGi.BattleView
         readonly HashSet<int> audioVisibleEnemies = new HashSet<int>(); // 발견/소실 SFX용
         Predictor predictor;
         HackSystem hackSystem; // 해킹 궁게이지 — 매치당 1개, 라운드 넘겨 유지 (기획서 '해킹', 구 디코이)
-        QuickChat quickChat;   // 빠른채팅 — 숫자키 1~8. 멀티에서 팀원에게 전달될 예정
+        QuickChat quickChat;   // 빠른채팅 — 숫자키 1~7. 멀티에서 팀원에게 전달될 예정
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
 
         /// <summary>지휘관 모드 — 내 팀 봇에게 내린 상시 명령. 멀티 모드에선 항상 비어 있다(= 완전 자율).</summary>
@@ -516,7 +516,7 @@ namespace SeoYuGi.BattleView
         static readonly Key[] ChatKeys =
         {
             Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5,
-            Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9, Key.Digit0
+            Key.Digit6, Key.Digit7
         };
 
         Phase phase = Phase.Playing;
@@ -905,7 +905,7 @@ namespace SeoYuGi.BattleView
             {
                 float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
                 float w = Mathf.Min(560f * rs, Screen.width * 0.5f), fieldH = 42f * rs, pad = 10f * rs;
-                float x = 24f * rs, yField = Screen.height - 205f * rs;
+                float x = 24f * rs, yField = Screen.height - RadioWindow.FieldBottom * rs;
                 GuideSpotlight.Set(new Rect(x - pad - 6f, yField - 30f * rs - pad - 6f, w + pad * 2 + 12f, fieldH + 30f * rs + pad * 2 + 12f),
                     "무전. 이렇게 말하면 분대가 알아듣고 움직인다");
                 return;
@@ -1903,7 +1903,7 @@ namespace SeoYuGi.BattleView
 
             hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindSlot(playerUnitId).callsign,
                 () => hackSystem.Charge(playerUnitId));
-            hud.ShowChatCheatsheet = true; // 빠른채팅은 펼친 채로 진입 (Tab으로 접기) — 2026-09-05 유저: 기본 열어둬
+            hud.ShowChatCheatsheet = true; // 빠른채팅은 펼친 채로 진입 (패널 버튼으로 접기) — 2026-09-05 유저: 기본 열어둬
             // input.Init은 아래에서 intentSink 생성 직후 호출
 
             Round.OnZoneCaptured += zone =>
@@ -2512,14 +2512,9 @@ namespace SeoYuGi.BattleView
             battleAudio.SetTypingLoop(false); // 브리핑 종료
             battleAudio.PlayBgm(Match.CurrentRound >= 3 ? "B2_Round3" : "B1_Round1");
             battleAudio.PlaySfx("S13_RoundStart", 1.5f);
-            PlayVoiceLine("Voice_RoundStart", "라운드 개시");
-            hud.SetRoundRule(Rule != null ? Rule.title : null); // 상시 칩 — 자막을 놓쳐도 규칙이 보인다 (2026-09-05)
-            if (Rule != null)
-            {
-                // 규칙은 라운드 개시 자막 뒤에 이어 붙인다 — 전술을 정하기 전에 읽혀야 한다
-                hud.ShowSubtitle($"[{Rule.title}] {Rule.detail}", 5f);
-                Debug.Log($"라운드 규칙: {Rule.title}. {Rule.detail}");
-            }
+            battleAudio.PlayVoice("Voice_RoundStart"); // 자막 없이 음성만 — 카운트다운·목표 공지와 겹쳐 글자가 너무 많았다 (2026-09-06)
+            hud.SetRoundRule(Rule?.title, Rule?.detail); // 상시 칩에 제목+설명 — 시작 자막은 은퇴, 칩만 읽으면 된다 (2026-09-06)
+            if (Rule != null) Debug.Log($"라운드 규칙: {Rule.title}. {Rule.detail}");
             // 기계팀 지휘관 — 분대가 상대 동물을 스캔해 모방한다는 컨셉 대사 (성격도 같은 동물을 따른다)
             if (GameModeState.IsCommander && playerTeam == 1)
                 foreach (var id in CommandableUnitIds())
@@ -3154,12 +3149,10 @@ namespace SeoYuGi.BattleView
             }
             hackReadyAnnounced = hackReadyNow;
 
-            // 빠른채팅 — 숫자키 1~8 즉시 전송. Tab = 치트시트 토글(기본 켜짐, 읽기 전용).
+            // 빠른채팅 — 숫자키 1~7 즉시 전송. (Tab은 무전창 열기/닫기로 넘어감, 2026-09-06)
             // 쿨다운·팀 배달은 호스트 권위 — 클라는 요청만 쏜다.
             if (!typing && Keyboard.current != null)
             {
-                if (Keyboard.current.tabKey.wasPressedThisFrame)
-                    hud.ShowChatCheatsheet = !hud.ShowChatCheatsheet;
                 for (int i = 0; i < ChatKeys.Length; i++)
                     if (Keyboard.current[ChatKeys[i]].wasPressedThisFrame)
                     {

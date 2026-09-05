@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 무전 채팅바 (지휘관 모드) — Enter로 열고 문장을 치면 LLM이 명령으로 해석한다.
+    /// 무전 채팅바 (지휘관 모드) — TAB(또는 Enter)으로 열고 문장을 치면 LLM이 명령으로 해석한다.
     /// 프리셋 창은 은퇴 (2026-09-05): 정형 콜은 퀵채팅(숫자키)이 즉시 명령이 되고,
     /// 이 바는 퀵챗으로 못 하는 자연어 명령 전용이다. 음성(V 꾹)도 같은 길로 들어온다.
     ///
@@ -35,7 +35,6 @@ namespace SeoYuGi.BattleView
 
         Func<string> ackProvider;
         GUIStyle hintStyle, inputStyle, ackStyle;
-        Texture2D texBar; // 무전 단말 패널 아트 (Panel_Radio) — 없으면 어두운 판 폴백
         bool stylesReady;
         string draft = "";   // 입력 중인 문장
         bool waiting;        // 발신 후 응답 대기 — 재발신 잠금 (게임은 돌아간다)
@@ -53,10 +52,12 @@ namespace SeoYuGi.BattleView
         public void HandleHotkey()
         {
             if (Keyboard.current == null) return;
-            if (!IsOpen && (Keyboard.current.enterKey.wasPressedThisFrame ||
-                            Keyboard.current.numpadEnterKey.wasPressedThisFrame))
+            var kb = Keyboard.current;
+            // TAB = 열기/닫기 (2026-09-06 유저: Enter는 마우스 쥔 손을 풀어야 해서 불편). Enter 열기도 남겨둠.
+            if (!IsOpen && (kb.tabKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame ||
+                            kb.numpadEnterKey.wasPressedThisFrame))
                 Open();
-            else if (IsOpen && Keyboard.current.escapeKey.wasPressedThisFrame)
+            else if (IsOpen && (kb.tabKey.wasPressedThisFrame || kb.escapeKey.wasPressedThisFrame))
                 Close();
         }
 
@@ -97,7 +98,6 @@ namespace SeoYuGi.BattleView
         {
             if (stylesReady) return;
             stylesReady = true;
-            texBar = BattleHud.LoadKeyed("UI/Panel_Radio");
             inputStyle = new GUIStyle(GUI.skin.textField) { alignment = TextAnchor.MiddleLeft };
             hintStyle = new GUIStyle(GUI.skin.label)
             {
@@ -124,8 +124,7 @@ namespace SeoYuGi.BattleView
             hintStyle.fontSize = Mathf.RoundToInt(14 * s);
             ackStyle.fontSize = Mathf.RoundToInt(15 * s);
 
-            // 하단 좌측 채팅바 — 시선이 전장에 남는 위치.
-            // y는 하단 통합 바(높이 ~110·프레임 여유 포함) 위로 — 겹침 수정 (2026-09-05)
+            // 좌측 중단 채팅바 — 채팅 로그(좌하단) 위, 시선이 전장에 남는 위치 (2026-09-06 "좀 더 위로")
             float w = Mathf.Min(560f * s, Screen.width * 0.5f);
             float fieldH = 42f * s, pad = 10f * s;
             float x = 24f * s;
@@ -138,25 +137,33 @@ namespace SeoYuGi.BattleView
                 return;
             }
 
-            // 배경판 — 무전 단말 아트 (스피커 그릴·시안 테두리), 없으면 어두운 판
+            // 배경판 — 채팅 로그와 같은 어두운 판 + 좌측 시안 액센트 (Panel_Radio 아트는 은퇴, 2026-09-06 "심플하게")
             var prev = GUI.color;
             var back = new Rect(x - pad, yField - 30f * s - pad, w + pad * 2, fieldH + 30f * s + pad * 2);
-            GUI.color = new Color(0.02f, 0.04f, 0.08f, 0.88f);
+            GUI.color = new Color(0.02f, 0.04f, 0.09f, 0.8f);
             GUI.DrawTexture(back, Texture2D.whiteTexture);
+            GUI.color = new Color(0.55f, 0.95f, 1f, 0.8f);
+            GUI.DrawTexture(new Rect(back.x, back.y, 2f, back.height), Texture2D.whiteTexture);
             GUI.color = prev;
-            if (texBar != null)
-                GUI.DrawTexture(back, texBar, ScaleMode.StretchToFill);
 
             string ack = ackProvider != null ? ackProvider() : "";
             string topLine = waiting ? "...교신 중"
                 : guided ? "이렇게 말하면 알아듣습니다. 입력하거나 V를 누른 채 말하세요"
                 : !string.IsNullOrEmpty(ack) ? "> " + ack
-                : "무전 / Enter 발신 / ESC 취소";
+                : "무전 / Enter 발신 / TAB 닫기";
             GUI.Label(new Rect(x, yField - 28f * s, w, 26f * s), topLine,
                 waiting || string.IsNullOrEmpty(ack) ? hintStyle : ackStyle);
 
-            // Enter = 발신 — TextField가 이벤트를 먹기 전에 가로챈다
             var ev = Event.current;
+            // 입력줄 밖 클릭 = 닫기 (2026-09-06). 입력줄 자체 클릭은 캐럿 이동이라 유지.
+            var fieldRect = new Rect(x, yField, w, fieldH);
+            if (ev.type == EventType.MouseDown && !fieldRect.Contains(ev.mousePosition))
+            {
+                Close();
+                return;
+            }
+
+            // Enter = 발신 — TextField가 이벤트를 먹기 전에 가로챈다
             bool submit = !waiting && ev.type == EventType.KeyDown &&
                           (ev.keyCode == KeyCode.Return || ev.keyCode == KeyCode.KeypadEnter) &&
                           GUI.GetNameOfFocusedControl() == "RadioFreeText";
@@ -176,7 +183,7 @@ namespace SeoYuGi.BattleView
 
             GUI.enabled = !waiting;
             GUI.SetNextControlName("RadioFreeText");
-            draft = GUI.TextField(new Rect(x, yField, w, fieldH), draft, inputStyle);
+            draft = GUI.TextField(fieldRect, draft, inputStyle);
             GUI.enabled = true;
 
             // 가이드 — 비어 있는 입력줄에 예시 문장이 3초마다 바뀐다 (회색). 라벨은 클릭을 안 먹어 포커스는 그대로.

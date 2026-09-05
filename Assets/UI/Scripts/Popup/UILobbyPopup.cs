@@ -332,7 +332,7 @@ public class UILobbyPopup : UIPopup
     public static void SetSlotSelected(RectTransform root, bool on)
     {
         root.localScale = on ? Vector3.one * 1.08f : Vector3.one;
-        string haloName = "SelHalo_" + root.name;
+        string haloName = "SelHalo_" + root.GetInstanceID(); // 이름이 아니라 인스턴스 — 픽창 슬롯은 셋 다 "Img"라 하나를 공유해 마지막 칸만 남았다 (2026-09-06)
         var halo = root.parent.Find(haloName) as RectTransform;
         if (!on)
         {
@@ -347,8 +347,9 @@ public class UILobbyPopup : UIPopup
             var img = go.GetComponent<Image>();
             img.color = new Color(0.45f, 1f, 0.95f, 0.95f); // 조준 슬롯·편집 라벨과 같은 틸
             img.raycastTarget = false;
-            var glow = new Color(0.45f, 1f, 0.95f, 0.45f);
-            foreach (var d in new[] { new Vector2(5f, 5f), new Vector2(-5f, -5f), new Vector2(5f, -5f), new Vector2(-5f, 5f) })
+            // 글로우는 2px 네 방향, 옅게 — 5px는 계단이 보여 픽셀티가 났다 (2026-09-06)
+            var glow = new Color(0.45f, 1f, 0.95f, 0.3f);
+            foreach (var d in new[] { new Vector2(2f, 2f), new Vector2(-2f, -2f), new Vector2(2f, -2f), new Vector2(-2f, 2f) })
             {
                 var sh = go.AddComponent<Shadow>();
                 sh.effectColor = glow; sh.effectDistance = d; sh.useGraphicAlpha = false;
@@ -359,7 +360,7 @@ public class UILobbyPopup : UIPopup
         if (halo.GetSiblingIndex() > root.GetSiblingIndex()) halo.SetSiblingIndex(root.GetSiblingIndex());
         halo.anchorMin = root.anchorMin; halo.anchorMax = root.anchorMax; halo.pivot = root.pivot;
         halo.anchoredPosition = root.anchoredPosition;
-        halo.sizeDelta = root.sizeDelta + new Vector2(12f, 12f);
+        halo.sizeDelta = root.sizeDelta + new Vector2(6f, 6f); // 3px 테두리 — 6px는 너무 두꺼웠다
         halo.localScale = root.localScale;
         halo.gameObject.SetActive(true);
     }

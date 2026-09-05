@@ -127,7 +127,7 @@
                 move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.3f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 3, cooldownSeconds = 6f, slowSeconds = 3f }, // 맞은 적 3초 둔화 — 낚아채기와 묶어 "자리 통제" 서포터
+                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 1.6f, damage = 1, range = 3, cooldownSeconds = 6f, slowSeconds = 3f }, // 맞은 적 3초 둔화 — 낚아채기와 묶어 "자리 통제" 서포터. 예고 2.4 → 1.6 (2026-09-06 "시전 딜레이 너무 길다")
                     new SkillDef { kind = SkillKind.Snatch, telegraphSeconds = 1.0f, damage = 1, range = 5, cooldownSeconds = 10f } // 위치 강제 이동이 강력해 피해는 낮게, 비행은 빠르게
                 }
             },

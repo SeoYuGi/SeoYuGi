@@ -1,0 +1,28 @@
+flowchart TD
+    subgraph CORE["순수 C# 전투 코어 (UnityEngine 비의존)"]
+        CS[CombatSystem<br/>예고·판정·요격]
+        MS[MoveSystem<br/>이동·게이지]
+        RS[RoundSystem<br/>거점·승패·사유]
+        VS[VisionSystem<br/>시야 결정론]
+        GM[GridModel<br/>점유 맵]
+    end
+
+    RUN["BattleRunner (MonoBehaviour)<br/>시뮬 틱, 이벤트 구독, 연출 발주"]
+
+    subgraph VIEW["표현 계층"]
+        HUD["BattleHud<br/>IMGUI 네온 킷"]
+        GV["GridView<br/>타일·하이라이트"]
+        UV["UnitView<br/>유닛 연출"]
+        FX["절차 VFX<br/>FxQuad, RingWave, War FX"]
+    end
+
+    subgraph NET["네트워크"]
+        NB["NetBoot<br/>퀵조인 매치메이킹"]
+        NL["NetLobby<br/>슬롯, 시작"]
+        NS["NetSync<br/>스냅샷 20Hz, 이벤트 릴레이"]
+    end
+
+    CORE -->|판정 이벤트| RUN
+    RUN -->|연출 명령| VIEW
+    RUN <-->|호스트 권위 동기화| NET
+    NET -.->|스냅샷 미러| CORE

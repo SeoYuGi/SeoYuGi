@@ -3076,8 +3076,10 @@ namespace SeoYuGi.BattleView
             // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
             bool spectatingNow = Spectating;
             if (spectatingNow && !spectatingPrev && GameModeState.IsCommander)
+            {
                 hud.PushEvent("전사. 무전(Enter), 숫자키로 분대 지휘는 계속됩니다", StrikeVfx.MineNeon);
                 RequestEventBriefing("지휘관이 전사했다. 남은 분대가 관전 중인 지휘관의 무전을 받는다");
+            }
             spectatingPrev = spectatingNow;
 
             bool radioOpen = radio != null && radio.IsOpen;

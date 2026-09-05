@@ -54,6 +54,7 @@ namespace SeoYuGi.BattleView
         // 빠른채팅 로그 — 좌하단에 최근 3줄. 자막(중앙)과 자리가 겹치지 않는다.
         struct ChatEntry { public string text; public Color color; public float until; }
         readonly List<ChatEntry> chatLog = new List<ChatEntry>();
+        GUIStyle chatStyle; // 채팅 로그 전용 — labelStyle + 줄바꿈
         const int ChatLogMax = 3;
 
         // 킬피드 — 우상단에 최근 5줄. "킬러 ⚔ 피해자".
@@ -1116,15 +1117,24 @@ namespace SeoYuGi.BattleView
                 if (Time.time >= chatLog[i].until) chatLog.RemoveAt(i);
             if (chatLog.Count == 0) return;
 
-            const float lineH = 22f, boxW = 250f;
+            const float boxW = 420f; // 무전 문장(35자 안팎)이 한 줄에 들어가는 폭. 넘치면 줄바꿈 (2026-09-06 "말이 다 잘림")
+            if (chatStyle == null) chatStyle = new GUIStyle(labelStyle) { wordWrap = true };
+            float total = 0f;
+            var hs = new float[chatLog.Count];
+            for (int i = 0; i < chatLog.Count; i++)
+            {
+                hs[i] = Mathf.Max(22f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
+                total += hs[i];
+            }
             // 무전창이 열려 있으면 그 위로 — 좌하단 입력줄·응답줄과 겹치던 것 (2026-09-05 지휘관 대전 테스트)
             float radioLift = RadioWindow.TextInputActive ? 96f : 0f;
-            float y = H - 108f - radioLift - chatLog.Count * lineH;
+            float y = H - 108f - radioLift - total;
 
-            var logBox = new Rect(12, y - 4, boxW, chatLog.Count * lineH + 8);
+            var logBox = new Rect(12, y - 4, boxW, total + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));
             Fill(new Rect(logBox.x, logBox.y, 2f, logBox.height), new Color(allyColor.r, allyColor.g, allyColor.b, 0.8f)); // 좌측 팀색 액센트
 
+            float yy = y;
             for (int i = 0; i < chatLog.Count; i++)
             {
                 // 마지막 1초는 서서히 옅어짐 — 사라지는 게 툭 끊기지 않게
@@ -1132,7 +1142,8 @@ namespace SeoYuGi.BattleView
                 var c = chatLog[i].color;
                 c.a = Mathf.Clamp01(remain);
                 GUI.color = c;
-                GUI.Label(new Rect(20, y + i * lineH, boxW - 16, lineH), chatLog[i].text, labelStyle);
+                GUI.Label(new Rect(20, yy, boxW - 16, hs[i]), chatLog[i].text, chatStyle);
+                yy += hs[i];
             }
             GUI.color = Color.white;
         }

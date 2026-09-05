@@ -37,17 +37,22 @@ namespace SeoYuGi.BattleView
         {
             if (keyResolved) return cachedKey;
             keyResolved = true;
-            cachedKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+            // 번들 키(StreamingAssets, 캡 걸린 시연용) 우선 — 팀원 PC의 오래된 OPENAI_API_KEY 환경변수가 이기면
+            // "무전이 닿지 않습니다"(401)로 죽는다 (2026-09-05 친구 PC). 환경변수는 파일이 없을 때만.
+            string source = "none";
+            try
+            {
+                var path = Path.Combine(Application.streamingAssetsPath, "radio_key.txt");
+                if (File.Exists(path)) { cachedKey = File.ReadAllText(path).Trim(); source = "StreamingAssets/radio_key.txt"; }
+            }
+            catch (Exception) { /* 폴백 ① — 키 없음으로 처리 */ }
             if (string.IsNullOrWhiteSpace(cachedKey))
             {
-                try
-                {
-                    var path = Path.Combine(Application.streamingAssetsPath, "radio_key.txt");
-                    if (File.Exists(path)) cachedKey = File.ReadAllText(path).Trim();
-                }
-                catch (Exception) { /* 폴백 ① — 키 없음으로 처리 */ }
+                cachedKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                if (!string.IsNullOrWhiteSpace(cachedKey)) source = "env OPENAI_API_KEY";
             }
             if (string.IsNullOrWhiteSpace(cachedKey)) cachedKey = null;
+            Debug.Log($"LlmRadio 키 출처: {source}" + (cachedKey != null ? $" (…{cachedKey.Substring(Math.Max(0, cachedKey.Length - 4))})" : ""));
             return cachedKey;
         }
 
@@ -95,7 +100,7 @@ namespace SeoYuGi.BattleView
                 {
                     result = req.result == UnityWebRequest.Result.Success
                         ? ParseResponse(req.downloadHandler.text, squad, enemies, zoneCount)
-                        : SquadOrders.NotUnderstood("무전이 닿지 않습니다 — 잡음뿐입니다.");
+                        : SquadOrders.NotUnderstood(FailureAck(req)); // 원인이 화면에 보여야 현장에서 고친다
                     if (req.result != UnityWebRequest.Result.Success)
                         Debug.LogWarning($"LlmRadio: {req.result} {req.responseCode} {req.error}");
                 }
@@ -173,6 +178,18 @@ $"거점 zoneIndex: {zones}.\n\n" +
                 catch (Exception e) { Debug.LogWarning($"LlmRadio 브리핑 파싱 실패: {e.Message}"); }
                 finally { req.Dispose(); }
             };
+        }
+
+        /// <summary>HTTP 실패 → 무전 응답 문구. 코드가 보여야 "키 문제인지 회선 문제인지"를 현장에서 가른다.</summary>
+        static string FailureAck(UnityWebRequest req)
+        {
+            switch (req.responseCode)
+            {
+                case 401: return "무전기 인증 실패(401) — API 키가 거부됐습니다.";
+                case 429: return "회선 포화(429) — 한도 초과. 잠시 뒤 다시.";
+                case 0: return "무전이 닿지 않습니다 — 네트워크 연결 실패.";
+                default: return $"무전이 닿지 않습니다 — 잡음뿐입니다. ({req.responseCode})";
+            }
         }
 
         static string BuildSystemPrompt(string squadBrief, int zoneCount)

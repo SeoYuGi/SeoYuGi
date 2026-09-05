@@ -1019,7 +1019,9 @@ namespace SeoYuGi.BattleView
             if (chatLog.Count == 0) return;
 
             const float lineH = 22f, boxW = 250f;
-            float y = H - 108f - chatLog.Count * lineH;
+            // 무전창이 열려 있으면 그 위로 — 좌하단 입력줄·응답줄과 겹치던 것 (2026-09-05 지휘관 대전 테스트)
+            float radioLift = RadioWindow.TextInputActive ? 96f : 0f;
+            float y = H - 108f - radioLift - chatLog.Count * lineH;
 
             var logBox = new Rect(12, y - 4, boxW, chatLog.Count * lineH + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));

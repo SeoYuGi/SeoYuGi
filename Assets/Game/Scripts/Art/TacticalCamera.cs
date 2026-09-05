@@ -66,6 +66,9 @@ namespace SeoYuGi.Art
 
         void ReadInput()
         {
+            // 무전 타이핑 중 — 한글 물리키(ㅂ/ㅈ/ㅛ)가 Q/W/Y 회전키와 겹쳐 카메라가 돌아간다
+            if (SeoYuGi.BattleView.RadioWindow.TextInputActive) return;
+
             var kb = Keyboard.current;
             var mouse = Mouse.current;
 

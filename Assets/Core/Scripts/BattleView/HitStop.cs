@@ -27,6 +27,7 @@ namespace SeoYuGi.BattleView
 
         void Apply(float seconds)
         {
+            if (GameFreeze.Active) return; // 무전 프리즈 중 — 히트스톱이 정지를 깨면 안 된다
             float end = Time.unscaledTime + seconds;
             if (!active)
             {
@@ -42,14 +43,14 @@ namespace SeoYuGi.BattleView
         {
             if (active && Time.unscaledTime >= until)
             {
-                Time.timeScale = 1f;
+                Time.timeScale = GameFreeze.Active ? 0f : 1f; // 프리즈 우선 복원
                 active = false;
             }
         }
 
         void OnDestroy()
         {
-            if (active) Time.timeScale = 1f; // 씬 전환 등으로 죽어도 시간 복원 보장
+            if (active) Time.timeScale = GameFreeze.Active ? 0f : 1f; // 씬 전환 등으로 죽어도 시간 복원 보장
             if (instance == this) instance = null;
         }
     }

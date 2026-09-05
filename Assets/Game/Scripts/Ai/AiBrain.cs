@@ -40,11 +40,16 @@ namespace SeoYuGi.Ai
             _pingUntil = now + PingObeySeconds;
         }
 
-        public AiBrain(int actorId, AiConfig config, Predictor predictor = null)
+        // 지휘관 모드에서 플레이어가 내린 상시 명령. null이면 지휘 없음 = 완전 자율(기존 동작).
+        private readonly SeoYuGi.Battle.CommandState _orders;
+
+        public AiBrain(int actorId, AiConfig config, Predictor predictor = null,
+            SeoYuGi.Battle.CommandState orders = null)
         {
             _actorId = actorId;
             _cfg = config;
             _predictor = predictor;
+            _orders = orders;
             // 개막 위상 분산 — 전원 0초에 준비돼서 동시에 첫 기술을 쏘던 것. 슬롯별로 0~1.5×간격 만큼 엇갈려 시작.
             _rng = new Random(actorId * 7919 + 17);
             _nextAttackTime = (float)_rng.NextDouble() * config.AttackInterval * 1.5f;
@@ -145,7 +150,11 @@ namespace SeoYuGi.Ai
                 }
             }
 
+            var order = _orders != null ? _orders.Get(_actorId) : SeoYuGi.Battle.UnitOrder.Free(_actorId);
             var target = PickTarget(world, me);
+
+            // 지휘: "교전하지 마" — 먼저 쏘지 않는다. 회피·스킬 자체는 그대로라 맞으면 반응은 한다.
+            if (order.stance == SeoYuGi.Battle.OrderStance.Evasive) target = null;
 
             // 2~3) 공격·스킬 — AttackInterval 페이싱 (연타 방지, 인간적 템포)
             if (target.HasValue && world.Time >= _nextAttackTime)
@@ -197,6 +206,15 @@ namespace SeoYuGi.Ai
             var healStep = losing ? null : StepTowardHealPack(world, me);
             if (healStep.HasValue) return AiCommand.Of(CommandType.Move, healStep.Value);
 
+            // 지휘: 목적지 — 명령이 있으면 거점 자동 선택 대신 명령을 따른다.
+            // 경로 탐색·위협 회피는 GreedyStep(BFS)이 그대로 처리한다.
+            if (order.goal != SeoYuGi.Battle.OrderGoal.Free)
+            {
+                var ordered = OrderedStep(world, me, order);
+                if (ordered.HasValue) return AiCommand.Of(CommandType.Move, ordered.Value);
+                return AiCommand.None; // 도착했거나 갈 수 없다 — 자리를 지킨다
+            }
+
             // 4) 거점 이동
             var step = StepTowardBestZone(world, me);
             if (step.HasValue)
@@ -214,6 +232,46 @@ namespace SeoYuGi.Ai
         /// 공격 간격 ±30% 지터 — 고정 박자면 쿨이 같은 슬롯끼리 다시 동기화된다.
         private float EffectiveAttackInterval(IWorldView world) =>
             _cfg.AttackInterval * (world.Round <= 1 ? 1.15f : 1f) * (0.7f + (float)_rng.NextDouble() * 0.6f);
+
+        /// <summary>
+        /// 상시 명령이 가리키는 곳으로 한 걸음. 목적지 계산만 하고, 걷는 방법은 GreedyStep(BFS)에 맡긴다.
+        /// 이미 도착했으면 null — 호출부가 그 자리를 지킨다.
+        /// </summary>
+        private Cell? OrderedStep(IWorldView world, ActorState me, SeoYuGi.Battle.UnitOrder order)
+        {
+            Cell? dest = null;
+            switch (order.goal)
+            {
+                case SeoYuGi.Battle.OrderGoal.Zone:
+                {
+                    int i = 0;
+                    foreach (var z in world.Zones)
+                    {
+                        if (i++ != order.zoneIndex) continue;
+                        dest = z.Cell;
+                        break;
+                    }
+                    break;
+                }
+                case SeoYuGi.Battle.OrderGoal.Highland:
+                    dest = NearestHighland(world, me.Pos);
+                    break;
+                case SeoYuGi.Battle.OrderGoal.Regroup:
+                {
+                    var human = FindHuman(world);       // 지휘관 = 내가 조종하는 유닛
+                    if (human.HasValue) dest = human.Value.Pos;
+                    break;
+                }
+                case SeoYuGi.Battle.OrderGoal.Fallback:
+                {
+                    var human = FindHuman(world);       // 후퇴도 지휘관 쪽으로 — 별도 스폰 좌표를 뷰가 안 넘긴다
+                    if (human.HasValue) dest = human.Value.Pos;
+                    break;
+                }
+            }
+            if (!dest.HasValue || dest.Value.Equals(me.Pos)) return null;
+            return GreedyStep(world, me, dest.Value);
+        }
 
         /// 습성 카운터: 러시형 유저 → 원거리가 고지대 선점해 점사.
         /// 고지형 유저 → 기동형이 유저 선호 고지대를 먼저 접수.
@@ -418,6 +476,7 @@ namespace SeoYuGi.Ai
 
         private ActorState? PickTarget(IWorldView world, ActorState me)
         {
+            var myOrder = _orders != null ? _orders.Get(_actorId) : SeoYuGi.Battle.UnitOrder.Free(_actorId);
             ActorState? best = null;
             float bestScore = float.MinValue;
             foreach (var a in world.Actors)
@@ -432,6 +491,12 @@ namespace SeoYuGi.Ai
                 if (a.Stunned) score += 4f; // 연계 — 스턴 걸린 적을 다 같이 두들긴다 (스턴 콤보 +1과 세트)
                 if (_pingType == 1 && world.Time < _pingUntil && Chebyshev(a.Pos, _pingCell) <= 3)
                     score += 5f; // ! 핑 — 지휘관이 찍은 근처의 적 집중
+                // 지휘관 핑 포커스 — 지목된 적은 보이는 한 최우선 (지휘관 모드 전용, _orders 없으면 무시)
+                if (_orders != null && a.Id == _orders.FocusEnemyId && world.Time < _orders.FocusUntil)
+                    score += 100f;
+                // 무전 지명 타겟 ("저격수부터 노려") — 상시 명령이라 다음 명령·라운드 끝까지 유지
+                if (a.Id == myOrder.focusEnemyId)
+                    score += 100f;
                 if (score > bestScore) { bestScore = score; best = a; }
             }
             return best;

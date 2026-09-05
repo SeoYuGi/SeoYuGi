@@ -1,4 +1,4 @@
-using SeoYuGi.Ai;
+﻿using SeoYuGi.Ai;
 using SeoYuGi.Battle;
 using SeoYuGi.Prediction;
 
@@ -25,12 +25,14 @@ namespace SeoYuGi.Integration
         /// <summary>아군 인간의 핑 — 뇌에 전달 (▼ 집결 / ! 집중).</summary>
         public void CommandPing(SeoYuGi.Prediction.Cell cell, int type, float now) => brain.CommandPing(cell, type, now);
 
-        public AiSlotDriver(int unitId, UnitClass cls, int team, IIntentSink sink, Predictor predictor = null)
+        /// <param name="orders">지휘관 모드에서 플레이어가 내린 상시 명령. null이면 완전 자율.</param>
+        public AiSlotDriver(int unitId, UnitClass cls, int team, IIntentSink sink, Predictor predictor = null,
+            CommandState orders = null)
         {
             this.unitId = unitId;
             Team = team;
             this.sink = sink;
-            brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor);
+            brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor, orders);
         }
 
         public void Tick(IWorldView world)

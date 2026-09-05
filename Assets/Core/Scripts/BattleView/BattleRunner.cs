@@ -1221,7 +1221,11 @@ namespace SeoYuGi.BattleView
             }
             else
             {
-                PickRandomMap(); // 상대 못 찾음 → 봇전
+                // 상대 못 찾음 → 봇전. 지휘관 모드로 — Multi 그대로 두면 무전·무전 타임·지휘가 전부 꺼진
+                // "지휘관 봇전에서 지휘만 빠진" 중복 모드가 됐다 (2026-09-06). 사람 대 사람일 때만 로비 토글이 정한다.
+                GameModeState.Current = GameMode.Commander;
+                hud.ShowSubtitle("상대를 찾지 못했습니다. 봇전으로 시작합니다.", 3f);
+                PickRandomMap();
             }
         }
 

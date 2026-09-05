@@ -170,6 +170,7 @@ namespace SeoYuGi.BattleView
                 result =>
                 {
                     Orders.Apply(result); // understood=false면 기존 명령 유지 — ack만 갱신
+                    if (result.understood) GuideMark(Guide.Step.Radio); // 튜토리얼 지휘 단계 — 실제 명령이 통하면 완료
                     if (IsNetClient && result.understood) NetSync.ClientSendOrders(result); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
                     int speaker = result.orders.Count > 0 ? result.orders[0].unitId
                                 : squad.Count > 0 ? squad[0] : playerUnitId;
@@ -229,9 +230,12 @@ namespace SeoYuGi.BattleView
 
         /// <summary>작전 시간 조기 종료 — 첫 명령(무전·퀵챗)이나 SPACE. 남은 시간을 3초로 줄여 3·2·1로 넘어간다.
         /// 싱글 전용 — 멀티는 양쪽 지휘관 공통이라 호스트 시계 10초 고정.</summary>
+        bool planningStarted; // 싱글 작전 시간 — 무전창을 연 순간부터 시계가 흐른다 (그 전엔 정지 화면)
+
         void EndPlanning()
         {
             if (!planningRunning || !countdownRunning || NetBoot.IsOnline) return;
+            planningStarted = true; // 첫 명령이 정지 화면을 건너뛰어도 시계 정지가 되살아나지 않게
             countdownUntil = Mathf.Min(countdownUntil, Time.time + 3f);
         }
 
@@ -239,7 +243,23 @@ namespace SeoYuGi.BattleView
         {
             planningRunning = false;
             hud.SetPlanning(0, false);
+            GuideSpotlight.Clear(); // 작전 시간 강조(무전 입력줄 + 안내판) 해제
             if (radio != null && radio.IsOpen) radio.Close(); // 3·2·1엔 입력줄 닫힘 — 싱글 정지(GameFreeze)도 같이 풀린다
+        }
+
+        /// <summary>월드 좌표 묶음을 감싸는 화면 픽셀 사각형 — 스포트라이트 구멍 계산 공용.</summary>
+        Rect ScreenRectAround(IEnumerable<Vector3> worldPts, float padPx)
+        {
+            var cam = Camera.main;
+            float xMin = float.MaxValue, xMax = float.MinValue, yMin = float.MaxValue, yMax = float.MinValue;
+            foreach (var p in worldPts)
+            {
+                var sp = cam.WorldToScreenPoint(p);
+                float gy = Screen.height - sp.y; // GUI는 위에서 아래
+                xMin = Mathf.Min(xMin, sp.x); xMax = Mathf.Max(xMax, sp.x);
+                yMin = Mathf.Min(yMin, gy); yMax = Mathf.Max(yMax, gy);
+            }
+            return Rect.MinMaxRect(xMin - padPx, yMin - padPx, xMax + padPx, yMax + padPx);
         }
 
         void ApplyQuickChatOrder(int lineId)
@@ -277,6 +297,7 @@ namespace SeoYuGi.BattleView
             var built = OrderPresets.Build(p, squad, zoneCount);
             int speaker = Personalize(built, squad); // 성격 — 말투 + (고라니) 불복종·(비둘기) 툴툴
             Orders.Apply(built);
+            GuideMark(Guide.Step.Radio); // 튜토리얼 지휘 단계 — 퀵챗 명령도 지휘로 인정 (LLM 키 없어도 진행)
             if (IsNetClient) NetSync.ClientSendOrders(built); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
             ShowRadioLine(speaker, Orders.LastAck); // 분대 응답도 채팅 로그에
             ShowOrderMarkers(built.orders);
@@ -596,13 +617,11 @@ namespace SeoYuGi.BattleView
         bool radioOpenPrev;           // 무전창 열림 엣지 — 싱글 지휘관 브리핑 트리거
         bool spectatingPrev;          // 전사 엣지 — "지휘는 계속" 안내 1회
         bool radioTimeGuided;         // 이번 무전 타임이 첫 판 가이드용(싱글) — 끝나면 가이드 종료
-        bool guideStep2Announced;     // "2/3 조작" 배너 1회
 
         // 훈련장 — 허수아비 (팀1, 죽지 않음). 밀려나면 3초 안 맞았을 때 제자리 복귀
         const int TrainingDummyId = 4;
         Coord trainingDummyHome;
         float trainingLastHitAt;
-        float nextGuideHintAt;        // ② 조작 힌트 플로팅 텍스트 주기
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
         void Awake()
@@ -848,18 +867,11 @@ namespace SeoYuGi.BattleView
                     StrikeVfx.MineNeon, 0.6f);
                 return;
             }
-            // ③ 첫 판 가이드 (싱글 지휘관) — 20초에 한 번 얼리고 무전창을 열어 예시를 보여준다
-            if (Guide.Active && !Guide.RadioDone && !NetBoot.IsOnline && phase == Phase.Playing &&
-                Battle != null && Battle.time >= Guide.RadioAt && !Spectating)
-            {
-                Guide.MarkRadio();
-                radioTimeGuided = true;
-                nextRadioTimeAt = Battle.time + RadioTimeEvery; // 가이드 무전이 첫 무전 타임을 대신한다 — 곧바로 두 번 얼지 않게
-                BeginRadioTime(Guide.RadioLength);
-                if (radio != null && radio.enabled) radio.OpenGuided();
-                hud.PushEvent("튜토리얼 3/3. 지휘: 분대에 말로 지시하면 알아듣고 움직인다", StrikeVfx.MineNeon);
-                return;
-            }
+            // 가이드 지휘 단계는 무전 타임을 쓰지 않는다 (2026-09-06 "튜토 중에 무전 타임 돌리지 마") —
+            // TickTutorial이 정지 없이 무전창만 열고, 명령이 실제로 적용되면 완료된다.
+            // 튜토리얼 동안 주기 무전 타임은 쉰다 — 처음 작전 시간과 마지막 지휘 단계만 (2026-09-06 "튜토 중엔 첨에만").
+            // 완료 후에는 FinishTutorial이 다음 무전 타임을 원래 텀으로 다시 잡는다.
+            if (Guide.Active) return;
             if (!online || !schedules || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
             nextRadioTimeAt = Battle.time + RadioTimeEvery;
             float len = firstRadioTimeDone ? RadioTimeLen : RadioTimeFirstLen;
@@ -894,6 +906,157 @@ namespace SeoYuGi.BattleView
             SetupCamera();
         }
 
+        // ── 튜토리얼 단계 진행 (2026-09-06 10단계 체크리스트) ─────────────────
+
+        int guideScriptStrikeId = -1;        // 회피·엄폐 시연샷 — 판정 콜백 매칭용
+        float guideScriptRetryAt;            // 회피 실패 시 재시도 시각
+        bool guidePredictMoved;              // 예측 단계 — 상대가 움직였는가 (움직인 상대를 맞히면 통과)
+        float guidePredictStepAt;            // 예측 단계 — 상대 옆걸음 스크립트 주기
+        bool guideZoneWasOn;                 // 거점 단계 — 진입 시 이미 거점 위였는가 (새로 밟아야 인정)
+        bool guideRadioOpened;               // 지휘 단계 — 무전창 자동 오픈 1회
+        Guide.Step guideAnnouncedStep = Guide.Step.Count; // 단계 공지 중복 방지
+
+        /// <summary>체크 성공 시 피드백 — 순서가 아니면 TryMark가 거른다.</summary>
+        void GuideMark(Guide.Step s)
+        {
+            if (!Guide.TryMark(s)) return;
+            var v = viewRegistry.Get(playerUnitId);
+            if (v != null)
+                FloatingText.Spawn(v.transform.position + Vector3.up * 0.6f, "좋습니다!", new Color(0.5f, 1f, 0.7f), 1.2f, 1.2f);
+            battleAudio.PlaySfx("S22_DetectPing", 0.7f);
+            if (Guide.AllDone) FinishTutorial();
+        }
+
+        /// <summary>회피·엄폐 시연샷 — 가장 가까운 (정지 중인) 적이 내 칸에 예고를 깐다.</summary>
+        void GuideScriptShot(bool forceMiss)
+        {
+            if (guideScriptStrikeId >= 0) return;
+            var me = Battle?.GetUnit(playerUnitId);
+            if (me == null || !me.alive) return;
+            foreach (var st in Combat.PendingStrikes)
+                if (st.attackerId == playerUnitId) return; // 시전 중엔 발이 묶여 못 피한다 — 억울한 판 방지
+            int enemy = -1; int best = int.MaxValue;
+            foreach (var u in Battle.Units)
+            {
+                if (!u.alive || u.team == playerTeam) continue;
+                int d = Math.Max(Math.Abs(u.pos.x - me.pos.x), Math.Abs(u.pos.y - me.pos.y));
+                if (d < best) { best = d; enemy = u.id; }
+            }
+            if (enemy < 0) return;
+            if (forceMiss) Combat.ForceMissOnceAttackerId = enemy;
+            var strike = Combat.ScriptedTelegraph(enemy, me.pos, forceMiss ? 1.6f : 2.2f, 1);
+            if (strike != null) guideScriptStrikeId = strike.id;
+            else if (forceMiss) Combat.ForceMissOnceAttackerId = SeoYuGi.Battle.Cell.NoUnit; // Prediction.Cell 충돌 — 정규화
+        }
+
+        bool AnyEnemyInCells(List<Coord> cells)
+        {
+            foreach (var u in Battle.Units)
+                if (u.alive && u.team != playerTeam)
+                    foreach (var c in cells)
+                        if (u.pos.Equals(c)) return true;
+            return false;
+        }
+
+        bool PlayerOnActiveZone()
+        {
+            var u = Battle?.GetUnit(playerUnitId);
+            if (u == null || !u.alive || Round == null) return false;
+            foreach (var z in Round.Zones)
+                if (z.active && z.cells.Contains(u.pos)) return true;
+            return false;
+        }
+
+        /// <summary>예측 단계 — 가장 가까운 적을 한 칸 옆걸음시킨다. 움직이는 표적을 만들어 예측샷을 가르친다.</summary>
+        void GuidePredictSidestep()
+        {
+            var me = Battle?.GetUnit(playerUnitId);
+            if (me == null || !me.alive) return;
+            int enemy = -1; int best = int.MaxValue;
+            foreach (var u in Battle.Units)
+            {
+                if (!u.alive || u.team == playerTeam) continue;
+                int d = Math.Max(Math.Abs(u.pos.x - me.pos.x), Math.Abs(u.pos.y - me.pos.y));
+                if (d < best) { best = d; enemy = u.id; }
+            }
+            var target = enemy >= 0 ? Battle.GetUnit(enemy) : null;
+            if (target == null || Move.BlueSteps(target) < 1) return; // 게이지가 차면 다음 주기에
+            int start = Time.frameCount & 3; // 방향을 조금씩 섞는다
+            for (int i = 0; i < 4; i++)
+            {
+                var c = target.pos + Coord.Directions4[(start + i) % 4];
+                if (!Battle.Grid.IsWalkable(c)) continue;
+                if (Move.TryMove(target.id, c).success) break;
+            }
+        }
+
+        bool HasAdjacentWall(Coord pos)
+        {
+            foreach (var w in Coord.Directions4)
+            {
+                var c = pos + w;
+                if (!Battle.Grid.InBounds(c) || !Battle.Grid.IsWalkableTerrain(c)) return true; // 벽·맵 경계 = 엄폐 (판정과 동일)
+            }
+            return false;
+        }
+
+        /// <summary>단계별 스크립트 — 새 단계 공지, 회피 시연샷, 거점 밟기 감지. 매 프레임.</summary>
+        void TickTutorial()
+        {
+            if (!Guide.Active || NetBoot.IsOnline || phase != Phase.Playing || countdownRunning || GameFreeze.Active || Spectating)
+                return;
+            var step = Guide.Current;
+            if (step == Guide.Step.Count) return;
+
+            if (step != guideAnnouncedStep) // 새 단계 진입 — 공지 한 줄 + 스크립트 준비
+            {
+                guideAnnouncedStep = step;
+                hud.PushEvent($"튜토리얼 {(int)step + 1}/10. {Guide.Labels[(int)step]}: {Guide.Hint(step)}", StrikeVfx.MineNeon);
+                if (step == Guide.Step.Dodge) guideScriptRetryAt = Time.unscaledTime + 1.2f;
+                if (step == Guide.Step.Predict) { guidePredictMoved = false; guidePredictStepAt = Time.unscaledTime + 0.8f; }
+                if (step == Guide.Step.Zone) guideZoneWasOn = PlayerOnActiveZone(); // 이미 서 있으면 나갔다 새로 밟아야 인정
+                if (step == Guide.Step.Heal) // 풀피면 회복할 게 없어 힐팩이 안 먹힌다 — 훈련 피해 1을 주고 시작
+                {
+                    var hu = Battle.GetUnit(playerUnitId);
+                    if (hu != null && hu.alive && hu.hp >= ClassCatalog.Get(hu.unitClass).maxHp)
+                    {
+                        hu.hp -= 1;
+                        var hv = viewRegistry.Get(playerUnitId);
+                        if (hv != null) FloatingText.Spawn(hv.transform.position + Vector3.up * 0.5f, "훈련 피해 1", new Color(1f, 0.7f, 0.5f), 1.1f, 1.3f);
+                    }
+                }
+            }
+
+            switch (step)
+            {
+                case Guide.Step.Dodge: // 예고를 깔아 주고 피하게 한다 — 맞으면 2.5초 뒤 재시도
+                    if (guideScriptStrikeId < 0 && Time.unscaledTime >= guideScriptRetryAt)
+                        GuideScriptShot(forceMiss: false);
+                    break;
+                case Guide.Step.Predict: // 상대를 주기적으로 옆걸음시킨다 — 움직인 상대를 맞히면 통과
+                    if (Time.unscaledTime >= guidePredictStepAt)
+                    {
+                        guidePredictStepAt = Time.unscaledTime + 1.6f;
+                        GuidePredictSidestep();
+                    }
+                    break;
+                // 엄폐 단계는 이동 핸들러가 발동한다 — 진입 시 이미 벽 옆이어도 자동 통과시키지 않는다.
+                // 직접 벽 옆 칸으로 걸어가야 시연샷이 나간다 (2026-09-06 "하기도 전에 넘어감")
+                case Guide.Step.Radio: // 정지 없이 무전창만 열어 준다 — 명령이 적용되면 완료
+                    if (!guideRadioOpened && radio != null && radio.enabled && !radio.IsOpen)
+                    {
+                        guideRadioOpened = true;
+                        radio.OpenGuided(); // 예시 문장 회전 — TAB으로 닫아도 체크리스트가 남아 다시 열 수 있다
+                    }
+                    break;
+                case Guide.Step.Zone: // 단계 진입 후 밖에서 새로 밟아야 완료 — 서 있던 채 자동 통과 금지 (2026-09-06 "변수를 제한")
+                    bool onZone = PlayerOnActiveZone();
+                    if (!onZone) guideZoneWasOn = false;
+                    else if (!guideZoneWasOn) { GuideMark(Guide.Step.Zone); return; }
+                    break;
+            }
+        }
+
         /// <summary>
         /// 가이드 스포트라이트 — 단계마다 봐야 할 곳만 밝게 (2026-09-05 "화면 까매지고 필요한 UI만 강조").
         /// ① 카운트다운: 거점들 ② 조작 힌트: 내 유닛 ③ 가이드 무전: 무전창. 그 외엔 끔.
@@ -901,29 +1064,9 @@ namespace SeoYuGi.BattleView
         void TickGuideSpotlight()
         {
             if (!Guide.Wanted || phase != Phase.Playing || Camera.main == null) { GuideSpotlight.Clear(); return; }
-            var cam = Camera.main;
             float s = Mathf.Max(1f, Screen.height / 1080f);
-
-            Rect ScreenRectAround(IEnumerable<Vector3> worldPts, float padPx)
-            {
-                float xMin = float.MaxValue, xMax = float.MinValue, yMin = float.MaxValue, yMax = float.MinValue;
-                foreach (var p in worldPts)
-                {
-                    var sp = cam.WorldToScreenPoint(p);
-                    float gy = Screen.height - sp.y; // GUI는 위에서 아래
-                    xMin = Mathf.Min(xMin, sp.x); xMax = Mathf.Max(xMax, sp.x);
-                    yMin = Mathf.Min(yMin, gy); yMax = Mathf.Max(yMax, gy);
-                }
-                return Rect.MinMaxRect(xMin - padPx, yMin - padPx, xMax + padPx, yMax + padPx);
-            }
-
-            if (countdownRunning && Round != null) // ① 거점
-            {
-                var pts = new List<Vector3>();
-                foreach (var z in Round.Zones) pts.Add(gridView.CoordToWorld(z.Center));
-                GuideSpotlight.Set(ScreenRectAround(pts, 110f * s), "거점. 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다");
-                return;
-            }
+            // ① 거점(카운트다운)과 작전 시간 스포트라이트는 카운트다운 블록이 직접 그린다 —
+            // 이 함수는 카운트다운 중엔 호출되지 않는다 (Update가 먼저 return).
             if (radioTimeGuided && radio != null && radio.IsOpen) // ③ 무전창 (BattleHud 공용 배치 — 중앙 하단 입력줄)
             {
                 float u = BattleHud.PixelPerHud;
@@ -933,46 +1076,40 @@ namespace SeoYuGi.BattleView
                     "무전. 이렇게 말하면 분대가 알아듣고 움직인다");
                 return;
             }
-            if (Guide.Active && !GameFreeze.Active) // ② 조작 — 내 유닛
+            if (Guide.Active && !GameFreeze.Active && Guide.Current != Guide.Step.Count) // ② 단계별 — 봐야 할 곳
             {
-                var me = Battle?.GetUnit(playerUnitId);
-                var view = me != null && me.alive ? viewRegistry.Get(playerUnitId) : null;
-                if (view != null && (!Guide.MoveDone || !Guide.AttackDone))
+                var step = Guide.Current;
+                // 힐팩·거점 단계는 목적지를 비춘다 — 나머지는 내 유닛
+                if (step == Guide.Step.Heal && Pickup != null)
                 {
-                    string cap = !Guide.MoveDone ? "내 유닛. 파란 칸을 클릭해 이동" : "A 누르고 적 칸 클릭 = 공격";
-                    var p = view.transform.position;
-                    GuideSpotlight.Set(ScreenRectAround(new[] { p + new Vector3(-2.2f, 0f, -2.2f), p + new Vector3(2.2f, 1.2f, 2.2f) }, 20f * s), cap);
-                    return;
+                    var pts = new List<Vector3>();
+                    foreach (var pack in Pickup.Packs)
+                        if (pack.active) pts.Add(gridView.CoordToWorld(pack.pos));
+                    if (pts.Count > 0)
+                    {
+                        GuideSpotlight.Set(ScreenRectAround(pts, 60f * s), Guide.Hint(step));
+                        return;
+                    }
                 }
+                if (step == Guide.Step.Zone && Round != null)
+                {
+                    var pts = new List<Vector3>();
+                    foreach (var z in Round.Zones) if (z.active) pts.Add(gridView.CoordToWorld(z.Center));
+                    if (pts.Count > 0)
+                    {
+                        GuideSpotlight.Set(ScreenRectAround(pts, 110f * s), Guide.Hint(step));
+                        return;
+                    }
+                }
+                // 나머지 행동 단계(이동·질주·공격·회피·예측·엄폐·스킬)는 화면을 가리지 않는다 —
+                // 파란 이동 칸·조준 표시·예고가 보여야 따라 할 수 있다 (2026-09-06 "파란 칸이 안 보인다").
+                // 안내는 유닛 위 플로팅 힌트와 우측 체크리스트가 맡는다.
             }
             GuideSpotlight.Clear();
         }
 
-        /// <summary>② 조작 힌트 — 내 유닛 위 플로팅 텍스트 1.5초마다. 움직이면 이동 힌트 끝, 적이 보이면 공격 힌트, 쏘면 끝.</summary>
-        void TickGuideHints()
-        {
-            if (!Guide.Active || phase != Phase.Playing || countdownRunning || GameFreeze.Active) return;
-            if (Time.unscaledTime < nextGuideHintAt) return;
-            var me = Battle?.GetUnit(playerUnitId);
-            var view = me != null && me.alive ? viewRegistry.Get(playerUnitId) : null;
-            if (view == null) return;
-
-            if (!guideStep2Announced)
-            {
-                guideStep2Announced = true;
-                hud.PushEvent("튜토리얼 2/3. 조작: 파란 칸 클릭 = 이동 / A 누르고 적 칸 클릭 = 공격", StrikeVfx.MineNeon);
-            }
-            string hint = null;
-            if (!Guide.MoveDone) hint = "파란 칸 클릭 = 이동";
-            else if (!Guide.AttackDone)
-            {
-                foreach (var u in Battle.Units)
-                    if (u.alive && u.team != playerTeam && playerVisibleFn(u.pos)) { hint = "A 누르고 적 칸 클릭 = 공격"; break; }
-            }
-            if (hint == null) return;
-            nextGuideHintAt = Time.unscaledTime + 1.5f;
-            FloatingText.Spawn(view.transform.position + Vector3.up * 0.4f, hint, new Color(1f, 0.95f, 0.6f), 1.15f, 1.4f);
-        }
+        // 유닛 위 노란 플로팅 힌트는 은퇴 (2026-09-06) — 단계 자막(민트)과 같은 내용이 두 번 떠서 소음이었다.
+        // 안내는 단계 진입 자막 + 우측 체크리스트가 맡는다.
 
         void BeginRadioTime(float seconds)
         {
@@ -1086,9 +1223,23 @@ namespace SeoYuGi.BattleView
             {
                 radioTimeGuided = false;
                 if (radio != null && radio.IsOpen) radio.Close();
-                Guide.Finish(); // 가이드 마지막 단계 — 다시 안 뜬다 (튜토리얼 버튼으로는 언제든)
-                hud.ShowAnnounce("튜토리얼 완료. 이대로 계속 싸우거나, ESC 메뉴에서 타이틀로", StrikeVfx.MineNeon, 4.5f);
+                if (Guide.Active) GuideMark(Guide.Step.Radio); // 마지막 단계 — AllDone이 되며 FinishTutorial로 이어진다
+                else Guide.Finish(); // 온라인 첫 무전 예시 등 — 기존 종료 경로
             }
+        }
+
+        /// <summary>튜토리얼 완료 — 멈춰 있던 라운드 시계를 지금부터 120초로 되돌리고 실전 전환.</summary>
+        void FinishTutorial()
+        {
+            Guide.Finish();
+            if (Round != null && Battle != null)
+            {
+                Round.Config.roundSeconds = Battle.time + roundConfig.roundSeconds; // 지금부터 정규 시간
+                nextRadioTimeAt = Battle.time + RadioTimeEvery; // 주기 무전 타임 — 원래 텀으로 재개
+                firstRadioTimeDone = true; // 튜토리얼 지휘 단계가 첫 무전(15초)을 대신했다 — 이후는 10초
+            }
+            hud.ShowAnnounce("튜토리얼 완료. 이제 실전입니다", StrikeVfx.MineNeon, 4.5f);
+            battleAudio.PlaySfx("S13_RoundStart", 1.2f);
         }
 
         bool IsBotOfTeam(int unitId, int team)
@@ -1586,6 +1737,16 @@ namespace SeoYuGi.BattleView
                     if (m.Width * m.Height < bestArea) { bestArea = m.Width * m.Height; mapIndex = i; }
                 }
             }
+            else if (Guide.Wanted && GameModeState.IsCommander && !NetBoot.IsOnline)
+            {
+                // 튜토리얼 — A/B/C 거점이 다 있는 가장 작은 맵으로 고정 (2026-09-06 "맵 자꾸 바뀜")
+                int bestArea = int.MaxValue;
+                for (int i = 0; i < BattleMaps.Count; i++)
+                {
+                    var m = BattleMaps.Get(i);
+                    if (m.Zones.Count == 3 && m.Width * m.Height < bestArea) { bestArea = m.Width * m.Height; mapIndex = i; }
+                }
+            }
             SetMap(BattleMaps.Get(mapIndex));
             predictor = NewPredictor();
             hackSystem = NewHackSystem();
@@ -1819,7 +1980,8 @@ namespace SeoYuGi.BattleView
 
             // 맵 로테이션 — 픽한 맵에서 시작해 2라운드마다 다음 맵으로.
             // Match.CurrentRound는 호스트·클라 모두 RecordRoundResult로 결정론 전진 — 같은 맵이 나온다.
-            var nextMap = BattleMaps.Get(mapIndex + (Match.CurrentRound - 1) / RoundsPerMap);
+            // 튜토리얼 세션은 로테이션 없이 같은 맵 — 배우는 도중 판이 갈리면 혼란 (2026-09-06)
+            var nextMap = BattleMaps.Get(mapIndex + (Guide.TutorialMode ? 0 : (Match.CurrentRound - 1) / RoundsPerMap));
             if (map == null || nextMap.Name != map.Name)
             {
                 SetMap(nextMap);
@@ -1852,6 +2014,9 @@ namespace SeoYuGi.BattleView
                 decaySeconds = roundConfig.decaySeconds,
                 roundSeconds = roundConfig.roundSeconds + (Rule != null ? Rule.RoundSecondsDelta : 0f)
             };
+            // 튜토리얼 — 배우는 동안 시간 초과가 없다. 체크리스트 완료 시 FinishTutorial이 120초로 되돌린다.
+            if (Guide.Wanted && !NetBoot.IsOnline && GameModeState.IsCommander && !GameModeState.Training && Match.CurrentRound <= 1)
+                roundCfg.roundSeconds = 99999f;
             // 훈련장은 거점 없음 (2026-09-06) — 빈 목록을 명시해 넘긴다 (null이면 기본 거점을 깐다)
             IEnumerable<IEnumerable<Coord>> zoneGroups = map.Zones;
             if (GameModeState.Training) zoneGroups = new List<IEnumerable<Coord>>();
@@ -1890,9 +2055,53 @@ namespace SeoYuGi.BattleView
             Combat.TeamVisibleFn = (team, c) => vision.IsVisibleTo(team, c);
             Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
             Move.OnUnitMoved += (id, path, _) => Pickup.OnUnitPath(id, path); // 경로 통과 픽업 — 멈추지 않아도 먹는다
-            Move.OnUnitMoved += (id, _, __) => { if (id == playerUnitId) Guide.MarkMove(); };      // 가이드 ② — 한 번 움직이면 힌트 끝
-            Combat.OnTelegraph += strike => { if (strike.attackerId == playerUnitId) Guide.MarkAttack(); };
-            Combat.OnSkillCast += (id, _) => { if (id == playerUnitId) Guide.MarkAttack(); };
+
+            // ── 튜토리얼 체크리스트 배선 (2026-09-06 10단계) — 순서 강제라 TryMark가 지금 단계만 받는다 ──
+            Move.OnUnitMoved += (id, _, isYellow) =>
+            {
+                // 예측 단계 — 상대가 움직인 다음부터 명중이 통과로 인정된다 (2026-09-06 "상대가 움직인 후")
+                if (Guide.Active && Guide.Current == Guide.Step.Predict && id != playerUnitId)
+                {
+                    var mover = Battle.GetUnit(id);
+                    if (mover != null && mover.team != playerTeam) guidePredictMoved = true;
+                }
+                if (id != playerUnitId) return;
+                // 단계마다 그 행동을 반드시 하게 한다 — 파랑은 이동 단계만, 노랑은 질주 단계만 인정.
+                // 첫 클릭이 노랑이면 이동·질주가 한 번에 끝나 버렸다 (2026-09-06)
+                if (!isYellow) GuideMark(Guide.Step.Move);
+                else GuideMark(Guide.Step.Dash);
+                // 엄폐 단계 — 벽 옆 칸에 도착하면 시연샷 (강제 빗나감으로 "빗나감"을 보여준다)
+                var me = Battle.GetUnit(id);
+                if (Guide.Active && Guide.Current == Guide.Step.Cover && me != null && HasAdjacentWall(me.pos))
+                    GuideScriptShot(forceMiss: true);
+            };
+            Pickup.OnPickup += (id, _, __) => { if (id == playerUnitId) GuideMark(Guide.Step.Heal); };
+            Combat.OnTelegraph += strike =>
+            {
+                if (strike.attackerId != playerUnitId) return;
+                // 적이 있는 칸을 조준했을 때만 인정 — 빈 칸 클릭으로 넘어가지 않게 (2026-09-06 "변수를 제한")
+                if (AnyEnemyInCells(strike.cells)) GuideMark(Guide.Step.Attack);
+            };
+            // 예측 단계 — 자리를 옮긴 뒤 명중하면 통과. 빈 칸 예측샷 요구는 봇이 정지 중이라
+            // 성립하지 않았다 (2026-09-06 "애들이 안 움직여서 진행이 안 된다").
+            Combat.OnDamageDealt += (attackerId, _) =>
+            {
+                if (attackerId == playerUnitId && Guide.Active && Guide.Current == Guide.Step.Predict && guidePredictMoved)
+                    GuideMark(Guide.Step.Predict);
+            };
+            Combat.OnSkillCast += (id, _) => { if (id == playerUnitId) GuideMark(Guide.Step.Skill); };
+            Combat.OnStrikeResolved += (strike, hitAnything) =>
+            {
+                if (strike.id != guideScriptStrikeId) return;
+                guideScriptStrikeId = -1;
+                Combat.ForceMissOnceAttackerId = SeoYuGi.Battle.Cell.NoUnit; // 시연 플래그 잔재 제거 — 실전 판정에 새면 안 된다
+                if (Guide.Current == Guide.Step.Dodge)
+                {
+                    if (!hitAnything) GuideMark(Guide.Step.Dodge); // 빈 칸에 터졌다 = 피했다
+                    else guideScriptRetryAt = Time.unscaledTime + 2.5f; // 맞았다 — 잠시 뒤 한 발 더
+                }
+                else if (Guide.Current == Guide.Step.Cover) GuideMark(Guide.Step.Cover); // 빗나감 시연 완료
+            };
 
             foreach (var pack in Pickup.Packs)
             {
@@ -2553,16 +2762,19 @@ namespace SeoYuGi.BattleView
             }
             else if (Guide.Wanted)
             {
-                // ① 가이드 — 거점부터. 목표 문구 대신 규칙 한 줄 + 거점 링 (싱글은 정지를 5.5초로 늘려 읽을 시간)
-                hud.ShowAnnounce("거점을 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다", Color.white, 5.5f);
                 foreach (var z in Round.Zones)
                     RingWave.Spawn(gridView.CoordToWorld(z.Center), new Color(1f, 1f, 1f, 0.9f), 2.6f, 1.6f);
                 if (GameModeState.IsCommander && !NetBoot.IsOnline && Match.CurrentRound <= 1)
                 {
-                    Guide.Begin(); // ②③은 싱글 지휘관만
-                    hud.PushEvent("튜토리얼 1/3. 거점: 밟으면 게이지가 찬다, 더 많이 가진 팀이 이긴다", StrikeVfx.MineNeon);
-                    guideStep2Announced = false;
+                    // 체크리스트 튜토리얼 (싱글 지휘관) — 시작 자막은 걷어낸다. 작전 시간의 "무전(TAB)으로
+                    // 첫 명령" 안내 하나만 남긴다 (2026-09-06 "글씨가 너무 많아서 뭐 해야 하는지 모르겠어").
+                    // 거점 설명은 3·2·1 스포트라이트 캡션과 거점 체크 단계가 맡는다.
+                    Guide.Begin();
+                    guideAnnouncedStep = Guide.Step.Count; // 단계 공지 리셋
+                    guideScriptStrikeId = -1;
+                    guideRadioOpened = false;
                 }
+                else hud.ShowAnnounce("거점을 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다", Color.white, 5.5f); // 온라인 첫 판 등
             }
             else hud.ShowAnnounce("목표. 거점을 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
@@ -2574,6 +2786,7 @@ namespace SeoYuGi.BattleView
             // 작전 시간 (2026-09-06): 지휘관 모드(훈련장 제외)는 3·2·1 앞에 10초 — 전장·규칙 보고 첫 명령. 싱글은 명령을 보내면(또는 SPACE) 바로 3·2·1.
             // 훈련장은 카운트다운 없음. 첫 판 가이드(싱글, 작전 시간 없는 모드)는 거점 설명 읽을 시간만큼 더. 온라인은 호스트 시계라 그대로.
             planningRunning = GameModeState.IsCommander && !GameModeState.Training;
+            planningStarted = false; // 싱글 — SPACE나 TAB으로 무전을 열기 전까지 작전 시간 정지 (2026-09-06)
             countdownUntil = Time.time + (GameModeState.Training ? 0f
                 : planningRunning ? PlanningLen + 3f
                 : Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f);
@@ -3006,6 +3219,7 @@ namespace SeoYuGi.BattleView
                             ZoneOwners(), AliveCount(0), AliveCount(1), (int)endReason,
                             matchOver ? BuildStatWire() : null); // 매치오버 — MVP 다부문 확정 스탯
 
+            resultPanelShown = false; // 킬캠 비트 동안 SPACE/R 선입력 금지 — 늦게 뜬 패널이 새 라운드 위에 남는 레이스 (2026-09-06 "패널이 안 사라짐")
             if (matchOver)
             {
                 phase = Phase.MatchOver;
@@ -3014,6 +3228,7 @@ namespace SeoYuGi.BattleView
                 hud.SetMatchEndReason(reasonText); // 최종 종료도 왜인지 (2026-09-05)
                 StartCoroutine(RoundEndBeat(reasonText, myWinR, EndFocusUnit(endReason), () =>
                 {
+                    resultPanelShown = true;
                     hud.SetMatchStats(BuildMatchStats());
                     hud.ShowMatchEnd();
                     battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
@@ -3026,6 +3241,7 @@ namespace SeoYuGi.BattleView
                 ResetReadyGate(); // SPACE 동의 집계 초기화
                 StartCoroutine(RoundEndBeat(reasonText, myWinR, EndFocusUnit(endReason), () =>
                 {
+                    resultPanelShown = true;
                     // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
                     hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
                     hud.SetBriefingReason(reasonText);
@@ -3041,6 +3257,7 @@ namespace SeoYuGi.BattleView
 
         readonly HashSet<ulong> readyClients = new HashSet<ulong>();
         bool localReady;
+        bool resultPanelShown = true; // 결과 패널 표시 여부 — 킬캠 비트 중 SPACE/R 선입력 방지 (몰수승 등 비트 없는 경로는 true 유지)
 
         int HumanCount()
         {
@@ -3132,7 +3349,8 @@ namespace SeoYuGi.BattleView
             if (phase == Phase.Briefing)
             {
                 // SPACE = 다음 라운드 동의. 전원(인간)이 동의하면 호스트가 진행 — 싱글은 1/1이라 즉시.
-                if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame && !localReady)
+                // 결과 패널이 뜨기 전(킬캠 슬로우모션 중)의 SPACE는 무시 — 패널이 새 라운드 위에 남는 레이스 방지
+                if (resultPanelShown && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame && !localReady)
                 {
                     localReady = true;
                     if (IsNetClient)
@@ -3152,7 +3370,7 @@ namespace SeoYuGi.BattleView
                 // 몰수승 — 상대가 없어 준비 게이트를 못 넘는다. R = 메인으로 (2026-09-06)
                 if (forfeitEnd && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { QuitToTitle(); return; }
                 // R = 새 매치 동의 (SPACE 동의처럼 전원 관문 — 2026-09-05). 솔로는 1/1이라 즉시.
-                if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame && !localReady)
+                if (resultPanelShown && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame && !localReady)
                 {
                     if (!NetBoot.IsOnline) { RestartMatch(); return; }
                     localReady = true;
@@ -3181,16 +3399,54 @@ namespace SeoYuGi.BattleView
                     float remain = countdownUntil - Time.time;
                     if (planningRunning && remain > 3f)
                     {
-                        // 작전 시간 — 시뮬은 정지, 무전(TAB)·퀵챗 패널은 열린다. 싱글은 첫 명령(또는 SPACE)이면 바로 3·2·1
-                        hud.SetPlanning(Mathf.CeilToInt(remain - 3f), !NetBoot.IsOnline);
+                        // 작전 시간 — 시뮬은 정지, 무전(TAB)·퀵챗 패널은 열린다.
+                        // 싱글은 정지 화면에서 시작 (2026-09-06 "바로 시작하지 말고 정지"): SPACE(또는 TAB)로
+                        // 무전창이 열리면 그때부터 원래 10초 작전 시간이 흐른다. 첫 명령은 기존대로 바로 3·2·1.
+                        bool paused = !NetBoot.IsOnline && !planningStarted;
+                        if (paused) countdownUntil = Time.time + PlanningLen + 3f; // 매 프레임 밀어 정지
+                        hud.SetPlanning(paused ? -1 : Mathf.CeilToInt(remain - 3f), !NetBoot.IsOnline);
                         hud.SetCountdown(0);
                         if (radio != null && radio.enabled) radio.HandleHotkey();
-                        if (!NetBoot.IsOnline && !RadioWindow.TextInputActive && Keyboard.current != null &&
-                            Keyboard.current.spaceKey.wasPressedThisFrame) EndPlanning();
+                        if (paused)
+                        {
+                            // SPACE = 무전 열기 (TAB과 동일) — 채팅을 건너뛰지 않는다 (2026-09-06)
+                            if (!RadioWindow.TextInputActive && Keyboard.current != null &&
+                                Keyboard.current.spaceKey.wasPressedThisFrame && radio != null && radio.enabled)
+                            {
+                                if (Guide.Wanted) radio.OpenGuided(); else radio.Open();
+                            }
+                            // TAB이든 SPACE든 무전창이 열리면 정지 해제 — 지금부터 10초
+                            if (radio != null && radio.IsOpen)
+                            {
+                                planningStarted = true;
+                                countdownUntil = Time.time + PlanningLen + 3f;
+                                GuideSpotlight.Clear();
+                            }
+                            else
+                            {
+                                // 뭘 해야 하는지만 밝힌다 — 무전 입력줄 + 작전 안내판 두 구멍 (걷기 포커싱과 동일)
+                                float u = BattleHud.PixelPerHud;
+                                if (u > 0f)
+                                {
+                                    float w = BattleHud.ChatW * u, fieldH = BattleHud.RadioFieldH * u;
+                                    float x = (Screen.width - w) / 2f, yField = BattleHud.RadioFieldTopHud * u;
+                                    GuideSpotlight.SetHoles(new[]
+                                    {
+                                        new Rect(x - 6f, yField - 6f, w + 12f, fieldH + 12f), // 무전 입력줄
+                                        BattleHud.PlanningBoxScreenRect(),                     // 작전 안내판
+                                    }, null);
+                                }
+                            }
+                        }
+                        else if (!NetBoot.IsOnline && !RadioWindow.TextInputActive && Keyboard.current != null &&
+                                 Keyboard.current.spaceKey.wasPressedThisFrame)
+                            EndPlanning(); // 무전창 닫은 뒤의 SPACE = 원래 건너뛰기
                         return;
                     }
                     if (planningRunning) EndPlanningVisuals();
                     hud.SetCountdown(Mathf.CeilToInt(remain));
+                    // 3·2·1 거점 스포트라이트는 은퇴 (2026-09-06 "이상한 곳에 포커싱하지 마") —
+                    // 거점이 화면 밖이면 구멍이 엉뚱한 자리에 뚫렸다. 거점 설명은 거점 단계가 맡는다.
                     return;
                 }
                 countdownRunning = false;
@@ -3271,7 +3527,7 @@ namespace SeoYuGi.BattleView
             if (!typing) UpdatePingInput();
 
             TickRadioTime(); // 지휘관 대전 — 호스트가 주기 판단, 클라는 남은 시간 표시·상한 (양쪽 공통)
-            TickGuideHints(); // 첫 판 가이드 ② — 내 유닛 위에 조작 힌트
+            TickTutorial();  // 튜토리얼 — 단계 공지·회피 시연샷·거점 밟기 감지
             TickGuideSpotlight(); // 가이드 — 화면을 어둡게, 봐야 할 곳만 구멍
 
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
@@ -3317,8 +3573,14 @@ namespace SeoYuGi.BattleView
             }
 
             worldView.Refresh();
+            // 튜토리얼 — 배우는 동안 봇 정지 (배우다 죽는 첫인상 방지 + 아군이 먼저 이겨버리는 사고 방지).
+            // 마지막 지휘 단계부터 아군 봇만 재가동 — 명령이 실제로 움직이는 걸 보여준다. 완료 후 전원 정상.
+            bool tutorialHold = Guide.Active && !NetBoot.IsOnline;
             foreach (var driver in aiDrivers)
+            {
+                if (tutorialHold && (driver.Team != playerTeam || Guide.Current < Guide.Step.Radio)) continue;
                 driver.Tick(worldView);
+            }
 
             SyncPresentation();
 

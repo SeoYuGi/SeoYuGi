@@ -69,7 +69,7 @@ namespace SeoYuGi.BattleView
             Open();
         }
 
-        void Open()
+        public void Open()
         {
             if (IsOpen) return;
             IsOpen = true;

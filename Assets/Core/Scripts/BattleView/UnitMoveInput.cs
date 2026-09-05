@@ -107,18 +107,12 @@ namespace SeoYuGi.BattleView
                 aim = AimMode.None; // 우클릭 = 조준 취소만 — 선택 해제 없음 (1유닛 게임)
 
             // 전투 입력: A=공격 조준, S=스킬1 조준, D=스킬2 조준 (토글), ESC=취소. 방어는 기획 삭제.
+            // 키보드도 ToggleAim 한 경로로 — HUD 슬롯 클릭과 같은 규칙(쿨 무시·튜토리얼 잠금)을 한곳에서 지킨다 (2026-09-06)
             if (Keyboard.current != null && selectedUnitId != -1)
             {
-                // 쿨타임 중인 행동은 조준 모드 자체를 안 연다 — 범위도 안 그리고 버저도 없이 조용히 무시.
-                // (조준 → 클릭 → 거부 → 버저 루프가 "삐삐" 소음의 주범이었다.) 이미 켜진 조준을 끄는 건 항상 허용.
-                var su = moveSystem.State.GetUnit(selectedUnitId);
-                float now = moveSystem.State.time;
-                if (Keyboard.current.aKey.wasPressedThisFrame && (aim == AimMode.Attack || su.attackReadyAt <= now))
-                    aim = aim == AimMode.Attack ? AimMode.None : AimMode.Attack;
-                if (Keyboard.current.sKey.wasPressedThisFrame && (aim == AimMode.Skill || su.skillReadyAt[0] <= now))
-                    aim = aim == AimMode.Skill ? AimMode.None : AimMode.Skill;
-                if (Keyboard.current.dKey.wasPressedThisFrame && (aim == AimMode.Skill2 || su.skillReadyAt[1] <= now))
-                    aim = aim == AimMode.Skill2 ? AimMode.None : AimMode.Skill2;
+                if (Keyboard.current.aKey.wasPressedThisFrame) ToggleAim(AimMode.Attack);
+                if (Keyboard.current.sKey.wasPressedThisFrame) ToggleAim(AimMode.Skill);
+                if (Keyboard.current.dKey.wasPressedThisFrame) ToggleAim(AimMode.Skill2);
                 if (Keyboard.current.escapeKey.wasPressedThisFrame)
                     aim = AimMode.None;
             }
@@ -175,6 +169,9 @@ namespace SeoYuGi.BattleView
         {
             if (selectedUnitId == -1 || mode == AimMode.None) { aim = AimMode.None; return; }
             if (aim == mode) { aim = AimMode.None; return; } // 켜진 조준 끄기는 항상 허용
+            // 튜토리얼 — 아직 안 배운 조준은 잠금. 이동 단계에서 A가 켜지면 파란 이동 칸이
+            // 조준 표시에 가려 진행이 막혔다 (2026-09-06 "공격키 막아둬")
+            if (!Guide.AimAllowed(mode != AimMode.Attack)) return;
             var su = moveSystem.State.GetUnit(selectedUnitId);
             float now = moveSystem.State.time;
             bool ready = mode == AimMode.Attack ? su.attackReadyAt <= now

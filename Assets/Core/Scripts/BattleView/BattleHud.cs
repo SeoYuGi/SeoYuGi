@@ -432,18 +432,29 @@ namespace SeoYuGi.BattleView
         /// <summary>작전 시간 표시 (2026-09-06) — 라운드 시작 전 10초, 상단바 아래 띠. 0 = 숨김.</summary>
         public void SetPlanning(int sec, bool canSkip) { planningSec = sec; planningCanSkip = canSkip; }
 
+        /// <summary>작전 시간 안내판 — planningSec 양수 = 카운트다운(멀티), -1 = 정지(싱글, SPACE로 시작).</summary>
         void DrawPlanning()
         {
-            if (planningSec <= 0) return;
+            if (planningSec == 0) return;
+            bool paused = planningSec < 0; // 싱글 — 시계를 세워 두고 명령이나 SPACE를 기다린다 (2026-09-06)
             if (planningHintStyle == null) planningHintStyle = new GUIStyle(roundStyle) { fontSize = 14 };
             var box = new Rect(W / 2f - 270f, 160f, 540f, 66f);
             Fill(box, new Color(0.02f, 0.04f, 0.09f, 0.8f));
             Fill(new Rect(box.x, box.y, box.width, 2f), StrikeVfx.MineNeon);
-            ShadowLabel(new Rect(box.x, box.y + 6f, box.width, 30f), $"작전 시간  {planningSec}", subtitleStyle, StrikeVfx.MineNeon);
+            ShadowLabel(new Rect(box.x, box.y + 6f, box.width, 30f),
+                paused ? "작전 시간" : $"작전 시간  {planningSec}", subtitleStyle, StrikeVfx.MineNeon);
             ShadowLabel(new Rect(box.x, box.y + 40f, box.width, 20f),
-                planningCanSkip ? "전장을 보고 무전(TAB)으로 첫 명령을 내리면 바로 출격.  SPACE = 건너뛰기"
-                                : "전장을 보고 무전(TAB)으로 첫 명령.  양쪽 지휘관 공통 시간",
+                paused ? "TAB = 무전을 열고 작전 시작.  예: B 거점으로 모여!"
+                : planningCanSkip ? "전장을 보고 무전(TAB)으로 첫 명령을 내리면 바로 출격.  SPACE = 건너뛰기"
+                                  : "전장을 보고 무전(TAB)으로 첫 명령.  양쪽 지휘관 공통 시간",
                 planningHintStyle, new Color(0.8f, 0.88f, 0.95f));
+        }
+
+        /// <summary>작전 시간 안내판의 화면 픽셀 사각형 — 스포트라이트가 이 자리만 밝힌다.</summary>
+        public static Rect PlanningBoxScreenRect()
+        {
+            float u = PixelPerHud;
+            return new Rect(Screen.width / 2f - 270f * u, 160f * u, 540f * u, 66f * u);
         }
 
         int countdownNum; // 라운드 시작 3·2·1 — 0이면 숨김
@@ -601,6 +612,7 @@ namespace SeoYuGi.BattleView
                 {
                     DrawChatLog();
                     DrawKillFeed();
+                    DrawGuideChecklist(); // 튜토리얼 — 우측 체크리스트 (2026-09-06 10단계)
                     DrawChatPanel();
                     DrawAnnounce();
                 }
@@ -684,6 +696,12 @@ namespace SeoYuGi.BattleView
                 GUI.color = new Color(1f, 0.78f, 0.25f); // 호박색 — 빨강은 적 위협 전용
                 GUI.Label(new Rect(timerBox.x, timerBox.y + 12, timerBox.width, 38), "추가시간", timerStyle);
                 GUI.color = Color.white;
+            }
+            else if (Guide.Active)
+            {
+                // 튜토리얼 — 시계가 멈춰 있다 (완료 시 120초 재개). 99999초를 그대로 그리면 1666:39이 뜬다
+                GUI.Label(new Rect(timerBox.x, timerBox.y + 9, timerBox.width, 14), "남은시간", timerLabelStyle);
+                ShadowLabel(new Rect(timerBox.x, timerBox.y + 23, timerBox.width, 30), "훈련 중", timerStyle, Color.white);
             }
             else
             {
@@ -877,7 +895,7 @@ namespace SeoYuGi.BattleView
             var aim = moveInput != null ? moveInput.CurrentAim : UnitMoveInput.AimMode.None;
             float atkCool = Mathf.Max(0f, u.attackReadyAt - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap), y, slotW, slotH), "A", "일반공격",
-                $"쿨 {combatConfig.attackCooldownSeconds:0}s", atkCool <= 0f,
+                $"쿨 {combatConfig.attackCooldownSeconds:0}s", atkCool <= 0f && Guide.AimAllowed(false),
                 atkCool, combatConfig.attackCooldownSeconds > 0f ? atkCool / combatConfig.attackCooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Attack, iconAttack,
                 () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Attack));
@@ -885,7 +903,7 @@ namespace SeoYuGi.BattleView
             var s1 = ClassCatalog.Get(u.unitClass).skills[0];
             float s1Cool = Mathf.Max(0f, u.skillReadyAt[0] - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass, 0),
-                $"쿨 {s1.cooldownSeconds:0}s", s1Cool <= 0f,
+                $"쿨 {s1.cooldownSeconds:0}s", s1Cool <= 0f && Guide.AimAllowed(true),
                 s1Cool, s1.cooldownSeconds > 0f ? s1Cool / s1.cooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Skill, iconSkill1,
                 () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Skill));
@@ -893,7 +911,7 @@ namespace SeoYuGi.BattleView
             var s2 = ClassCatalog.Get(u.unitClass).skills[1];
             float s2Cool = Mathf.Max(0f, u.skillReadyAt[1] - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", SkillName(u.unitClass, 1),
-                $"쿨 {s2.cooldownSeconds:0}s", s2Cool <= 0f,
+                $"쿨 {s2.cooldownSeconds:0}s", s2Cool <= 0f && Guide.AimAllowed(true),
                 s2Cool, s2.cooldownSeconds > 0f ? s2Cool / s2.cooldownSeconds : 0f,
                 aim == UnitMoveInput.AimMode.Skill2, iconSkill2,
                 () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Skill2));
@@ -927,9 +945,15 @@ namespace SeoYuGi.BattleView
             if (onClick != null && GUI.Button(r, GUIContent.none, GUIStyle.none)) onClick();
             if (active)
             {
-                // 조준 중인 슬롯 — 틸 프레임 (노랑은 이동 색이라 금지). 조준 칸 틴트와 같은 색이라 연결이 읽힌다
+                // 조준 중인 슬롯 — 틸 테두리 4변만 (노랑은 이동 색이라 금지). 통짜 판은 프레임 투명부로
+                // 비쳐서 슬롯 전체가 민트로 깨져 보였다 (2026-09-06 "A 왜 민트색으로 깨짐")
                 GUI.color = new Color(0.45f, 1f, 0.95f);
-                GUI.DrawTexture(new Rect(r.x - 3, r.y - 3, r.width + 6, r.height + 6), Texture2D.whiteTexture);
+                const float bt = 3f;
+                var o = new Rect(r.x - bt, r.y - bt, r.width + bt * 2, r.height + bt * 2);
+                GUI.DrawTexture(new Rect(o.x, o.y, o.width, bt), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(o.x, o.yMax - bt, o.width, bt), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(o.x, o.y, bt, o.height), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(o.xMax - bt, o.y, bt, o.height), Texture2D.whiteTexture);
             }
             GUI.color = enabled ? Color.white : new Color(1f, 1f, 1f, 0.4f);
             DrawFrame(r, texSlot);
@@ -1281,6 +1305,47 @@ namespace SeoYuGi.BattleView
                 GUI.Label(new Rect(x + 8f, y, boxW - 18f, lineH - 3f), killFeed[i].text, killStyle);
             }
             GUI.color = Color.white;
+        }
+
+        /// <summary>튜토리얼 체크리스트 — 우측, 킬피드 아래. 완료 O, 지금 할 일 >, 남은 건 흐리게.
+        /// 뭘 배웠고 뭐가 남았는지가 항상 보인다 (2026-09-06 "설명이 아니라 체험").</summary>
+        void DrawGuideChecklist()
+        {
+            if (!Guide.Active) return;
+            int n = Guide.Labels.Length;
+            const float boxW = 200f, rowH = 23f, pad = 10f;
+            float x = W - boxW - 12f, y0 = 170f; // 킬피드(우상단 5줄) 아래
+            float boxH = pad * 2f + 26f + n * rowH;
+
+            GUI.color = new Color(0f, 0f, 0f, 0.62f);
+            GUI.DrawTexture(new Rect(x, y0, boxW, boxH), Texture2D.whiteTexture);
+            GUI.color = HudCyan;
+            GUI.DrawTexture(new Rect(x, y0, 3f, boxH), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            ShadowLabel(new Rect(x + pad + 4f, y0 + pad - 2f, boxW - pad * 2f, 22f),
+                $"튜토리얼  {CountDoneGuide()}/{n}", labelStyle, HudCyan);
+            var cur = Guide.Current;
+            for (int i = 0; i < n; i++)
+            {
+                var step = (Guide.Step)i;
+                bool doneStep = Guide.IsDone(step);
+                bool current = step == cur;
+                string prefix = doneStep ? "O  " : current ? ">  " : "-  ";
+                var color = doneStep ? new Color(0.5f, 0.9f, 0.65f)
+                    : current ? new Color(0.45f, 1f, 0.95f)
+                    : new Color(0.5f, 0.55f, 0.65f);
+                ShadowLabel(new Rect(x + pad + 4f, y0 + pad + 24f + i * rowH, boxW - pad * 2f, rowH),
+                    prefix + Guide.Labels[i], briefLineStyle, color);
+            }
+        }
+
+        int CountDoneGuide()
+        {
+            int c = 0;
+            for (int i = 0; i < Guide.Labels.Length; i++)
+                if (Guide.IsDone((Guide.Step)i)) c++;
+            return c;
         }
 
         /// <summary>

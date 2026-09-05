@@ -759,6 +759,38 @@ namespace SeoYuGi.Battle
             OnTelegraph?.Invoke(strike);
         }
 
+        // ── 튜토리얼 연출 훅 (러너 전용) ──────────────────────────
+
+        /// <summary>튜토리얼 시연용 예고 — 쿨타임·사거리 검사 없이 지정 칸에 평타 예고를 심는다.
+        /// 회피 단계("피하세요")와 엄폐 단계(강제 빗나감 시연)가 쓴다. 실전 경로는 TryAttack뿐.</summary>
+        public TelegraphStrike ScriptedTelegraph(int attackerId, Coord cell, float delaySeconds, int damage)
+        {
+            var unit = State.GetUnit(attackerId);
+            if (unit == null || !unit.alive || !State.Grid.IsWalkableTerrain(cell)) return null;
+            var strike = new TelegraphStrike
+            {
+                attackerId = attackerId,
+                kind = SkillKind.BasicAttack,
+                team = unit.team,
+                cells = { cell },
+                aimCell = cell,
+                impactTime = State.time + delaySeconds,
+                damage = damage
+            };
+            Place(strike);
+            return strike;
+        }
+
+        /// <summary>튜토리얼 엄폐 시연 — 이 시전자의 다음 판정을 주사위 없이 빗나감 처리. 1회 소모.</summary>
+        public int ForceMissOnceAttackerId = Cell.NoUnit;
+
+        bool ConsumeForceMiss(TelegraphStrike strike)
+        {
+            if (ForceMissOnceAttackerId == Cell.NoUnit || strike.attackerId != ForceMissOnceAttackerId) return false;
+            ForceMissOnceAttackerId = Cell.NoUnit;
+            return true;
+        }
+
         // ── 멀티 클라이언트 전용 — 호스트가 릴레이한 예고를 미러에 주입 ──
         // 클라는 Tick을 안 돌리므로 이 경로 외엔 strikes가 채워지지 않는다.
         // OnTelegraph/OnStrikeResolved를 그대로 발화 — 기존 연출 배선이 무수정으로 동작.
@@ -850,7 +882,7 @@ namespace SeoYuGi.Battle
                 // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다.
                 // 빗나감 = "피해"만 무효 — 이동 성분(낚아채기 끌기·밀치기)은 그대로 간다 (2026-09-05
                 // "빗나가면 스킬이동을 포기하네"). 엄폐로 몸은 지켜도 위치는 뺏길 수 있다.
-                if (!intercepted && attacker != null && RollMiss(strike, attacker, unit))
+                if (!intercepted && attacker != null && (ConsumeForceMiss(strike) || RollMiss(strike, attacker, unit)))
                 {
                     OnMissed?.Invoke(unit.id, strike.attackerId);
                     if (unit.alive && attacker.alive)

@@ -3,13 +3,10 @@ using UnityEngine;
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 첫 판 가이드 (2026-09-05) — 별도 튜토리얼 화면이 아니라 실전 첫 라운드 위에 얹는 세 단계.
-    /// 읽는 게 아니라 "하면 넘어간다":
-    ///   ① 거점 — 라운드 개시 정지 동안 거점이 반짝이며 한 줄 (모든 모드)
-    ///   ② 조작 — 내 유닛 위에 "파란 칸 클릭 = 이동" → 한 번 움직이면 끝. 적이 보이면 "A → 적 칸 = 공격" → 한 번 쏘면 끝
-    ///   ③ 지휘 — 20초에 가이드 무전 타임: 얼음 + 무전창 자동 오픈 + 예시 문장 회전 ("라니는 B로, 나머지는 나한테 붙어")
-    /// ②③은 싱글 지휘관 모드에서만. 한 번 끝내면 PlayerPrefs로 다시 안 뜬다.
-    /// 프리셋 버튼을 새로 그리지 않는다 — 퀵챗 패널(우상단)이 이미 그 역할이고, 지휘의 킬포는 자유 문장이다.
+    /// 첫 판 가이드 — 별도 튜토리얼 화면이 아니라 실전 첫 라운드 위에 얹는 체크리스트.
+    /// 읽는 게 아니라 "하면 넘어간다". 순서 강제 — 지금 단계의 행동만 체크된다.
+    /// 2026-09-06 3단계 → 10단계 확장: 이동/질주/힐팩/공격/회피/예측/엄폐/스킬/거점/지휘.
+    /// 가이드 완료 전엔 봇이 정지하고 라운드 시계도 멈춘다(러너가 관리). 한 번 끝내면 PlayerPrefs로 다시 안 뜬다.
     /// </summary>
     public static class Guide
     {
@@ -20,7 +17,7 @@ namespace SeoYuGi.BattleView
             get { try { return PlayerPrefs.GetInt(DoneKey, 0) == 1; } catch { return true; } }
         }
 
-        /// <summary>이 매치가 가이드를 진행 중인가 (②③) — 러너가 매치 시작에 정한다.</summary>
+        /// <summary>이 매치가 가이드를 진행 중인가 — 러너가 매치 시작에 정한다.</summary>
         public static bool Active { get; private set; }
 
         /// <summary>타이틀 "튜토리얼" 버튼으로 들어온 매치 — 첫 판 여부와 무관하게 가이드를 돈다.
@@ -33,13 +30,74 @@ namespace SeoYuGi.BattleView
         public static void StartTutorial() => TutorialMode = true;
         public static void EndTutorial() => TutorialMode = false;
 
-        public static bool MoveDone { get; private set; }
-        public static bool AttackDone { get; private set; }
-        public static bool RadioDone { get; private set; }
+        // ── 단계 (순서 강제) ─────────────────────────────────
 
-        /// <summary>③ 가이드 무전 타임이 나올 전투 시각.</summary>
-        public const float RadioAt = 20f;
-        public const float RadioLength = 15f; // 첫 무전은 넉넉히 — 예시 읽고 한 줄 치는 시간. 일반 첫 무전 타임(15초)과 같게 (2026-09-06)
+        public enum Step
+        {
+            Move,     // 파란 칸 클릭 = 이동
+            Dash,     // 노란 칸 질주 — 쿨타임을 몸으로 체험
+            Attack,   // A → 적 칸 = 공격
+            Dodge,    // 스크립트 예고를 피하기
+            Predict,  // 빈 칸 예측샷 — "예측해보세요!"
+            Cover,    // 벽 뒤 이동 → 시연샷 강제 빗나감
+            Heal,     // 힐팩 밟기 — 맞아본 다음이라야 회복할 게 있다 (풀피면 훈련 피해 1을 준다)
+            Skill,    // S 스킬 1회
+            Zone,     // 거점 밟아 게이지 올리기
+            Radio,    // 가이드 무전 타임
+            Count,    // 단계 수 (마커)
+        }
+
+        /// <summary>체크리스트 라벨 — HUD가 그대로 그린다. Step enum 순서.</summary>
+        public static readonly string[] Labels =
+            { "이동", "질주", "공격", "회피", "예측", "엄폐", "힐팩", "스킬", "거점", "지휘" };
+
+        /// <summary>단계별 안내 문구 — 유닛 위 플로팅 힌트와 단계 공지 공용.</summary>
+        public static string Hint(Step s) => s switch
+        {
+            Step.Move => "파란 칸 클릭 = 이동",
+            Step.Dash => "노란 칸까지 달려보세요. 대신 잠시 못 움직입니다",
+            Step.Heal => "맞은 체력을 힐팩을 밟아 회복하세요",
+            Step.Attack => "적을 찾아 A 누르고 적 칸 클릭 = 공격",
+            Step.Dodge => "빨간 예고가 내 칸에! 터지기 전에 옆으로 피하세요",
+            Step.Predict => "적이 움직입니다. 도착할 칸을 노려 맞히세요. 예측해보세요!",
+            Step.Cover => "벽 옆 칸으로 숨어보세요. 정면 엄폐는 공격이 절반 확률로 빗나갑니다",
+            Step.Skill => "S 키로 스킬을 조준하고 써보세요",
+            Step.Zone => "거점을 밟아 게이지를 채우세요",
+            Step.Radio => "분대에 말로 지시해 보세요",
+            _ => "",
+        };
+
+        static readonly bool[] done = new bool[(int)Step.Count];
+
+        /// <summary>지금 해야 하는 단계 — 앞에서부터 첫 미완료. 전부 끝나면 Count.</summary>
+        public static Step Current
+        {
+            get
+            {
+                for (int i = 0; i < done.Length; i++)
+                    if (!done[i]) return (Step)i;
+                return Step.Count;
+            }
+        }
+
+        public static bool IsDone(Step s) => s < Step.Count && done[(int)s];
+        public static bool AllDone => Current == Step.Count;
+
+        /// <summary>튜토리얼 조준 잠금 — 공격 조준은 공격 단계부터, 스킬 조준은 스킬 단계부터.
+        /// 배우기 전의 조준이 켜지면 파란 이동 칸이 가려 진행이 막힌다.</summary>
+        public static bool AimAllowed(bool skill) => !Active || Current >= (skill ? Step.Skill : Step.Attack);
+
+        /// <summary>지금 단계일 때만 체크 — 순서 강제. 성공하면 true (러너가 피드백 연출).</summary>
+        public static bool TryMark(Step s)
+        {
+            if (!Active || s != Current) return false;
+            done[(int)s] = true;
+            return true;
+        }
+
+        // ── 지휘 단계 ────────────────────────────────────────
+
+        public const float RadioLength = 15f; // 가이드 무전 — 예시 읽고 한 줄 치는 시간
 
         /// <summary>무전창에 돌아가는 예시 — 여러 유닛·조건·적 지목·별명 호칭이 다 된다는 걸 읽지 않아도 보이게.</summary>
         public static readonly string[] RadioExamples =
@@ -54,12 +112,8 @@ namespace SeoYuGi.BattleView
         public static void Begin()
         {
             Active = true;
-            MoveDone = AttackDone = RadioDone = false;
+            for (int i = 0; i < done.Length; i++) done[i] = false;
         }
-
-        public static void MarkMove() => MoveDone = true;
-        public static void MarkAttack() => AttackDone = true;
-        public static void MarkRadio() => RadioDone = true;
 
         /// <summary>가이드 종료 — 다시 안 뜬다.</summary>
         public static void Finish()

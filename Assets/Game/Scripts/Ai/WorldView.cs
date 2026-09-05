@@ -32,6 +32,7 @@ namespace SeoYuGi.Ai
         public int MaxHp;    // 힐팩 추구 판단용 — 손상 정도(MaxHp-Hp)로 필요성 계산
         public bool Alive;
         public bool IsHuman; // 인간 조종 슬롯 — 적팀 학습·조준 우선 대상
+        public bool Stunned; // 스턴 중 — 연계(집중 타격) 타겟 우선용 (2026-09-05)
     }
 
     public struct ZoneState

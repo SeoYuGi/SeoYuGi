@@ -25,6 +25,21 @@ namespace SeoYuGi.Ai
         private Cell _prevPos;                 // 직전 위치 — 옆걸음 왕복 방지
         private bool _hasPrevPos;
 
+        // 핑 지휘 (2026-09-05 연계 패스) — 아군 인간의 휠클릭 핑에 잠시 복종한다.
+        // ▼(0)=집결 이동, !(1)=그 근처 적 집중 타겟. ?(2)는 명령 아님.
+        private Cell _pingCell;
+        private int _pingType = -1;
+        private float _pingUntil = -1f;
+        const float PingObeySeconds = 6f;
+
+        public void CommandPing(Cell cell, int type, float now)
+        {
+            if (type == 2) return; // ? = 정보 공유일 뿐
+            _pingCell = cell;
+            _pingType = type;
+            _pingUntil = now + PingObeySeconds;
+        }
+
         public AiBrain(int actorId, AiConfig config, Predictor predictor = null)
         {
             _actorId = actorId;
@@ -168,6 +183,13 @@ namespace SeoYuGi.Ai
                 if (counterStep.HasValue)
                     return AiCommand.Of(CommandType.Move, counterStep.Value);
                 return AiCommand.None; // 자리 사수 — 공격은 상위 우선순위가
+            }
+
+            // 3.6) 핑 지휘 — ▼ 집결: 지휘가 힐 욕심보다 앞선다 (도착권 2칸이면 대기)
+            if (!losing && _pingType == 0 && world.Time < _pingUntil && Chebyshev(me.Pos, _pingCell) > 2)
+            {
+                var pingStep = GreedyStep(world, me, _pingCell);
+                if (pingStep.HasValue) return AiCommand.Of(CommandType.Move, pingStep.Value);
             }
 
             // 3.7) 힐팩 — HP가 상했고 근처에 있을 때만. 거점 플레이보다 앞서지만 회피·공격보다는 뒤.
@@ -407,6 +429,9 @@ namespace SeoYuGi.Ai
                 if (a.IsHuman) score += _cfg.HumanTargetBonus;
                 if (!visible) score -= 2f;
                 score += (3 - a.Hp) * 0.5f; // 마무리 우선
+                if (a.Stunned) score += 4f; // 연계 — 스턴 걸린 적을 다 같이 두들긴다 (스턴 콤보 +1과 세트)
+                if (_pingType == 1 && world.Time < _pingUntil && Chebyshev(a.Pos, _pingCell) <= 3)
+                    score += 5f; // ! 핑 — 지휘관이 찍은 근처의 적 집중
                 if (score > bestScore) { bestScore = score; best = a; }
             }
             return best;

@@ -145,6 +145,19 @@ namespace SeoYuGi.BattleView
         /// <summary>마우스 아래 칸 — 휠클릭 핑 등 외부 조회용.</summary>
         public bool TryGetHoverCell(out Coord cell) => TryHoverCell(out cell);
 
+        /// <summary>HUD 슬롯 클릭 = 단축키(A/S/D)와 동일한 조준 토글 — 쿨타임 게이트도 동일 (2026-09-05).</summary>
+        public void ToggleAim(AimMode mode)
+        {
+            if (selectedUnitId == -1 || mode == AimMode.None) { aim = AimMode.None; return; }
+            if (aim == mode) { aim = AimMode.None; return; } // 켜진 조준 끄기는 항상 허용
+            var su = moveSystem.State.GetUnit(selectedUnitId);
+            float now = moveSystem.State.time;
+            bool ready = mode == AimMode.Attack ? su.attackReadyAt <= now
+                : mode == AimMode.Skill ? su.skillReadyAt[0] <= now
+                : su.skillReadyAt[1] <= now;
+            if (ready) aim = mode; // 쿨 중이면 조용히 무시 — 키보드와 같은 규칙
+        }
+
         bool TryHoverCell(out Coord cell)
         {
             cell = default;

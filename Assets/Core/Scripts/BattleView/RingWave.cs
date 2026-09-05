@@ -43,6 +43,7 @@ namespace SeoYuGi.BattleView
             float duration, float spinDegrees, bool easeOut, bool fadeIn)
         {
             if (duration <= 0f) return;
+            color = VfxTextures.Dim(color); // 매트화 — 가산 링도 전역 밝기 계수를 따른다 (누락 보정 2026-09-05)
 
             var go = new GameObject("RingWave");
             go.transform.position = worldPos + Vector3.up * 0.08f;

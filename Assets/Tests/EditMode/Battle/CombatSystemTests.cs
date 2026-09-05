@@ -134,7 +134,7 @@ namespace SeoYuGi.Battle.Tests
             var move = new MoveSystem(battle, new MoveConfig());
 
             Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 1, new Coord(5, 5))); // 비명 교란
-            combat.Tick(0.4f); // 예고 → 판정
+            combat.Tick(1.7f); // 예고(1.6) → 판정 — 카탈로그 동기화 (2026-09-05)
 
             Assert.Greater(enemy.stunnedUntil, battle.time);
             Assert.AreEqual(MoveDenied.Locked, move.TryMove(2, new Coord(5, 7)).denied);
@@ -169,7 +169,7 @@ namespace SeoYuGi.Battle.Tests
             var combat = NewCombat();
 
             Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 0, new Coord(0, 5)));
-            combat.Tick(0.6f);
+            combat.Tick(2.1f); // 예고 2.0s 동기화
 
             Assert.AreEqual(10 - 1 - 1, target.hp); // 피해 1 + 벽 충돌 1
             Assert.AreEqual(new Coord(0, 5), target.pos); // 밀 곳 없음 — 제자리
@@ -183,7 +183,7 @@ namespace SeoYuGi.Battle.Tests
             var combat = NewCombat();
 
             combat.TrySkill(1, 0, new Coord(5, 6));
-            combat.Tick(0.6f);
+            combat.Tick(2.1f); // 예고 2.0s 동기화
 
             Assert.AreEqual(9, target.hp);                // 벽 충돌 없음
             Assert.AreEqual(new Coord(5, 8), target.pos); // 2칸 밀림
@@ -198,7 +198,7 @@ namespace SeoYuGi.Battle.Tests
             var combat = NewCombat();
 
             Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 1, new Coord(5, 6)));
-            combat.Tick(0.6f);
+            combat.Tick(2.1f); // 예고 2.0s 동기화
 
             Assert.AreEqual(10 - 2, target.hp);
             Assert.AreEqual(new Coord(5, 7), target.pos); // 1칸 밀림

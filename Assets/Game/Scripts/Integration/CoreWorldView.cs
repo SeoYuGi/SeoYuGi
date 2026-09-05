@@ -73,7 +73,8 @@ namespace SeoYuGi.Integration
                     Hp = u.hp,
                     MaxHp = u.maxHp,
                     Alive = u.alive,
-                    IsHuman = humanUnitIds.Contains(u.id)
+                    IsHuman = humanUnitIds.Contains(u.id),
+                    Stunned = u.stunnedUntil > state.time
                 });
 
             healPacks.Clear();

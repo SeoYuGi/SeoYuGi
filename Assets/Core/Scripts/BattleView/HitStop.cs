@@ -12,7 +12,10 @@ namespace SeoYuGi.BattleView
 
         static HitStop instance;
 
+        const float MaxContinuous = 0.25f; // 연쇄 상한 — 난전에서 히트스톱이 꼬리물면 게임이 멈춘 듯 보인다 (2026-09-05 프리즈 가드)
+
         float until;
+        float activeSince;
         bool active;
 
         public static void Do(float seconds)
@@ -25,12 +28,14 @@ namespace SeoYuGi.BattleView
         void Apply(float seconds)
         {
             float end = Time.unscaledTime + seconds;
-            if (end > until) until = end;
             if (!active)
             {
                 active = true;
+                activeSince = Time.unscaledTime;
                 Time.timeScale = StopScale;
             }
+            // 연쇄 연장은 시작 시점 + 상한까지만 — 무한 정지 방지
+            if (end > until) until = Mathf.Min(end, activeSince + MaxContinuous);
         }
 
         void Update()

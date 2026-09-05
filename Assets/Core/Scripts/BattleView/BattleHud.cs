@@ -55,6 +55,8 @@ namespace SeoYuGi.BattleView
 
         /// <summary>무전 패널의 문구 클릭 — lineId. 전송 경로는 러너가 배선.</summary>
         public event System.Action<int> OnChatClicked;
+        /// <summary>해킹 게이지 클릭 — H키와 동일 경로. 러너가 배선.</summary>
+        public event System.Action OnHackClicked;
         bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
         float idleHintUntil; // 기본 조작 안내(타일 클릭 = 이동)는 진입 후 15초만 — 그 뒤엔 화면 중앙을 비운다
 
@@ -460,7 +462,7 @@ namespace SeoYuGi.BattleView
             slotCoolStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             subStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
-            subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, wordWrap = true };
 
             // 폰트: 어그로체 = 타이틀·배너·자막 임팩트, SUIT = HUD 전반
             GameFonts.Apply(bannerStyle, GameFonts.Title);      // 매치 승/패 배너
@@ -681,24 +683,28 @@ namespace SeoYuGi.BattleView
             DrawSlot(new Rect(sx + (slotW + gap), y, slotW, slotH), "A", "일반공격",
                 $"쿨 {combatConfig.attackCooldownSeconds:0}s", atkCool <= 0f,
                 atkCool, combatConfig.attackCooldownSeconds > 0f ? atkCool / combatConfig.attackCooldownSeconds : 0f,
-                aim == UnitMoveInput.AimMode.Attack, iconAttack);
+                aim == UnitMoveInput.AimMode.Attack, iconAttack,
+                () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Attack));
 
             var s1 = ClassCatalog.Get(u.unitClass).skills[0];
             float s1Cool = Mathf.Max(0f, u.skillReadyAt[0] - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass, 0),
                 $"쿨 {s1.cooldownSeconds:0}s", s1Cool <= 0f,
                 s1Cool, s1.cooldownSeconds > 0f ? s1Cool / s1.cooldownSeconds : 0f,
-                aim == UnitMoveInput.AimMode.Skill, iconSkill);
+                aim == UnitMoveInput.AimMode.Skill, iconSkill,
+                () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Skill));
 
             var s2 = ClassCatalog.Get(u.unitClass).skills[1];
             float s2Cool = Mathf.Max(0f, u.skillReadyAt[1] - battle.time);
             DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", SkillName(u.unitClass, 1),
                 $"쿨 {s2.cooldownSeconds:0}s", s2Cool <= 0f,
                 s2Cool, s2.cooldownSeconds > 0f ? s2Cool / s2.cooldownSeconds : 0f,
-                aim == UnitMoveInput.AimMode.Skill2, iconSkill);
+                aim == UnitMoveInput.AimMode.Skill2, iconSkill,
+                () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Skill2));
 
             // 해킹 궁게이지 세그먼트 (구 AP 탄약 카운터 자리) — 만충 시 H 발동
             var hackSeg = new Rect(x0 + totalW - segW, y, segW, slotH);
+            if (GUI.Button(hackSeg, GUIContent.none, GUIStyle.none)) OnHackClicked?.Invoke(); // 클릭 = H키
             float charge = hackCharge != null ? Mathf.Clamp01(hackCharge()) : 0f;
             bool hackReady = charge >= 1f;
             // 색 언어: 핑크·보라(마법소녀 톤) 대신 내 팀 틸 — 준비 완료면 밝게 맥동
@@ -714,8 +720,10 @@ namespace SeoYuGi.BattleView
         }
 
         void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac,
-            bool active = false, Texture2D icon = null)
+            bool active = false, Texture2D icon = null, System.Action onClick = null)
         {
+            // 슬롯 클릭 = 단축키와 동일 (2026-09-05) — 투명 버튼이 히트박스만 담당
+            if (onClick != null && GUI.Button(r, GUIContent.none, GUIStyle.none)) onClick();
             if (active)
             {
                 // 조준 중인 슬롯 — 틸 프레임 (노랑은 이동 색이라 금지). 조준 칸 틴트와 같은 색이라 연결이 읽힌다
@@ -849,12 +857,17 @@ namespace SeoYuGi.BattleView
         {
             if (string.IsNullOrEmpty(subtitleText) || Time.time >= subtitleUntil) return;
 
-            var box = new Rect(W / 2f - 200, H - 140, 400, 40);
+            // 박스 = 텍스트 실측 (가로 여백 60, 줄바꿈 대응) — 긴 자막이 잘리던 문제 (2026-09-05)
+            var content = new GUIContent(subtitleText);
+            float boxW = Mathf.Min(W - 40f, Mathf.Max(400f, subtitleStyle.CalcSize(content).x + 60f));
+            float textH = subtitleStyle.CalcHeight(content, boxW - 40f);
+            float boxH = textH + 22f;
+            var box = new Rect(W / 2f - boxW / 2f, H - 100f - boxH, boxW, boxH);
             NeonPanel(box, new Color(0.55f, 0.95f, 1f));
             GUI.color = new Color(0.55f, 0.95f, 1f); // 관제 AI 시안 톤
             GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "도시관리 AI",
                 new GUIStyle(subStyle) { fontStyle = FontStyle.Bold });
-            GUI.Label(new Rect(box.x, box.y + 8, box.width, 32), subtitleText, subtitleStyle);
+            GUI.Label(new Rect(box.x + 20f, box.y + 14f, box.width - 40f, textH), subtitleText, subtitleStyle);
             GUI.color = Color.white;
         }
 

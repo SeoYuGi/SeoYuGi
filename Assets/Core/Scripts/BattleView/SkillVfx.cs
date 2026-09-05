@@ -48,8 +48,7 @@ namespace SeoYuGi.BattleView
                     FxQuad.Burst(VfxTextures.Spark, origin, hi, 12, 1f, 3.6f);
                     break;
 
-                case SkillKind.Dash: // 돌파 — 먼지 구름 + 사방으로 길게 뻗는 속도 줄기 (잔상은 러너가 경로 위에 얹는다)
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, origin + Vector3.up * 0.15f, 1.8f, 0.6f);
+                case SkillKind.Dash: // 돌파 — 속도 줄기 (카툰 구름 제거, 잔상은 러너가 경로 위에 얹는다)
                     for (int i = 0; i < 4; i++)
                     {
                         float a = i * 1.5708f + 0.4f;
@@ -65,8 +64,7 @@ namespace SeoYuGi.BattleView
                     FxSequencer.Delay(0.15f, () => RingWave.Spawn(origin, Alpha(c, 0.6f), 5.5f, 0.65f));
                     break;
 
-                case SkillKind.Blink: // 그림자 도약 — 이 origin은 도착지 (시뮬이 먼저 순간이동). 등장: 검은 연기 찢고 나타남
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, origin + Vector3.up * 0.3f, 1.8f, 0.75f);
+                case SkillKind.Blink: // 그림자 도약 — 이 origin은 도착지 (시뮬이 먼저 순간이동). 등장: 전기 2연 번쩍
                     FxQuad.One(VfxTextures.Electric, origin + Vector3.up * 0.5f, c, 2.6f, 0.6f, 0.4f);
                     FxSequencer.Delay(0.12f, () => FxQuad.One(VfxTextures.Electric, origin + Vector3.up * 0.55f, hi, 2.2f, 0.5f, 0.3f, spinDeg: 60f));
                     break;
@@ -82,15 +80,13 @@ namespace SeoYuGi.BattleView
                     FxQuad.Burst(VfxTextures.Spark, origin + Vector3.up * 0.3f, hi, 8, 0.7f, 3.4f);
                     break;
 
-                case SkillKind.BombDeliver: // 폭탄 배달 — 이륙 돌풍 + 상승 광구 (비행 연출은 UnitView)
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, origin + Vector3.up * 0.15f, 1.9f, 0.7f);
+                case SkillKind.BombDeliver: // 폭탄 배달 — 상승 광구 + 링 (카툰 구름 제거, 비행 연출은 UnitView)
                     FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.3f, hi, 2.2f, 1.3f, 0.75f,
                         velocity: Vector3.up * 2.4f);
                     RingWave.Spawn(origin, Alpha(c, 0.8f), 2.8f, 0.5f);
                     break;
 
-                case SkillKind.KnockShot: // 밀쳐내기 사격 — 샷건 흰 먼지 펑 + 총구 섬광
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoof, origin + Vector3.up * 0.35f, 1.9f, 0.8f);
+                case SkillKind.KnockShot: // 밀쳐내기 사격 — 총구 섬광 + 불똥 (흰 먼지 박스 제거)
                     FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.55f, hi, 2.2f, 0.6f, 0.18f);
                     FxQuad.Burst(VfxTextures.Spark, origin + Vector3.up * 0.5f, hi, 6, 0.6f, 3.4f);
                     break;

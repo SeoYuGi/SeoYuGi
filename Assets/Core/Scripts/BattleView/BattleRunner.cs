@@ -167,6 +167,12 @@ namespace SeoYuGi.BattleView
                 }
             };
 
+            // 해킹 게이지 클릭 — H키와 같은 제출 경로 (2026-09-05 슬롯 클릭화)
+            hud.OnHackClicked += () =>
+            {
+                if (phase == Phase.Playing) intentSink.Submit(BattleIntent.Hack(playerUnitId));
+            };
+
             // 무전 패널 클릭 — 숫자키와 같은 전송 경로
             hud.OnChatClicked += lineId =>
             {
@@ -222,7 +228,6 @@ namespace SeoYuGi.BattleView
                 {
                     var from = v.transform.position;
                     GhostTrail.SpawnAt(v.gameObject, from, new Color(0.12f, 0.06f, 0.2f, 0.85f));
-                    VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f); // 검은 연기 펑 — SF 텔레포트(마법진+광기둥)는 세계관·크기 안 맞아 제거
                     v.CancelMove();
                 }
                 blinkSnapIds.Add(unitId); // 점멸 스냅 규칙 유지
@@ -335,6 +340,10 @@ namespace SeoYuGi.BattleView
                 PingMarker.Spawn(gridView.CoordToWorld(cell), teamColors[u.team], type);
                 battleAudio.PlaySfx("S29_Ping", 0.9f); // 핑 전용음 — 적 감지음과 분리
             }
+            // 핑 지휘 (연계 패스): 같은 팀 봇들이 6초간 복종 — ▼ 집결 / ! 집중 타겟
+            foreach (var drv in aiDrivers)
+                if (drv.Team == u.team)
+                    drv.CommandPing(new SeoYuGi.Prediction.Cell(cell.x, cell.y), type, Battle.time);
             if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
                 foreach (var s in NetLobby.Slots)
                     if (s.owner == SlotOwner.RemoteHuman && s.team == u.team)
@@ -980,10 +989,9 @@ namespace SeoYuGi.BattleView
             foreach (var s in matchSetup.slots)
                 if (s.owner == SlotOwner.Bot && !IsNetClient) // 클라는 AI 안 돌림 — 호스트 권위
                 {
-                    // 상대팀에 인간이 있는 봇만 예측 뇌 — "AI는 인간을 학습해 노린다"
-                    bool enemyHasHuman = s.team == 0 ? humanOnTeam1 : humanOnTeam0;
-                    var driver = new AiSlotDriver(s.unitId, s.cls, intentSink,
-                        enemyHasHuman ? predictor : null);
+                    // 예측 뇌는 전 봇 공통 (2026-09-05 연계 패스) — 아군 봇도 적을 예측 사격해
+                    // "읽고 쏘는" 플레이가 화면에 등장한다. 인간 학습 데이터는 여전히 적팀만 유효하게 쌓인다.
+                    var driver = new AiSlotDriver(s.unitId, s.cls, s.team, intentSink, predictor);
                     driver.OnPredictedShot += (attackerId, cell) =>
                     {
                         var target = new Coord(cell.X, cell.Y);
@@ -1011,8 +1019,8 @@ namespace SeoYuGi.BattleView
                 var movedView = viewRegistry.Get(unitId);
                 if (movedView != null && movedView.gameObject.activeInHierarchy)
                     movedView.PlayPath(path, moveConfig.hopDuration);
-                if (!IsNetClient && humanUnitIds.Contains(unitId))
-                    ObserveHumanPath(unitId, path); // 인간 슬롯 전원 학습 — 호스트/싱글만 (Predictor 호스트 전용)
+                if (!IsNetClient)
+                    ObserveUnitPath(unitId, path); // 전 유닛 학습 (2026-09-05) — 봇 경로도 쌓여야 아군 봇의 예측샷이 성립
                 if (unitId == playerUnitId)
                 {
                     battleAudio.PlaySfx(yellow ? "S7_YellowMove" : "S6_Hop", yellow ? 1f : 0.4f);
@@ -1145,11 +1153,14 @@ namespace SeoYuGi.BattleView
                 }
                 else if (hit) battleAudio.PlaySfx("S3_Hit", 0.8f);
 
-                // 예측 사격 결과 (G) — 맞으면 소름, 빗나가면 "배신 성공" 피드백
+                // 예측 사격 결과 (G) — 맞으면 소름, 빗나가면 "배신 성공" 피드백.
+                // 아군 봇도 예측샷을 쓰게 되면서(연계 패스) "읽혔습니다" 화법은 내가 당한 것에만 —
+                // 아군의 예측 적중은 "예측 적중!" 아군 연출로 분리.
                 if (predictedStrikes.Remove(strike))
                 {
                     var focus = gridView.CoordToWorld(strike.cells[strike.cells.Count / 2]);
-                    if (hit)
+                    bool againstMe = strike.team != playerTeam;
+                    if (hit && againstMe)
                     {
                         hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
                         battleAudio.PlaySfx("S26_PredictHit", 1.4f); // 예측 명중 스팅어 — 컨셉 상징음
@@ -1158,7 +1169,14 @@ namespace SeoYuGi.BattleView
                         ImpactFx.Punch(0.85f);
                         CameraShaker.Shake(0.4f);
                     }
-                    else
+                    else if (hit)
+                    {
+                        // 아군 봇의 예측 적중 — 팀이 "읽고 쏘는" 걸 보여주는 연계 연출
+                        battleAudio.PlaySfx("S26_PredictHit", 1.2f);
+                        ImpactVfx.Pillar(focus, new Color(0.8f, 0.45f, 1f));
+                        FloatingText.Spawn(focus, "예측 적중!", new Color(0.85f, 0.6f, 1f), 1.15f, 0.9f);
+                    }
+                    else if (againstMe)
                     {
                         hud.ShowSubtitle("빗나갔습니다. 평소와 다르게 움직이셨군요.", 2.2f);
                         ImpactVfx.Sparks(focus, machine: true, scale: 0.8f); // 빗나간 조준이 흩어짐
@@ -1176,7 +1194,16 @@ namespace SeoYuGi.BattleView
                     battleAudio.PlaySfx("S26_PredictHit", 1.4f);
                 }
             };
-            Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S30_Stun", 1f); // 스턴 전용음
+            Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S30_Stun", 1f); // 스턴 = 둔탁한 퍽 (재생성본 — 고역 없음 검증)
+            Combat.OnStunCombo += (victimId, attackerId) =>
+            {
+                // 연계 성사 — "스턴 중 추가타 +1"이 화면에 보상으로 찍힌다 (연계 패스 2026-09-05)
+                var vu = Battle.GetUnit(victimId);
+                if (vu == null || !(vu.team == playerTeam || playerVisibleFn(vu.pos))) return;
+                FloatingText.Spawn(gridView.CoordToWorld(vu.pos) + Vector3.up * 0.5f, "연계!",
+                    new Color(1f, 0.8f, 0.25f), 1.25f, 0.9f);
+                if (attackerId == playerUnitId) CameraShaker.Shake(0.15f); // 내 연계는 몸으로도
+            };
             Combat.OnSkillCast += (unitId, kind) =>
             {
                 battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
@@ -1268,7 +1295,6 @@ namespace SeoYuGi.BattleView
                     {
                         var from = v.transform.position;
                         GhostTrail.SpawnAt(v.gameObject, from, new Color(0.12f, 0.06f, 0.2f, 0.85f));
-                        VfxLibrary.Spawn(VfxLibrary.ToonPoofDark, from, 1.5f, 0.5f); // 검은 연기 펑 — SF 텔레포트(마법진+광기둥) 제거
                         CellFlash.Spawn(new Vector3(from.x, 0f, from.z), new Color(0.7f, 0.4f, 1f));
                         v.CancelMove();
                         v.SnapTo(unit.pos);
@@ -1370,12 +1396,13 @@ namespace SeoYuGi.BattleView
             };
 
             humanPrevPos.Clear();
-            foreach (var id in humanUnitIds)
-                humanPrevPos[id] = Battle.GetUnit(id).pos;
+            foreach (var u in Battle.Units)
+                humanPrevPos[u.id] = u.pos; // 전 유닛 — 봇 경로도 학습 (연계 패스)
             audioVisibleEnemies.Clear();
             ImpactFx.SetSuddenDeath(false); // 새 라운드 — 이전 라운드의 적색 맥동·잔여 글리치 제거
             input.enabled = false; // 카운트다운 종료 시 해제 — 클라도 조작(인텐트는 NetIntentSink가 호스트로 전송)
             phase = Phase.Playing;
+            Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
             countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
             countdownRunning = true;
 
@@ -1537,7 +1564,7 @@ namespace SeoYuGi.BattleView
                 case SkillKind.ShieldPush: return "S16_Smash"; // 전용 SFX 나오기 전 재활용
                 case SkillKind.Smash: return "S16_Smash";
                 case SkillKind.Dash: return "S17_Dash";
-                case SkillKind.Scream: return "S31_Scream";
+                case SkillKind.Scream: return "S31_Scream"; // 재생성 저음 비명 — 고역 스펙트럼 검사 통과분 (2026-09-05)
                 case SkillKind.Blink: return "S18_Blink";
                 case SkillKind.Claw: return "S16_Smash";
                 case SkillKind.Burst: return "S19_Burst";
@@ -1548,10 +1575,11 @@ namespace SeoYuGi.BattleView
             }
         }
 
-        /// <summary>인간 이동을 홉 단위로 Predictor에 공급 — 학습 단위는 개체(슬롯) (세부기획 E).</summary>
-        void ObserveHumanPath(int unitId, IReadOnlyList<Coord> path)
+        /// <summary>유닛 이동을 홉 단위로 Predictor에 공급 — 학습 단위는 개체(슬롯) (세부기획 E).
+        /// 2026-09-05: 인간 전용 → 전 유닛. 아군 봇의 적 봇 예측 사격에 필요.</summary>
+        void ObserveUnitPath(int unitId, IReadOnlyList<Coord> path)
         {
-            var from = humanPrevPos[unitId];
+            if (!humanPrevPos.TryGetValue(unitId, out var from)) from = Battle.GetUnit(unitId).pos;
             int team = Battle.GetUnit(unitId).team;
             foreach (var to in path)
             {
@@ -1806,9 +1834,9 @@ namespace SeoYuGi.BattleView
 
             SyncPresentation();
 
-            // 밀침·대시로 위치가 바뀌어도 다음 관찰의 From이 실제 직전 위치가 되도록 보정
-            foreach (var id in humanUnitIds)
-                humanPrevPos[id] = Battle.GetUnit(id).pos;
+            // 밀침·대시로 위치가 바뀌어도 다음 관찰의 From이 실제 직전 위치가 되도록 보정 (전 유닛 — 연계 패스)
+            foreach (var u in Battle.Units)
+                humanPrevPos[u.id] = u.pos;
         }
 
         bool playerWasOnHighland;

@@ -37,8 +37,8 @@ namespace SeoYuGi.BattleView
                 : new ParticleSystem.MinMaxCurve(1.2f * scale, 2.5f * scale);
             main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.13f * scale);
             main.gravityModifier = machine ? 1.6f : 0.5f;
-            main.startColor = machine
-                ? new ParticleSystem.MinMaxGradient(new Color(0.6f, 0.95f, 1f), Color.white)
+            main.startColor = machine // 매트화 — 기계 전기 스파크의 흰 끝점이 제일 번쩍였다
+                ? new ParticleSystem.MinMaxGradient(VfxTextures.Dim(new Color(0.6f, 0.95f, 1f)), VfxTextures.Dim(Color.white))
                 : new ParticleSystem.MinMaxGradient(new Color(0.55f, 0.47f, 0.38f), new Color(0.35f, 0.3f, 0.25f));
             main.maxParticles = 48;
 
@@ -72,7 +72,7 @@ namespace SeoYuGi.BattleView
             go.name = "ImpactPillar";
             go.transform.position = pos + Vector3.up * 0.1f;
             var fade = go.AddComponent<PillarFade>();
-            fade.color = color;
+            fade.color = VfxTextures.Dim(color); // 매트화 — 기둥도 전역 밝기 계수 (누락 보정 2026-09-05)
             // 광구 텍스처가 있으면 부드러운 빛기둥 — 없으면 민무늬 쿼드
             var glow = VfxTextures.Glow;
             go.GetComponent<Renderer>().material = glow != null ? glow : Mat;

@@ -50,6 +50,7 @@ namespace SeoYuGi.Battle
         public event Action<int, int> OnUnitKilled;                  // (deadId, killerId — NoUnit이면 환경사) — 킬로그용
         public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
         public event Action<int, float> OnStunned;       // (unitId, seconds)
+        public event Action<int, int> OnStunCombo;       // (victimId, attackerId) — 스턴 중 피격 = 연계 보너스 발동
         public event Action<int> OnWallCrash;            // 밀침으로 벽/맵 경계 충돌
 
         readonly List<TelegraphStrike> strikes = new List<TelegraphStrike>();
@@ -255,7 +256,15 @@ namespace SeoYuGi.Battle
                         hitIds.Add(occupantId);
                         Damage(occupant, skill.damage, dir, unit.id);
                         dealt += skill.damage;
-                        if (occupant.alive) Push(occupant, dir, 1, 0);
+                        if (occupant.alive)
+                        {
+                            Push(occupant, dir, 1, 0);
+                            if (skill.stunSeconds > 0f) // 돌파 스턴 (2026-09-05) — 들이받힌 적은 잠깐 휘청
+                            {
+                                occupant.stunnedUntil = Math.Max(occupant.stunnedUntil, State.time + skill.stunSeconds);
+                                OnStunned?.Invoke(occupant.id, skill.stunSeconds);
+                            }
+                        }
                     }
                     probe = next;
                     if (State.Grid.GetUnitAt(next) == Cell.NoUnit) landing = next; // 밀려나 비면 착지 후보
@@ -699,6 +708,12 @@ namespace SeoYuGi.Battle
         {
             if (amount <= 0) return;
             if (IsFlying(unit)) return; // 비행 중 무적
+            // 스턴 콤보 (2026-09-05 연계 패스): 스턴 중인 적을 때리면 +1 — "비명 → 집중 타격"이 보상받는 연계가 된다
+            if (unit.stunnedUntil > State.time && attackerId != Cell.NoUnit)
+            {
+                amount += 1;
+                OnStunCombo?.Invoke(unit.id, attackerId);
+            }
             unit.hp -= amount;
             OnUnitDamaged?.Invoke(unit.id, amount, hitDir);
             if (unit.hp <= 0)

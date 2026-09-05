@@ -16,7 +16,7 @@
     {
         ShieldPush, // 방패 밀어붙이기: 인접8 예고 → 피해1 + 2칸 밀침(벽꿍 +1)
         Smash,      // 강타: 인접8 예고 → 피해2 + 1칸 밀침
-        Dash,       // 돌파: 직선·대각 2칸 즉발 대시, 경로 적 피해+밀침, 유닛 통과(벽 불가)
+        Dash,       // 돌파: 직선·대각 즉발 대시, 경로 적 피해+밀침+0.8s 스턴, 유닛 통과(벽 불가)
         Scream,     // 비명 교란: 인접8 적 전원, 짧은 예고 후 스턴
         Blink,      // 그림자 도약: 5×5 내 점멸 + 일반공격 버프, 적 시야 밖이면 고스트 없음
         Claw,       // 발톱 쥐어짜기: 인접8 예고 → 피해3
@@ -42,7 +42,7 @@
         public int damage;
         public int range;
         public float cooldownSeconds;
-        public float stunSeconds;      // Scream 전용
+        public float stunSeconds;      // Scream·Dash — 판정/충돌 시 스턴 부여
     }
 
     /// <summary>클래스 정적 스탯. 스킬 실행은 CombatSystem.</summary>
@@ -94,7 +94,7 @@
                 move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.3f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 3, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 3, cooldownSeconds = 6f, stunSeconds = 0.8f }, // 들이받힌 적 0.8초 스턴 (2026-09-05)
                     new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 1.6f, damage = 0, range = 2, cooldownSeconds = 8f, stunSeconds = 1f }
                 }
             },

@@ -149,16 +149,11 @@ namespace SeoYuGi.BattleView
                     case UnitClass.Assassin:
                         // 기계 근접 — 광선검 베기 (팀색 슬래시) + 금속 불꽃 (HCFX 파스텔은 톤 불일치로 제거)
                         SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-40f, 40f), scale: 1.25f);
-                        if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, center + Vector3.up * 0.3f, 1.5f, 0.22f, hierarchyScale: true) == null)
-                            ImpactVfx.Sparks(center, machine: true);
+                        WarImpact(center, victimMachine: false); // 기계가 때림 → 동물 피격(흙) — War FX 단일 톤 (2026-09-05)
                         break;
                     default:
                         // 기계 원거리 — 연쇄 불꽃 (칸 안 크기, 칸마다 살짝 시차)
-                        FxSequencer.Stagger(cells, 0.07f, w =>
-                        {
-                            if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, w + Vector3.up * 0.25f, 1.5f, 0.2f, hierarchyScale: true) == null)
-                                ImpactVfx.Sparks(w, machine: true, scale: 1.2f); // 폴백
-                        });
+                        FxSequencer.Stagger(cells, 0.07f, w => WarImpact(w, victimMachine: false));
                         break;
                 }
                 return;
@@ -171,27 +166,27 @@ namespace SeoYuGi.BattleView
                     {
                         // 방패 밀어붙이기 — 미는 방향 가로 바람 + 먼지 구름
                         var dir = new Vector3(strike.pushDir.x, 0f, strike.pushDir.y);
-                        WindStreaks(center, dir);
-                        VfxLibrary.Spawn(VfxLibrary.ToonPoofClouds, center + Vector3.up * 0.2f, 1.6f, 0.55f);
+                        WindStreaks(center, dir); // 카툰 구름 제거 — 바람 줄기가 방향을 다 말해준다
                     }
                     else if (strike.damage >= 2)
                     {
-                        // 강타 — 카툰 크리티컬 (Wallcoeur), 없으면 ToonFX 펀치
-                        if (VfxLibrary.Spawn(VfxLibrary.WallCritical, center + Vector3.up * 0.3f, 1.6f, 0.4f, hierarchyScale: true) == null)
-                            VfxLibrary.Spawn(VfxLibrary.ToonPunchCritical, center + Vector3.up * 0.45f, 1.6f, 0.75f);
+                        // 강타 — 무거운 한 방: War FX 소형 폭발 + 팀색 광기둥
+                        VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.2f, 0.14f, hierarchyScale: true);
+                        ImpactVfx.Pillar(center, teamHi);
                     }
                     else
                     {
                         // 기본공격 — 칼 베기 호 (팀색 날)
                         SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-30f, 30f), scale: 1.15f);
-                        if (hit) VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, center + Vector3.up * 0.4f, 1.4f, 0.5f);
+                        if (hit) WarImpact(center, victimMachine: true); // 동물이 때림 → 기계 피격(금속)
                     }
                     break;
 
                 case UnitClass.Balance:
                     if (strike.stunSeconds > 0f) break; // 비명 — 시전 링이 주인공, 판정은 스턴 텍스트
-                    // 기본공격 — 주먹
-                    VfxLibrary.Spawn(VfxLibrary.ToonPunchNormal, center + Vector3.up * 0.45f, 1.5f, 0.6f);
+                    // 기본공격 — 몸통 박치기 베기 호 + 금속 탄착
+                    SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-25f, 25f), scale: 1.1f);
+                    if (hit) WarImpact(center, victimMachine: true);
                     break;
 
                 case UnitClass.Assassin:
@@ -208,13 +203,10 @@ namespace SeoYuGi.BattleView
                     break;
 
                 case UnitClass.Grenadier:
-                    // 폭탄 터짐 — 전쟁 톤 폭발을 칸 크기(0.18)로. 주변 십자는 먼지. 없으면 ToonFX 폴백
-                    if (VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.5f, 0.18f, hierarchyScale: true) == null &&
-                        VfxLibrary.Spawn(VfxLibrary.ToonExplosion, center + Vector3.up * 0.2f, 2f, 0.6f) == null)
-                        ImpactVfx.Sparks(center, machine: false, scale: 1.5f);
+                    // 폭탄 터짐 — War FX 소형 폭발, 주변 십자는 흙 탄착
+                    VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.5f, 0.18f, hierarchyScale: true);
                     for (int i = 1; i < cells.Count && i <= 4; i++)
-                        if (VfxLibrary.Spawn(VfxLibrary.PpfxDustHit, cells[i] + Vector3.up * 0.05f, 1.8f, 0.2f, hierarchyScale: true) == null)
-                            VfxLibrary.Spawn(VfxLibrary.ToonExplosionSimple, cells[i] + Vector3.up * 0.15f, 1.8f, 0.4f);
+                        VfxLibrary.Spawn(VfxLibrary.WarImpactDirt, cells[i] + Vector3.up * 0.08f, 1.6f, 0.2f, hierarchyScale: true);
                     break;
 
                 case UnitClass.Sniper:
@@ -226,9 +218,7 @@ namespace SeoYuGi.BattleView
                     {
                         // 탄착 — 피격자는 공격자 반대 팀: 기계가 쐈으면 동물(흙먼지), 동물이 쐈으면 기계(금속 불꽃)
                         var end = cells[cells.Count - 1];
-                        string impact = strike.team == 1 ? VfxLibrary.WarImpactDirt : VfxLibrary.WarImpactMetal;
-                        if (VfxLibrary.Spawn(impact, end + Vector3.up * 0.1f, 2f, 0.25f, hierarchyScale: true) == null)
-                            ImpactVfx.Sparks(end, machine: false, scale: 1f);
+                        WarImpact(end, victimMachine: strike.team != 1); // 탄착 — 피격자 재질대로
                     }
                     break;
             }
@@ -237,22 +227,25 @@ namespace SeoYuGi.BattleView
         /// <summary>공통 피격 리액션 — 기계=금속 불꽃(전쟁 팩, 칸 안 크기), 동물=만화 펀치. 기존 스파크 위에 얹는 층.</summary>
         public static void HitReaction(Vector3 pos, bool machine)
         {
-            if (machine)
-            {
-                // 타격 반응 상향 (2026-09-05 "전반적으로 약하다") — 스파크 0.22→0.3, 카툰 임팩트 0.35→0.5. 칸 크기 안에서 최대치.
-                if (VfxLibrary.Spawn(VfxLibrary.PpfxSparks, pos + Vector3.up * 0.3f, 1.4f, 0.3f, hierarchyScale: true) == null)
-                    ImpactVfx.Sparks(pos, machine: true);
-            }
-            else if (VfxLibrary.Spawn(VfxLibrary.WallToonImpact, pos + Vector3.up * 0.4f, 1.3f, 0.5f, hierarchyScale: true) == null)
-                VfxLibrary.Spawn(VfxLibrary.ToonPunchSmooth, pos + Vector3.up * 0.45f, 1.3f, 0.55f); // 카툰 타격팩 없으면 ToonFX
+            // War FX 단일 톤 (2026-09-05 "전부 war fx") — 재질만 갈린다: 기계=금속 탄착, 동물=흙 탄착
+            WarImpact(pos, victimMachine: machine);
         }
 
         /// <summary>격파 — 전쟁 톤 폭발+바닥 연기를 칸 크기로 (큰 연출은 격파에만). 기계는 전기 폭발을 얹는다.</summary>
         public static void Kill(Vector3 pos, bool machine)
         {
+            // 격파 — War FX 폭발 + 바닥 연기 (큰 연출은 격파에만). 기계는 전기 파편을 얹는다.
             VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, pos + Vector3.up * 0.05f, 3f, 0.16f, hierarchyScale: true);
             VfxLibrary.Spawn(VfxLibrary.WarSmokeGround, pos, 4f, 0.14f, hierarchyScale: true);
-            if (machine) VfxLibrary.Spawn(VfxLibrary.PpfxElectricExplosion, pos + Vector3.up * 0.2f, 2.5f, 0.2f, hierarchyScale: true);
+            if (machine) FxQuad.Burst(VfxTextures.Electric, pos + Vector3.up * 0.35f, new Color(0.6f, 0.95f, 1f), 10, 0.8f, 4f);
+        }
+
+        /// <summary>War FX 탄착 단일 통로 — 피격자 재질: 기계=금속, 동물=흙. 프리팹 없으면 절차 스파크 폴백.</summary>
+        static void WarImpact(Vector3 pos, bool victimMachine)
+        {
+            string path = victimMachine ? VfxLibrary.WarImpactMetal : VfxLibrary.WarImpactDirt;
+            if (VfxLibrary.Spawn(path, pos + Vector3.up * 0.1f, 1.6f, 0.2f, hierarchyScale: true) == null)
+                ImpactVfx.Sparks(pos, machine: victimMachine, scale: 1f);
         }
 
         // ── 내부 도우미 ──────────────────────────────────────────

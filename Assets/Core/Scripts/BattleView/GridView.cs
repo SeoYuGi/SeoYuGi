@@ -543,6 +543,15 @@ namespace SeoYuGi.BattleView
         void ResetTile(Coord c)
         {
             if (tiles[c.x, c.y] == null) return; // Void 칸
+
+            // 고지대 상판은 하이라이트(이동/조준/예고) 전용 캔버스 — 안개·매트·거점 틴트로는
+            // 절대 안 켠다. 평상시 회색 발판이 언덕을 덮어버리던 문제 (2026-09-05 "없애").
+            if (hillPlateCells.Contains(c))
+            {
+                ApplyBlock(c, null);
+                return;
+            }
+
             if (fogged.Contains(c))
             {
                 mpb.SetColor(BaseColorId, fogColor);

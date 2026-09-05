@@ -64,6 +64,7 @@ namespace SeoYuGi.BattleView
         /// <summary>효과음 1회. maxSeconds 지나면 잘라서 정지 (10초 원본 대응).</summary>
         public void PlaySfx(string name, float maxSeconds = 1.2f)
         {
+            Debug.Log($"[SFX] {name}"); // 임시 진단 (2026-09-05) — 거슬리는 소리 범인 색출용, 확인 후 제거
             PlayOneShot("SFX/" + name, sfxVolume, maxSeconds);
         }
 
@@ -73,14 +74,23 @@ namespace SeoYuGi.BattleView
             return PlayOneShot("Voice/" + name, voiceVolume, 30f);
         }
 
+        const int MaxOneShots = 8; // 동시 재생 상한 — 난전에서 소스가 겹치면 합산 클리핑으로 "끼익" 찢어진다 (2026-09-05)
+
         float PlayOneShot(string path, float volume, float maxSeconds)
         {
             var clip = Load(path);
             if (clip == null) return 0f;
+
+            // 상한 초과 시 이번 소리는 생략 — 이미 8겹이면 어차피 안 들리고 파형만 깨진다
+            int playing = 0;
+            foreach (var s in GetComponents<AudioSource>())
+                if (s != null && s.isPlaying && s != bgm) playing++;
+            if (playing >= MaxOneShots) return 0f;
+
             var src = gameObject.AddComponent<AudioSource>();
             src.playOnAwake = false;
             src.clip = clip;
-            src.volume = volume;
+            src.volume = volume * 0.8f; // 합산 여유 — 개별 소리가 아니라 총합이 깨지는 걸 막는다
             src.Play();
             float length = Mathf.Min(maxSeconds, clip.length);
             Destroy(src, length + 0.05f);

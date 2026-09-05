@@ -15,7 +15,7 @@ namespace SeoYuGi.BattleView
         /// 화면이 전부 빛나면 아무것도 도드라지지 않아 예고·화살표 같은 정보가 묻힌다.
         /// FxQuad가 모든 절차 VFX의 단일 통로라 여기 한 곳만 만지면 전부 따라온다.
         /// </summary>
-        public const float Brightness = 0.55f;
+        public const float Brightness = 0.42f; // 0.55도 아직 번쩍였다 (2026-09-05 "매트하게")
 
         /// <summary>가산 VFX에 쓸 색 — 전역 밝기를 먹인다. 알파는 보존(수명 페이드가 쓴다).</summary>
         public static Color Dim(Color c)

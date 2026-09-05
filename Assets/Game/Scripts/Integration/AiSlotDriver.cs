@@ -18,9 +18,17 @@ namespace SeoYuGi.Integration
         /// <summary>예측 사격 성공 제출 (unitId, 목표 칸) — 적중/실패 연출 배선용.</summary>
         public event System.Action<int, SeoYuGi.Prediction.Cell> OnPredictedShot;
 
-        public AiSlotDriver(int unitId, UnitClass cls, IIntentSink sink, Predictor predictor = null)
+        /// <summary>이 봇의 팀 — 핑 지휘 배달 필터용.</summary>
+        public int Team { get; }
+        public int UnitId => unitId;
+
+        /// <summary>아군 인간의 핑 — 뇌에 전달 (▼ 집결 / ! 집중).</summary>
+        public void CommandPing(SeoYuGi.Prediction.Cell cell, int type, float now) => brain.CommandPing(cell, type, now);
+
+        public AiSlotDriver(int unitId, UnitClass cls, int team, IIntentSink sink, Predictor predictor = null)
         {
             this.unitId = unitId;
+            Team = team;
             this.sink = sink;
             brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor);
         }

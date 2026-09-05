@@ -20,6 +20,7 @@ namespace SeoYuGi.BattleView
         [SerializeField] float wallHeight = 0.6f; // 장애물 벽 블록 높이
         [SerializeField] float highlandHeight = 0.35f; // 고지대 단상 높이 (벽보다 낮아 올라선 유닛이 보임)
         [SerializeField] Color fogColor = new Color(0.16f, 0.17f, 0.22f); // 시야 밖 타일 — 어둡게 죽여 색 정보 제거
+        [SerializeField] Color matDim = new Color(0.6f, 0.62f, 0.68f);    // 전투 매트 — 기본 타일 명도를 눌러 하이라이트 대비 확보
         [SerializeField] Color fogOverlayColor = new Color(0.34f, 0.38f, 0.5f, 0.5f); // 시야 밖 안개 구름 레이어 — 어둡게 낮춰봤지만 구름이 보이는 쪽이 낫다는 결론, 원복 (2026-09-05)
         [SerializeField] float fogOverlayHeight = 1.0f; // 안개 레이어가 뜨는 높이 (타일·낮은 프롭 위)
 
@@ -384,7 +385,8 @@ namespace SeoYuGi.BattleView
             {
                 var c = coords[i];
                 if (!grid.InBounds(c) || tiles[c.x, c.y] == null) continue; // Void 칸은 타일 없음
-                mpb.SetColor(BaseColorId, colors[i]);
+                // 틴트는 텍스처와 곱해져 어두워진다 — 흰쪽으로 살짝 끌어올려 매트 깔린 바닥 위에서 확실히 뜨게 (가시성 패스)
+                mpb.SetColor(BaseColorId, Color.Lerp(colors[i], Color.white, 0.3f));
                 ApplyBlock(c, mpb);
                 highlighted.Add(c);
             }
@@ -553,7 +555,10 @@ namespace SeoYuGi.BattleView
             }
             else
             {
-                ApplyBlock(c, null); // 원본 텍스처 색
+                // 전투 매트 (가시성 패스 2026-09-05, 탱고파이브 문법): 기본 타일을 살짝 눌러
+                // 이동·조준·예고 하이라이트가 화면에서 가장 밝게 뜨게. 안개(0.16)보단 확실히 밝다.
+                mpb.SetColor(BaseColorId, matDim);
+                ApplyBlock(c, mpb);
             }
         }
 

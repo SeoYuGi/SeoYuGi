@@ -264,7 +264,7 @@ namespace SeoYuGi.Battle
                 probe = next;
                 landing = next;
             }
-            if (landing == unit.pos && hitIds.Count == 0) return ActDenied.BadTarget; // 아무 일도 없음
+            // 헛돌파도 허용 (2026-09-05 "예측샷") — 아무 일 없어도 시전은 성립, 쿨타임이 대가
 
             if (landing != unit.pos)
             {
@@ -370,17 +370,23 @@ namespace SeoYuGi.Battle
 
         ActDenied CastKnockShot(UnitState unit, Coord target, SkillDef skill)
         {
-            // 인접8 적에게 즉발 피해 + 본인이 반대 방향 2칸 후퇴 (벽 막힘, 낙하 자기 부담)
+            // 인접8 즉발 사격 + 본인이 반대 방향 후퇴 (벽 막힘, 낙하 자기 부담).
+            // 허공 발사 허용 (2026-09-05 "예측샷"): 적이 없어도 쏜다 — 셀프 넉백을 기동기로 쓰거나 헛방 리스크를 진다.
             if (!InMeleeRange(unit.pos, target, skill.range)) return ActDenied.BadTarget; // 근접 스킬 사거리 = 표(SkillDef.range)
-            int victimId = State.Grid.GetUnitAt(target);
-            if (victimId == Cell.NoUnit) return ActDenied.BadTarget;
-            var victim = State.GetUnit(victimId);
-            if (victim.team == unit.team || IsFlying(victim)) return ActDenied.BadTarget;
+            if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             var d = target - unit.pos;
             var dir = new Coord(Math.Sign(d.x), Math.Sign(d.y));
-            Damage(victim, skill.damage, dir, unit.id);
-            OnDamageDealt?.Invoke(unit.id, skill.damage); // 즉발 명중도 예측 성공 취급
+            int victimId = State.Grid.GetUnitAt(target);
+            if (victimId != Cell.NoUnit)
+            {
+                var victim = State.GetUnit(victimId);
+                if (victim.team != unit.team && !IsFlying(victim))
+                {
+                    Damage(victim, skill.damage, dir, unit.id);
+                    OnDamageDealt?.Invoke(unit.id, skill.damage); // 즉발 명중도 예측 성공 취급
+                }
+            }
             PushSpecOf(SkillKind.KnockShot, out int knockCells, out _, out _);
             Push(unit, new Coord(-dir.x, -dir.y), knockCells, 0); // 셀프 넉백 — Push가 낙하·막힘 처리
             return ActDenied.None;

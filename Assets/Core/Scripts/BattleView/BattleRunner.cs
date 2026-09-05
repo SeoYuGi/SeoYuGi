@@ -80,6 +80,7 @@ namespace SeoYuGi.BattleView
         HackSystem hackSystem; // 해킹 궁게이지 — 매치당 1개, 라운드 넘겨 유지 (기획서 '해킹', 구 디코이)
         QuickChat quickChat;   // 빠른채팅 — 숫자키 1~8. 멀티에서 팀원에게 전달될 예정
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
+        readonly List<bool> zoneContestedPrev = new List<bool>(); // 거점 경합 상승 엣지 — S33 1회 재생용
 
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
         static readonly Key[] ChatKeys =
@@ -211,7 +212,7 @@ namespace SeoYuGi.BattleView
             var kind = (SkillKind)kindInt;
             battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
             if (IsUnitVisibleToPlayer(unitId))
-                SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam);
+                SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam, focus: unitId == playerUnitId);
             var v = viewRegistry.Get(unitId);
             // 스킬명 텍스트 제거 (가독성 패스 2026-09-05) — 예고 스킬 아이콘이 대체, 머리 위는 데미지·상태 전용
             if (kind == SkillKind.Blink)
@@ -265,7 +266,7 @@ namespace SeoYuGi.BattleView
             if (u != null) hackSystem?.MarkReveal(u.team, Battle.time); // 시야 강탈 창 복제 — 내 팀이면 적 표시
             var origin = u != null ? gridView.CoordToWorld(u.pos) : Vector3.zero;
             HackVfx.Play(this, origin, HackSystem.Duration);
-            battleAudio.PlaySfx("S18_Blink", 1.3f);
+            battleAudio.PlaySfx("S27_Hack", 2.2f); // 시야해킹 전용음
             hud.ShowSubtitle(u != null && u.team == playerTeam
                 ? "시야해킹 — 적 예측 마비" : "시야해킹 감지 — 예측 교란", 2.4f);
         }
@@ -332,7 +333,7 @@ namespace SeoYuGi.BattleView
             if (u.team == playerTeam)
             {
                 PingMarker.Spawn(gridView.CoordToWorld(cell), teamColors[u.team], type);
-                battleAudio.PlaySfx("S22_DetectPing", 0.9f);
+                battleAudio.PlaySfx("S29_Ping", 0.9f); // 핑 전용음 — 적 감지음과 분리
             }
             if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
                 foreach (var s in NetLobby.Slots)
@@ -345,7 +346,7 @@ namespace SeoYuGi.BattleView
             var u = Battle?.GetUnit(unitId);
             if (u == null || u.team != playerTeam) return; // 클라 — 내 팀 핑만
             PingMarker.Spawn(gridView.CoordToWorld(new Coord(x, y)), teamColors[u.team], type);
-            battleAudio.PlaySfx("S22_DetectPing", 0.9f);
+            battleAudio.PlaySfx("S29_Ping", 0.9f);
         }
 
         void HostOnRemotePing(ulong sender, int unitId, int x, int y, int type)
@@ -432,6 +433,25 @@ namespace SeoYuGi.BattleView
             }
 
             bool matched = task.IsCompleted && !task.IsFaulted && task.Result;
+
+            // 세션은 잡혀도 SDK가 NGO를 비동기로 시작한다 — 리스닝 전에 NetLobby.Begin()을 부르면
+            // CustomMessagingManager가 null (NRE). 실제 호스트/클라가 뜰 때까지 대기. (2026-09-05)
+            if (matched)
+            {
+                float t2 = 0f;
+                while (t2 < 10f && !NetBoot.IsOnline)
+                {
+                    popup.SetSearchDots(1 + (int)((t + t2) * 2f) % 3);
+                    t2 += Time.deltaTime;
+                    yield return null;
+                }
+                if (!NetBoot.IsOnline)
+                {
+                    Debug.LogWarning("세션 성사됐지만 NGO 미시작(10s) — 봇전으로");
+                    matched = false;
+                }
+            }
+
             UIManager.Instance.ClosePopupUI(popup);
 
             if (matched)
@@ -739,7 +759,7 @@ namespace SeoYuGi.BattleView
                                     StrikeVfx.MineNeon, 1.3f, 0.2f, HackSystem.StunSeconds);
                             }
                         }
-                battleAudio.PlaySfx("S18_Blink", 1.3f); // 전용 SFX 나오기 전까지 점멸음 재사용
+                battleAudio.PlaySfx("S27_Hack", 2.2f); // 시야해킹 전용음
                 hud.ShowSubtitle(u != null && u.team == playerTeam
                     ? "시야해킹 — 적 예측 마비" : "시야해킹 감지 — 예측 교란", 2.4f);
                 // 팀 자동 통보 — 성공 지점에서 쏴야 원격 클라·봇 해킹도 커버 (쿨다운 무시 규칙은 QuickChat이)
@@ -837,7 +857,7 @@ namespace SeoYuGi.BattleView
                     FloatingText.Spawn(healedView.transform.position, $"+{healed}", new Color(0.35f, 1f, 0.5f), 1.1f);
                 if (playerVisibleFn(pos))
                     CellFlash.Spawn(gridView.CoordToWorld(pos), new Color(0.4f, 1f, 0.55f));
-                battleAudio.PlaySfx("S5_ApRefund", 0.7f); // 전용 SFX 나오기 전까지 회복음 재사용
+                battleAudio.PlaySfx("S32_Heal", 0.8f); // 힐 전용음
             };
 
             if (!gridViewBuilt)
@@ -1132,6 +1152,7 @@ namespace SeoYuGi.BattleView
                     if (hit)
                     {
                         hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
+                        battleAudio.PlaySfx("S26_PredictHit", 1.4f); // 예측 명중 스팅어 — 컨셉 상징음
                         // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽혔다"가 읽힌다. (링 제거 — 기둥이 시그니처)
                         ImpactVfx.Pillar(focus, new Color(0.8f, 0.45f, 1f));
                         ImpactFx.Punch(0.85f);
@@ -1152,9 +1173,10 @@ namespace SeoYuGi.BattleView
                 {
                     nextFakeCalloutTime = Time.time + 8f;
                     hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
+                    battleAudio.PlaySfx("S26_PredictHit", 1.4f);
                 }
             };
-            Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S8_Guard", 0.8f); // 스턴 SFX (가드 사운드 재활용)
+            Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S30_Stun", 1f); // 스턴 전용음
             Combat.OnSkillCast += (unitId, kind) =>
             {
                 battleAudio.PlaySfx(SkillSfx(kind), 1.5f);
@@ -1163,7 +1185,7 @@ namespace SeoYuGi.BattleView
 
                 // 스킬 특성별 시전 VFX — 시야 안일 때만 (정보 누출 방지)
                 if (IsUnitVisibleToPlayer(unitId))
-                    SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam);
+                    SkillVfx.Cast(kind, gridView.CoordToWorld(Battle.GetUnit(unitId).pos), Battle.GetUnit(unitId).team == playerTeam, focus: unitId == playerUnitId);
 
                 // 클라 릴레이 — 시전자 팀 클라는 항상, 적팀 클라는 시전 위치가 시야 안일 때만
                 if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
@@ -1294,6 +1316,25 @@ namespace SeoYuGi.BattleView
                 var striker = Battle.GetUnit(strike.attackerId);
                 if (striker != null && visCells.Count > 0)
                     StrikeVfx.Resolve(strike, striker.unitClass, visCells, hit, strike.team == playerTeam);
+
+                // 인과선 (가시성 패스 2026-09-05): 공격자 → 피격 칸으로 팀색 선이 그어진다.
+                // 스파크만으론 "누가 때렸는지" 방향이 없어서 사건이 안 읽혔다. 내 관련이면 조금 오래.
+                if (striker != null && striker.alive && visCells.Count > 0)
+                {
+                    bool mineStrike = strike.team == playerTeam;
+                    LaserBeam.Flash(
+                        gridView.CoordToWorld(striker.pos) + Vector3.up * 0.55f,
+                        gridView.CoordToWorld(strike.aimCell) + Vector3.up * 0.3f,
+                        StrikeVfx.TeamColor(mineStrike),
+                        strike.attackerId == playerUnitId || StrikeCoversPlayer(strike) ? 0.26f : 0.15f);
+                }
+
+                // 내 공격 판정 표기 — 입력→결과 루프 닫기: 명중/빗나감이 그 자리에 뜬다
+                if (strike.attackerId == playerUnitId)
+                    FloatingText.Spawn(gridView.CoordToWorld(strike.aimCell),
+                        hit ? "명중!" : "빗나감",
+                        hit ? new Color(0.5f, 1f, 0.95f) : new Color(0.6f, 0.65f, 0.72f),
+                        hit ? 1.2f : 0.9f, 0.8f);
             };
 
             Combat.OnUnitDied += unitId =>
@@ -1425,6 +1466,7 @@ namespace SeoYuGi.BattleView
             hud.AddKill(killerName, victimName, feedColor);
             hud.PushEvent(killerName != null ? $"{killerName}이(가) {victimName} 처치!" : $"{victimName} 처치됨",
                 feedColor); // 상단 배너 전황 로그
+            hud.PingEdge(gridView.CoordToWorld(dead.pos), feedColor); // 프레임 밖 킬 — 가장자리 방향 화살표 (가시성 패스 D)
             battleAudio.PlayVoice(dead.team == playerTeam ? "Voice_AllyDown" : "Voice_EnemyDown");
         }
 
@@ -1495,7 +1537,7 @@ namespace SeoYuGi.BattleView
                 case SkillKind.ShieldPush: return "S16_Smash"; // 전용 SFX 나오기 전 재활용
                 case SkillKind.Smash: return "S16_Smash";
                 case SkillKind.Dash: return "S17_Dash";
-                case SkillKind.Scream: return "S8_Guard";
+                case SkillKind.Scream: return "S31_Scream";
                 case SkillKind.Blink: return "S18_Blink";
                 case SkillKind.Claw: return "S16_Smash";
                 case SkillKind.Burst: return "S19_Burst";
@@ -1702,6 +1744,7 @@ namespace SeoYuGi.BattleView
             if (hackReadyNow && !hackReadyAnnounced)
             {
                 hud.ShowAnnounce("시야해킹 준비 완료 — H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
+                battleAudio.PlaySfx("S28_HackReady", 1f);
                 battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             }
             hackReadyAnnounced = hackReadyNow;
@@ -1781,7 +1824,10 @@ namespace SeoYuGi.BattleView
             {
                 bool onHigh = Battle.Grid.IsHighland(me.pos);
                 if (onHigh && !playerWasOnHighland)
+                {
                     hud.ShowAnnounce("고지대 확보 — 시야 +2 · 사거리 +2 · 이동 +1", teamColors[playerTeam], 2.2f);
+                    battleAudio.PlaySfx("S34_Highland", 1.2f);
+                }
                 playerWasOnHighland = onHigh;
             }
 
@@ -1793,6 +1839,20 @@ namespace SeoYuGi.BattleView
                 float frac = z.capturingTeam >= 0 ? z.progress / roundConfig.captureSeconds : 0f;
                 zoneDiscs[i].SetProgress(frac, z.capturingTeam >= 0 ? teamColors[z.capturingTeam] : Color.clear);
                 if (z.capturingTeam >= 0 && z.progress > 0f) anyCapturing = true;
+
+                // 경합 감지 — 양 팀이 같은 거점을 밟는 순간 1회 긴장음 (게이지 동결의 청각 신호)
+                int c0 = 0, c1 = 0;
+                foreach (var cell in z.cells)
+                {
+                    int uid = Battle.Grid.GetUnitAt(cell);
+                    if (uid == SeoYuGi.Battle.Cell.NoUnit) continue; // Prediction.Cell과 모호 — 정규화
+                    if (Battle.GetUnit(uid).team == 0) c0++; else c1++;
+                }
+                bool contested = c0 > 0 && c1 > 0;
+                while (zoneContestedPrev.Count <= i) zoneContestedPrev.Add(false);
+                if (contested && !zoneContestedPrev[i])
+                    battleAudio.PlaySfx("S33_ZoneContest", 2.5f);
+                zoneContestedPrev[i] = contested;
             }
             battleAudio.SetCaptureLoop(anyCapturing);
 

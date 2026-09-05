@@ -34,6 +34,10 @@
         {
             var cfg = ForClassBase(cls);
             ApplyDifficulty(cfg);
+            // 가시성 패스 (2026-09-05): 6유닛 리얼타임이라 사건 밀도가 화면을 압도 —
+            // 전 난이도 공통으로 행동 템포를 15% 늦춰 동시 이벤트 수를 줄인다 (난이도 차등은 유지).
+            cfg.AttackInterval *= 1.15f;
+            cfg.MinDecisionInterval *= 1.15f;
             return cfg;
         }
 

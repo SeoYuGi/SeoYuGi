@@ -214,6 +214,47 @@ namespace SeoYuGi.BattleView
             Fill(new Rect(r.xMax - L, r.yMax - T, L, T), tick); Fill(new Rect(r.xMax - T, r.yMax - L, T, L), tick);
         }
 
+        // ── 가장자리 사건 화살표 — 프레임 밖에서 터진 킬 등을 방향으로 알림 (가시성 패스 D) ──
+
+        struct EdgePing { public Vector3 world; public Color color; public float until; }
+        readonly List<EdgePing> edgePings = new List<EdgePing>();
+
+        /// <summary>worldPos가 화면 밖이면 가장자리에 방향 화살표를 seconds 동안 표시.</summary>
+        public void PingEdge(Vector3 worldPos, Color color, float seconds = 2.2f)
+        {
+            edgePings.Add(new EdgePing { world = worldPos, color = color, until = Time.time + seconds });
+        }
+
+        void DrawEdgePings()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            for (int i = edgePings.Count - 1; i >= 0; i--)
+            {
+                if (Time.time >= edgePings[i].until) { edgePings.RemoveAt(i); continue; }
+                var vp = cam.WorldToViewportPoint(edgePings[i].world);
+                if (vp.z > 0f && vp.x > 0.04f && vp.x < 0.96f && vp.y > 0.06f && vp.y < 0.94f)
+                    continue; // 화면 안 — 화살표 불필요
+                if (vp.z < 0f) { vp.x = 1f - vp.x; vp.y = 1f - vp.y; } // 카메라 뒤 — 방향 뒤집기
+
+                // 화면 중심→사건 방향으로 가장자리에 클램프 (GUI 좌표는 y가 아래로 증가)
+                var dir = new Vector2(vp.x - 0.5f, -(vp.y - 0.5f));
+                if (dir.sqrMagnitude < 0.0001f) continue;
+                dir.Normalize();
+                var pos = new Vector2(W / 2f, H / 2f) + new Vector2(
+                    dir.x * (W / 2f - 46f), dir.y * (H / 2f - 46f));
+
+                float a = Mathf.Clamp01(edgePings[i].until - Time.time);
+                float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+                var saved = GUI.matrix;
+                GUIUtility.RotateAroundPivot(angle, pos); // GUI.matrix 스케일 위에서 논리 좌표 기준 회전
+                var c = edgePings[i].color;
+                ShadowLabel(new Rect(pos.x - 22f, pos.y - 16f, 44f, 32f), "▶",
+                    subtitleStyle, new Color(c.r, c.g, c.b, a));
+                GUI.matrix = saved;
+            }
+        }
+
         // ── 핑 휠 (휠 꾹) — 러너가 상태 주입, 그리기만 담당 ────────
 
         bool pingWheelOn;
@@ -378,6 +419,7 @@ namespace SeoYuGi.BattleView
                 DrawAnnounce();
                 DrawCountdown();
                 DrawThreat();
+                DrawEdgePings();
                 DrawPingWheel();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();

@@ -225,6 +225,8 @@ namespace SeoYuGi.BattleView
             var result = sink.Submit(BattleIntent.Move(selectedUnitId, dest));
             if (!result.accepted && !result.pending && result.moveDenied == MoveDenied.Locked)
                 Deny(); // 쿨타임 중 이동 시도 — 버저
+            else if (result.accepted || result.pending)
+                CellFlash.Spawn(gridView.CoordToWorld(dest), blueRangeColor, 0.45f, 0.9f); // 클릭 확인 — "여기로 간다"
             // 성공 시 연출은 MoveSystem.OnUnitMoved → BattleRunner가 재생
         }
 

@@ -121,7 +121,7 @@ public class UITitlePopup : UIPopup
         if (searchText == null)
         {
             searchText = MakeText("Searching", "", 26, FontStyle.Normal, new Color(0.6f, 0.9f, 1f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -130f), new Vector2(700f, 60f), GameFonts.Title);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -25f), new Vector2(700f, 60f), GameFonts.Title); // 링 위쪽 — 겹침 방지
 
             // 검정 배경 키잉 로드 — 링 텍스처는 plain black 위에 생성돼 그냥 쓰면 검정 사각형이 보인다
             var ringTex = BattleHud.LoadKeyed("UI/Ring_Zone");

@@ -19,23 +19,27 @@ namespace SeoYuGi.BattleView
         /// mine = 내 팀 시전. 색은 전부 팀 네온(내 팀 틸 / 적 레드-오렌지) — 클래스별 고유색을 버리고
         /// "누구 편 스킬인가"가 색 하나로 읽히게 (2026-09-05 색 통일). 형태(링·버스트·글로우)가 클래스를 말한다.
         /// </summary>
-        public static void Cast(SkillKind kind, Vector3 origin, bool mine)
+        /// <summary>focus = 내 유닛의 시전 (러너가 판단). 공통 대형 신호는 focus에만 —
+        /// 봇 6기 시전마다 섬광+링을 터뜨리면 화면이 번쩍임의 바다가 된다 (가시성 패스 2026-09-05).</summary>
+        public static void Cast(SkillKind kind, Vector3 origin, bool mine, bool focus = false)
         {
-            var c = StrikeVfx.TeamColor(mine);
-            var hi = StrikeVfx.TeamHi(mine);
+            // 색 언어: 빨강은 바닥 위협 예고 전용 — 적 시전은 팀색 주황으로 분리 (빨강 오염이 "뭐가 위험인지"를 망쳤다)
+            var c = mine ? StrikeVfx.MineNeon : new Color(1f, 0.55f, 0.2f, 0.95f);
+            var hi = Color.Lerp(c, Color.white, 0.55f);
             Color Alpha(Color col, float a) { col.a = a; return col; }
 
-            // 공통 시전 신호 — 어느 스킬이든 시전자 위에 큰 팀색 섬광 + 발밑 링. "누가 지금 스킬 썼다"가 먼저 읽히고,
-            // 스킬별 형태는 그 위에 얹힌다. (개별 형태만으론 전체 맵 뷰에서 묻혀서 잘 안 보였다 — 2026-09-05)
-            FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.7f, hi, 2.4f, 0.9f, 0.32f);
-            RingWave.Spawn(origin, Alpha(hi, 0.9f), 1.8f, 0.3f);
+            if (focus)
+            {
+                // 내 시전만 공통 대형 신호 — "내가 지금 스킬 썼다"는 몸으로 느껴야 하니까
+                FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.7f, hi, 2.4f, 0.9f, 0.32f);
+                RingWave.Spawn(origin, Alpha(hi, 0.9f), 1.8f, 0.3f);
+            }
 
             switch (kind)
             {
                 // 색은 팀이 쥐고, 클래스는 '형태'로 갈린다 — 링(밀침) / 기둥(강타) / 줄기(돌파) / 겹링(비명) / 발톱(할퀴기)
-                case SkillKind.ShieldPush: // 방패 밀침 — 납작하고 넓은 링 두 겹이 바깥으로 쿵
-                    RingWave.Spawn(origin, Alpha(hi, 0.95f), 4.2f, 0.4f);
-                    FxSequencer.Delay(0.1f, () => RingWave.Spawn(origin, Alpha(c, 0.7f), 5.2f, 0.6f));
+                case SkillKind.ShieldPush: // 방패 밀침 — 넓은 링 한 겹이 바깥으로 쿵 (링 총량 다이어트)
+                    RingWave.Spawn(origin, Alpha(hi, 0.95f), 4.6f, 0.45f);
                     break;
 
                 case SkillKind.Smash: // 강타 — 하늘에서 내리꽂는 광기둥 + 바닥 파쇄 링 + 파편
@@ -55,12 +59,10 @@ namespace SeoYuGi.BattleView
                     }
                     break;
 
-                case SkillKind.Scream: // 비명 교란 — 음파가 네 겹으로 빠르게 퍼짐 + 시전자 번쩍 (스턴의 시각 언어)
+                case SkillKind.Scream: // 비명 교란 — 음파 두 겹 + 시전자 번쩍 (네 겹은 링 홍수였다)
                     FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.6f, hi, 1.8f, 1.6f, 0.3f);
-                    RingWave.Spawn(origin, Alpha(hi, 0.95f), 2.5f, 0.35f);
-                    FxSequencer.Delay(0.1f, () => RingWave.Spawn(origin, Alpha(c, 0.8f), 3.8f, 0.5f));
-                    FxSequencer.Delay(0.2f, () => RingWave.Spawn(origin, Alpha(c, 0.6f), 5f, 0.65f));
-                    FxSequencer.Delay(0.3f, () => RingWave.Spawn(origin, Alpha(c, 0.4f), 6.2f, 0.8f));
+                    RingWave.Spawn(origin, Alpha(hi, 0.95f), 3f, 0.4f);
+                    FxSequencer.Delay(0.15f, () => RingWave.Spawn(origin, Alpha(c, 0.6f), 5.5f, 0.65f));
                     break;
 
                 case SkillKind.Blink: // 그림자 도약 — 이 origin은 도착지 (시뮬이 먼저 순간이동). 등장: 검은 연기 찢고 나타남

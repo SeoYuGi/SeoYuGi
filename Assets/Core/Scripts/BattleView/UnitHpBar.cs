@@ -29,6 +29,8 @@ namespace SeoYuGi.BattleView
         Transform fillTr, chipTr;
         float shownFrac = 1f; // 즉시 반영되는 실제 비율
         float chipFrac = 1f;  // 천천히 따라오는 잔상 비율
+        int lastHp = -1;          // 피격 감지용 — 줄어드는 순간 최근 피격 창 갱신
+        float recentHitUntil;     // 이 시각까지만 바 표시 (내 유닛 제외)
 
         /// <param name="pipColor">바 색 — 아군 초록, 적 빨강 (색 규칙 G). default = 초록.</param>
         /// <param name="alwaysShowPips">true면 풀피여도 표시 (내 유닛). 나머지는 다쳤을 때만.</param>
@@ -122,8 +124,11 @@ namespace SeoYuGi.BattleView
             transform.position = follow.position + Vector3.up * Height;
             if (cam != null) transform.rotation = cam.transform.rotation;
 
-            // 풀피는 바 숨김 (내 유닛 제외) — 머리 위 소음 감소 (가시성 F)
-            bool show = alwaysShowPips || unit.hp < unit.maxHp;
+            // 탱고파이브식 다이어트 (가시성 패스 2026-09-05): 내 유닛 외에는
+            // "최근 3초 안에 맞았을 때"만 바를 보여준다 — 상시 바 6개는 실루엣을 잡아먹는다.
+            if (unit.hp < lastHp) recentHitUntil = Time.time + 3f;
+            lastHp = unit.hp;
+            bool show = alwaysShowPips || (unit.hp < unit.maxHp && Time.time < recentHitUntil);
             if (backRend.enabled != show)
             {
                 backRend.enabled = show;

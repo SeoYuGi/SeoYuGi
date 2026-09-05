@@ -105,7 +105,7 @@ namespace SeoYuGi.BattleView
             overlay = Overlay.None;
             if (moveInput == null) moveInput = GetComponent<UnitMoveInput>();
 
-            iconMove = Resources.Load<Texture2D>("UI/Icon_Move");
+            iconMove = LoadKeyed("UI/Icon_Move"); // 검정 배경 키잉 — 알파 없는 생성 아이콘이 검은 사각형으로 붙는 것 방지 (2026-09-05)
             iconAttack = Resources.Load<Texture2D>("UI/Icon_Attack");
             iconGuard = Resources.Load<Texture2D>("UI/Icon_Guard");
             var myCls = battle.GetUnit(playerUnitId).unitClass;

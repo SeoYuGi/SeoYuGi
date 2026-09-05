@@ -1644,7 +1644,10 @@ namespace SeoYuGi.BattleView
                     if (strike.team == playerTeam || playerVisibleFn(c))
                     {
                         visCells.Add(gridView.CoordToWorld(c));
-                        CellFlash.Spawn(gridView.CoordToWorld(c), Color.white);
+                        // 흰색 CellFlash 제거 (2026-09-05 "흰 박스 로우폴리") — 민짜 쿼드가 사각형으로 보였다.
+                        // 판정 순간은 소프트 글로우(매트 노브 통제)로: 형태 없는 빛 번짐.
+                        FxQuad.One(VfxTextures.Glow, gridView.CoordToWorld(c) + Vector3.up * 0.25f,
+                            new Color(1f, 0.92f, 0.8f), 1.5f, 0.5f, 0.18f);
                         if (hit && pillars < 5) // 명중 판정 — 섬광 기둥 (예고→해소)
                         {
                             ImpactVfx.Pillar(gridView.CoordToWorld(c), new Color(1f, 0.75f, 0.45f));
@@ -1722,7 +1725,7 @@ namespace SeoYuGi.BattleView
             input.enabled = false; // 카운트다운 종료 시 해제 — 클라도 조작(인텐트는 NetIntentSink가 호스트로 전송)
             phase = Phase.Playing;
             Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
-            hud.ShowAnnounce("목표 — 거점 3개를 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
+            hud.ShowAnnounce("목표 — 거점을 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             killStreaks.Clear(); // 멀티킬 스트릭 리셋
             roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋

@@ -64,7 +64,7 @@ public class UILobbyPopup : UIPopup
         {
             var cls = (UnitClass)i;
             var pick = Get<GameObject>(i);
-            BindEvent(pick, _ => NetLobby.RequestClass(cls));
+            BindEvent(pick, _ => PickCard(cls)); // 3픽 — 편집 중인 칸(나 → 팀원1 → 팀원2)에 배정
             pickBackings[i] = pick.GetComponent<Image>();
             var portrait = pick.transform.Find("Portrait")?.GetComponent<Image>();
             var sprite = CardSprite(i);
@@ -88,35 +88,19 @@ public class UILobbyPopup : UIPopup
             slotRoots[i] = (RectTransform)slot;
             slotLabels[i] = slot.Find("LabelBack/Label")?.GetComponent<Text>();
             slotPortraits[i] = slot.Find("Portrait")?.GetComponent<Image>();
+            int slotIdx = i;
+            BindEvent(slot.gameObject, _ => SelectSlot(slotIdx)); // 내 팀 슬롯 클릭 = 그 칸 다시 고르기
         }
 
-        // 팀 채팅 — 역할 콜 버튼 + 자유 입력 (Enter 전송)
-        for (int i = 0; i < QuickLines.Length; i++)
+        // 팀 채팅·조인 코드 폐지 (2026-09-06) — 아군은 봇이라 말할 상대가 없고, 매칭은 자동이라 코드도 없다.
+        // 프리팹 요소는 살려두고 끈다 (프리팹 재빌드 없이).
+        foreach (var n in new[] { "ChatBack", "ChatLog", "ChatInput", "QC1", "QC2", "QC3", "QC4", "QC5", "QC6", "CodeText" })
         {
-            string line = QuickLines[i];
-            var qc = Get<GameObject>((int)Buttons.QC1 + i);
-            if (qc == null) continue;
-            BindEvent(qc, _ => NetLobby.SendChat(line));
-            var label = qc.GetComponentInChildren<Text>();
-            if (label != null) label.text = line;
+            var t = transform.Find(n);
+            if (t != null) t.gameObject.SetActive(false);
         }
-        // 채팅 컬럼 왼쪽으로 — 확대된 픽 카드(좌측 끝 -477)와 겹침 (2026-09-05)
-        foreach (var n in new[] { "ChatBack", "ChatLog", "ChatInput", "QC1", "QC2", "QC3", "QC4", "QC5", "QC6" })
-        {
-            var t = transform.Find(n) as RectTransform;
-            if (t != null) t.anchoredPosition = new Vector2(-720f, t.anchoredPosition.y);
-        }
-
-        chatLogText = transform.Find("ChatLog")?.GetComponent<Text>();
+        Get<GameObject>((int)Buttons.BtnCopyCode)?.SetActive(false);
         balanceText = transform.Find("BalanceText")?.GetComponent<Text>();
-        chatInput = transform.Find("ChatInput")?.GetComponent<InputField>();
-        NetLobby.OnChat += AddChat;
-
-        BindEvent(Get<GameObject>((int)Buttons.BtnCopyCode), _ =>
-        {
-            if (!string.IsNullOrEmpty(NetBoot.JoinCode))
-                GUIUtility.systemCopyBuffer = NetBoot.JoinCode;
-        });
         BindEvent(Get<GameObject>((int)Buttons.BtnStart), _ =>
         {
             if (!NetBoot.IsHost) return;
@@ -316,11 +300,30 @@ public class UILobbyPopup : UIPopup
         if (statusText != null) statusText.text = text;
     }
 
+    // ── 3픽: 나 → 팀원1 → 팀원2. 카드 클릭이 편집 칸에 들어가고 다음 칸으로 넘어간다. 슬롯 클릭으로 되돌아가 다시 고른다. ──
+    int editIdx;                 // 0 = 나, 1·2 = 내 팀 봇 (슬롯 순)
+    readonly System.Collections.Generic.List<int> myOrder = new System.Collections.Generic.List<int>(); // 내 팀 슬롯 인덱스, 나 먼저
+
+    void PickCard(UnitClass cls)
+    {
+        if (myOrder.Count == 0) return;
+        if (editIdx == 0) NetLobby.RequestClass(cls);
+        else NetLobby.RequestBotClass(NetLobby.Slots[myOrder[editIdx]].unitId, cls);
+        if (editIdx < myOrder.Count - 1) editIdx++;
+        Refresh();
+    }
+
+    void SelectSlot(int slotIdx)
+    {
+        int k = myOrder.IndexOf(slotIdx);
+        if (k < 0) return; // 상대팀(숨김)·미배정
+        editIdx = k;
+        Refresh();
+    }
+
     void Refresh()
     {
         RefreshCommanderLabel();
-        if (codeText != null)
-            codeText.text = string.IsNullOrEmpty(NetBoot.JoinCode) ? "" : $"조인 코드: {NetBoot.JoinCode}";
 
         var slots = NetLobby.Slots;
         if (slots == null) return;
@@ -345,6 +348,19 @@ public class UILobbyPopup : UIPopup
                 break;
             }
 
+        // 내 팀 순서 — 나 먼저, 그다음 봇(슬롯 순). 3픽의 편집 순서이자 슬롯 클릭의 역참조.
+        myOrder.Clear();
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].team == myTeam && slots[i].owner != SlotOwner.Bot && slots[i].clientId == localId) myOrder.Add(i);
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].team == myTeam && slots[i].owner == SlotOwner.Bot) myOrder.Add(i);
+        if (editIdx >= myOrder.Count) editIdx = 0;
+        int editSlot = myOrder.Count > 0 ? myOrder[editIdx] : -1;
+        if (editSlot >= 0) myCls = (int)slots[editSlot].cls; // 카드 커서 = 지금 고르는 칸의 클래스
+        if (statusText != null && myTeam >= 0)
+            statusText.text = editIdx == 0 ? "1/3  내 캐릭터를 고르세요"
+                : $"{editIdx + 1}/3  팀원 {editIdx} 캐릭터를 고르세요 (슬롯 클릭 = 다시 고르기)";
+
         // 상대팀 줄은 통째로 숨기고(조합 비공개 + 픽 카드 공간 확보), 내 팀은 항상 상단 줄에 (2026-09-05)
         int topIdx = 0;
         for (int i = 0; i < slotLabels.Length && i < slots.Length; i++)
@@ -352,19 +368,22 @@ public class UILobbyPopup : UIPopup
             var s = slots[i];
             bool me = s.owner != SlotOwner.Bot && s.clientId == localId;
 
+            bool editing = i == editSlot;
             if (slotRoots[i] != null)
             {
                 bool enemyRow = myTeam >= 0 && s.team != myTeam;
                 slotRoots[i].gameObject.SetActive(!enemyRow);
                 if (!enemyRow && topIdx < TopSlotPos.Length)
                     slotRoots[i].anchoredPosition = TopSlotPos[topIdx++];
+                slotRoots[i].localScale = editing ? Vector3.one * 1.08f : Vector3.one; // 지금 고르는 칸 살짝 크게
             }
 
             if (slotLabels[i] != null)
             {
-                string who = s.owner == SlotOwner.Bot ? "봇" : me ? "나" : "플레이어";
+                string who = s.owner == SlotOwner.Bot ? (s.manual ? "팀원" : "팀원(자동)") : me ? "나" : "플레이어";
                 slotLabels[i].text = $"{s.callsign} / {who}";
-                slotLabels[i].color = s.owner == SlotOwner.Bot ? new Color(0.6f, 0.6f, 0.6f)
+                slotLabels[i].color = editing ? new Color(0.45f, 1f, 0.95f)
+                    : s.owner == SlotOwner.Bot ? new Color(0.75f, 0.75f, 0.75f)
                     : me ? new Color(0.5f, 1f, 0.6f) : Color.white;
             }
 
@@ -398,19 +417,19 @@ public class UILobbyPopup : UIPopup
         if (balanceText == null) return;
         if (myTeam < 0) { balanceText.text = ""; return; }
 
-        bool hasTank = false, hasRusher = false; // 고라니 = 돌격형 (서포터 아님)
+        bool hasTank = false, hasRanged = false;
         var counts = new int[5];
         foreach (var s in slots)
         {
             if (s.team != myTeam) continue;
             counts[(int)s.cls]++;
             if (s.cls == UnitClass.Tank) hasTank = true;
-            if (s.cls == UnitClass.Balance) hasRusher = true;
+            if (s.cls == UnitClass.Grenadier || s.cls == UnitClass.Sniper) hasRanged = true;
         }
 
         var warns = new System.Collections.Generic.List<string>();
         if (!hasTank) warns.Add("탱커가 없습니다");
-        if (!hasRusher) warns.Add("돌격형이 없습니다");
+        if (!hasRanged) warns.Add("원거리가 없습니다");
         for (int c = 0; c < counts.Length; c++)
             if (counts[c] > 1) warns.Add($"{ClassName((UnitClass)c)} 중복 픽");
 

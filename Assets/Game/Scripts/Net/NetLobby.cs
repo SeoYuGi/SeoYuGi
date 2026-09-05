@@ -23,6 +23,7 @@ namespace SeoYuGi.Net
         const string MsgChatReq = "sy_chatq"; // client→host : 로비 채팅 요청 (텍스트)
         const string MsgChatBrd = "sy_chatb"; // host→client : 로비 채팅 배달 (콜사인+텍스트, 같은 팀만)
         const string MsgName = "sy_name";   // client→host : 닉네임 설정 요청 (2026-09-05)
+        const string MsgBotClass = "sy_bcls"; // client→host : 내 팀 봇 클래스 직접 지정 (2026-09-06 3픽 로비)
 
         // 슬롯 템플릿 — BattleRunner.roster와 동일한 6칸 (id, team, 콜사인)
         static readonly (int id, int team, string name)[] Template =
@@ -39,6 +40,7 @@ namespace SeoYuGi.Net
             public UnitClass cls;
             public SlotOwner owner;
             public ulong clientId; // RemoteHuman/LocalHuman(호스트 자신)일 때
+            public bool manual;    // 봇 클래스를 사람이 직접 지정했다 — 자동 밸런스가 안 건드린다
         }
 
         public static LobbySlot[] Slots { get; private set; }
@@ -82,6 +84,7 @@ namespace SeoYuGi.Net
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgSlot, OnSlotMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgName, OnNameMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgClass, OnClassMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgBotClass, OnBotClassMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgStart, OnStartMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatReq, OnChatReqMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatBrd, OnChatBrdMsg);
@@ -131,6 +134,31 @@ namespace SeoYuGi.Net
             using var w = new FastBufferWriter(8, Allocator.Temp);
             w.WriteValueSafe((int)cls);
             nm.CustomMessagingManager.SendNamedMessage(MsgClass, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>내 팀 봇 클래스 직접 지정 — 3픽 로비(나 → 팀원1 → 팀원2). 호스트가 팀 검증 후 적용.</summary>
+        public static void RequestBotClass(int unitId, UnitClass cls)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm.IsHost) { SetBotClass(nm.LocalClientId, unitId, cls); return; }
+            using var w = new FastBufferWriter(16, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe((int)cls);
+            nm.CustomMessagingManager.SendNamedMessage(MsgBotClass, NetworkManager.ServerClientId, w);
+        }
+
+        static void SetBotClass(ulong clientId, int unitId, UnitClass cls)
+        {
+            int team = -1;
+            foreach (var s in Slots)
+                if (s.owner != SlotOwner.Bot && s.clientId == clientId) { team = s.team; break; }
+            int idx = IndexOf(unitId);
+            if (team < 0 || idx < 0 || Slots[idx].owner != SlotOwner.Bot || Slots[idx].team != team) return; // 내 팀 봇만
+            Slots[idx].cls = cls;
+            Slots[idx].manual = true;
+            Slots[idx].callsign = ClassNames.Nick(team, cls);
+            Broadcast();
+            OnChanged?.Invoke();
         }
 
         /// <summary>로비 팀 채팅 — 호스트가 같은 팀에게만 배달 (왕자영요식 역할 콜).</summary>
@@ -242,7 +270,7 @@ namespace SeoYuGi.Net
                     { UnitClass.Tank, UnitClass.Balance, UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
                 bool hasTank = false, hasRusher = false;
                 for (int i = 0; i < Slots.Length; i++)
-                    if (Slots[i].team == team && Slots[i].owner != SlotOwner.Bot)
+                    if (Slots[i].team == team && (Slots[i].owner != SlotOwner.Bot || Slots[i].manual)) // 사람 픽 + 직접 지정한 봇은 고정
                     {
                         pool.Remove(Slots[i].cls);
                         if (Slots[i].cls == UnitClass.Tank) hasTank = true;
@@ -251,7 +279,7 @@ namespace SeoYuGi.Net
 
                 for (int i = 0; i < Slots.Length; i++)
                 {
-                    if (Slots[i].team != team || Slots[i].owner != SlotOwner.Bot) continue;
+                    if (Slots[i].team != team || Slots[i].owner != SlotOwner.Bot || Slots[i].manual) continue;
 
                     UnitClass want;
                     if (!hasTank && pool.Contains(UnitClass.Tank)) { want = UnitClass.Tank; hasTank = true; }
@@ -332,6 +360,7 @@ namespace SeoYuGi.Net
                     Slots[dst].callsign = callsign; // 닉네임은 사람을 따라간다 (2026-09-05)
                     break;
                 }
+            for (int i = 0; i < Slots.Length; i++) if (Slots[i].owner == SlotOwner.Bot) Slots[i].manual = false; // 직접 지정 해제 — 고른 사람이 팀을 옮겼다
             AssignBotClasses(); // 팀 변경 — 떠난 팀·새 팀 양쪽 봇이 역할을 다시 맞춘다 (2026-09-05 1:1 지휘 모드)
             Broadcast();
             OnChanged?.Invoke();
@@ -402,6 +431,7 @@ namespace SeoYuGi.Net
                 w.WriteValueSafe((int)s.cls);
                 w.WriteValueSafe((byte)s.owner);
                 w.WriteValueSafe(s.clientId);
+                w.WriteValueSafe((byte)(s.manual ? 1 : 0));
             }
             w.WriteValueSafe((byte)(Commander ? 1 : 0));
             nm.CustomMessagingManager.SendNamedMessageToAll(MsgLobby, w);
@@ -423,6 +453,8 @@ namespace SeoYuGi.Net
                 r.ReadValueSafe(out byte owner);
                 slots[i].owner = (SlotOwner)owner;
                 r.ReadValueSafe(out slots[i].clientId);
+                r.ReadValueSafe(out byte manual);
+                slots[i].manual = manual != 0;
             }
             r.ReadValueSafe(out byte commander);
             Commander = commander != 0;
@@ -449,6 +481,14 @@ namespace SeoYuGi.Net
             if (!NetworkManager.Singleton.IsHost) return;
             r.ReadValueSafe(out int cls);
             SetClass(sender, (UnitClass)cls);
+        }
+
+        static void OnBotClassMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int cls);
+            SetBotClass(sender, unitId, (UnitClass)cls);
         }
 
         static void OnChatReqMsg(ulong sender, FastBufferReader r)

@@ -167,7 +167,7 @@ namespace SeoYuGi.Battle
                     z.progress = 0f;
                     if (Rule != null) { Rule.OnZoneCaptured(zones.IndexOf(z)); SyncZoneActive(); }
                     OnZoneCaptured?.Invoke(z);
-                    if (Overtime) { EndRound(team); return; } // 추가시간엔 탈환이 곧 승리
+                    if (Overtime) { EndRound(team, EndReason.OvertimeCapture); return; } // 추가시간엔 탈환이 곧 승리
                 }
             }
         }
@@ -185,6 +185,10 @@ namespace SeoYuGi.Battle
             }
         }
 
+        /// <summary>라운드가 왜 끝났나 — 종료 연출·브리핑 문구용 (2026-09-05).</summary>
+        public enum EndReason { None, Elimination, AllZones, TimeoutZones, TimeoutAlive, OvertimeKill, OvertimeCapture }
+        public EndReason Reason { get; private set; } = EndReason.None;
+
         void CheckWin()
         {
             var alive = new int[2];
@@ -193,15 +197,15 @@ namespace SeoYuGi.Battle
             // 서든데스: 킬 즉시 승부
             if (Overtime) // 추가시간엔 킬이 곧 승부
             {
-                if (alive[0] < prevAlive[0] && alive[1] >= prevAlive[1]) { EndRound(1); return; }
-                if (alive[1] < prevAlive[1] && alive[0] >= prevAlive[0]) { EndRound(0); return; }
+                if (alive[0] < prevAlive[0] && alive[1] >= prevAlive[1]) { EndRound(1, EndReason.OvertimeKill); return; }
+                if (alive[1] < prevAlive[1] && alive[0] >= prevAlive[0]) { EndRound(0, EndReason.OvertimeKill); return; }
             }
             prevAlive[0] = alive[0];
             prevAlive[1] = alive[1];
 
             // 전멸
-            if (alive[0] == 0) { EndRound(1); return; }
-            if (alive[1] == 0) { EndRound(0); return; }
+            if (alive[0] == 0) { EndRound(1, EndReason.Elimination); return; }
+            if (alive[1] == 0) { EndRound(0, EndReason.Elimination); return; }
 
             // 거점 독점 — 활성 거점만 센다. 봉쇄된 거점을 세면 아무도 독점할 수 없어 라운드가 끝나지 않는다.
             var owned = new int[2];
@@ -213,14 +217,14 @@ namespace SeoYuGi.Battle
                 if (z.owner >= 0) owned[z.owner]++;
             }
 
-            if (activeZones > 0 && owned[0] == activeZones) { EndRound(0); return; }
-            if (activeZones > 0 && owned[1] == activeZones) { EndRound(1); return; }
+            if (activeZones > 0 && owned[0] == activeZones) { EndRound(0, EndReason.AllZones); return; }
+            if (activeZones > 0 && owned[1] == activeZones) { EndRound(1, EndReason.AllZones); return; }
 
             // 시간 초과 판정: 거점 수 → 생존 수 → 그래도 못 가리면 추가시간
             if (!Overtime && State.time >= Config.roundSeconds)
             {
-                if (owned[0] != owned[1]) { EndRound(owned[0] > owned[1] ? 0 : 1); return; }
-                if (alive[0] != alive[1]) { EndRound(alive[0] > alive[1] ? 0 : 1); return; }
+                if (owned[0] != owned[1]) { EndRound(owned[0] > owned[1] ? 0 : 1, EndReason.TimeoutZones); return; }
+                if (alive[0] != alive[1]) { EndRound(alive[0] > alive[1] ? 0 : 1, EndReason.TimeoutAlive); return; }
 
                 // 제한시간이 다 됐는데 거점도 생존도 같다 = 무승부. 여기서만 연장한다.
                 Overtime = true;
@@ -242,8 +246,9 @@ namespace SeoYuGi.Battle
                 if (u.alive) counts[u.team]++;
         }
 
-        void EndRound(int team)
+        void EndRound(int team, EndReason reason = EndReason.None)
         {
+            Reason = reason;
             Winner = team;
             OnRoundEnd?.Invoke(team);
         }

@@ -59,6 +59,7 @@ public class UIClassSelectPopup : UIPopup
         {
             teamCls[editIdx] = cls; // 자동 다음 칸 이동 없음 — 칩 클릭으로만 편집 칸 변경 (2026-09-05)
             if (editIdx == 0) AutoBalanceBots(); // 내 픽이 바뀌면 봇들이 조합을 맞춘다 (2026-09-05)
+            else botManual[editIdx - 1] = true;  // 봇 직접 지정 — 이후 자동 밸런스에서 제외 (2026-09-05)
             RefreshTeamStrip();
             return;
         }
@@ -68,18 +69,34 @@ public class UIClassSelectPopup : UIPopup
 
     /// <summary>봇 클래스 자동 밸런스 — 내 픽 기준으로 탱·서폿·딜 한 축씩 채운다 (2026-09-05 솔로 모드).
     /// 역할: 너구리=탱 / 고라니=서폿 / 검은냥·비둘기·까치=딜. 내가 뭘 잡든 나머지 두 축을 봇이 맡는다.</summary>
+    readonly bool[] botManual = new bool[2]; // 봇 칩 직접 지정 여부 — true면 자동 밸런스가 안 건드린다
+
     void AutoBalanceBots()
     {
         if (teamCls == null || teamCls.Length < 3) return;
         var dps = new[] { UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
+
+        // 고정 픽(나 + 수동 지정 봇)이 이미 맡은 축을 빼고, 부족한 축만 자동 봇이 채운다 (2026-09-05)
+        bool hasTank = false, hasSup = false;
+        for (int i = 0; i < 3; i++)
+        {
+            if (i > 0 && !botManual[i - 1]) continue; // 자동 봇의 기존 픽은 무시 — 다시 계산 대상
+            if (teamCls[i] == UnitClass.Tank) hasTank = true;
+            else if (teamCls[i] == UnitClass.Balance) hasSup = true;
+        }
+
         var need = new List<UnitClass>();
-        var mine = teamCls[0];
-        if (mine == UnitClass.Tank) { need.Add(UnitClass.Balance); need.Add(dps[UnityEngine.Random.Range(0, dps.Length)]); }
-        else if (mine == UnitClass.Balance) { need.Add(UnitClass.Tank); need.Add(dps[UnityEngine.Random.Range(0, dps.Length)]); }
-        else { need.Add(UnitClass.Tank); need.Add(UnitClass.Balance); }
-        if (UnityEngine.Random.value < 0.5f) need.Reverse(); // 어느 봇이 어느 축을 맡을지도 섞는다
-        teamCls[1] = need[0];
-        teamCls[2] = need[1];
+        if (!hasTank) need.Add(UnitClass.Tank);
+        if (!hasSup) need.Add(UnitClass.Balance);
+        if (need.Count == 2 && UnityEngine.Random.value < 0.5f) need.Reverse(); // 역할 배정도 섞는다
+
+        for (int b = 0; b < 2; b++)
+        {
+            if (botManual[b]) continue; // 직접 고른 봇은 존중
+            var want = need.Count > 0 ? need[0] : dps[UnityEngine.Random.Range(0, dps.Length)];
+            if (need.Count > 0) need.RemoveAt(0);
+            teamCls[b + 1] = want;
+        }
     }
 
     /// <summary>제한시간(초) 설정. 0 이하면 무제한. 종료 시 현재 선택으로 자동 확정.</summary>
@@ -100,6 +117,7 @@ public class UIClassSelectPopup : UIPopup
         teamNames = names;
         teamCls = (UnitClass[])initial.Clone();
         editIdx = 0;
+        botManual[0] = botManual[1] = false;
         AutoBalanceBots(); // 시작부터 밸런스 조합 — 봇 칸을 직접 바꾸면 그 선택이 유지된다
         BuildTeamStrip();
         BuildDifficultyBar();

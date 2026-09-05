@@ -32,11 +32,15 @@ namespace SeoYuGi.Net
         const string MsgPingShow = "sy_ps"; // 호스트 → 같은 팀 클라: 핑 표시
         const string MsgOrders = "sy_od";   // 클라 → 호스트: 지휘관 무전 명령 묶음 (SquadOrders) — 지휘관 대전 (2026-09-05)
         const string MsgRadioTime = "sy_rt"; // 호스트 → 전원: 무전 타임 시작/종료 (전원 동시 정지)
-        const float SnapInterval = 1f / 12f;
+        const string MsgRestart = "sy_rr";  // 호스트 → 전원: 매치 재시작 (R 전원 동의 성립 — 2026-09-05)
+        const string MsgPushed = "sy_pu";   // 호스트 → 전원: 강제 이동(밀침·던지기·낚아채기) — 클라 포물선 연출 (2026-09-05)
+        const float SnapInterval = 1f / 20f; // 12→20Hz (2026-09-05 "동기화가 늦나 봐") — 위치·거점 지연 축소
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
         public static event Action<int> OnBeginRound;                    // matchRound
-        public static event Action<int, int, int, bool, string[]> OnRoundEnd; // winner, w0, w1, matchOver, briefing
+        public static event Action<int, int, int, bool, string[], int[], int, int, int> OnRoundEnd; // winner, w0, w1, matchOver, briefing, zoneOwners, alive0, alive1, reason (호스트 확정치 — 2026-09-05)
+        public static event Action OnRestart; // 매치 재시작 — R 전원 동의
+        public static event Action<int, Coord, bool> OnClientPushed; // unitId, to, wallCrash — 강제 이동 연출
         public static event Action<int, int> OnClientDamage;             // unitId, dmg — 스냅샷 차분
         public static event Action<int> OnClientDeath;                   // unitId
         public static event Action<int, int> OnClientZoneOwner;          // zoneIdx, newOwner
@@ -89,6 +93,8 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgChatShow, OnChatShowMsg);
             mm.RegisterNamedMessageHandler(MsgReadyReq, OnReadyReqMsg);
             mm.RegisterNamedMessageHandler(MsgReadyState, OnReadyStateMsg);
+            mm.RegisterNamedMessageHandler(MsgRestart, OnRestartMsg);
+            mm.RegisterNamedMessageHandler(MsgPushed, OnPushedMsg);
             mm.RegisterNamedMessageHandler(MsgMoved, OnMovedMsg);
             mm.RegisterNamedMessageHandler(MsgHacked, OnHackedMsg);
             mm.RegisterNamedMessageHandler(MsgTele, OnTeleMsg);
@@ -552,7 +558,8 @@ namespace SeoYuGi.Net
         }
 
         /// <summary>호스트 — 라운드 종료. 브리핑은 클라별 유닛 기준이라 targeted 전송.</summary>
-        public static void HostSendRoundEnd(ulong clientId, int winner, int w0, int w1, bool matchOver, string[] briefing)
+        public static void HostSendRoundEnd(ulong clientId, int winner, int w0, int w1, bool matchOver, string[] briefing,
+            int[] zoneOwners = null, int alive0 = 0, int alive1 = 0, int reason = 0)
         {
             using var w = new FastBufferWriter(2048, Allocator.Temp);
             w.WriteValueSafe(winner);
@@ -563,7 +570,51 @@ namespace SeoYuGi.Net
             if (briefing != null)
                 foreach (var line in briefing)
                     w.WriteValueSafe(line);
+            // 거점 소유·생존 — 결과 화면은 클라 미러(12~20Hz 지연) 말고 호스트 확정치로 (2026-09-05)
+            w.WriteValueSafe(zoneOwners?.Length ?? 0);
+            if (zoneOwners != null)
+                foreach (var z in zoneOwners)
+                    w.WriteValueSafe(z);
+            w.WriteValueSafe(alive0);
+            w.WriteValueSafe(alive1);
+            w.WriteValueSafe(reason); // 종료 사유 — 왜 이겼/졌는지 (2026-09-05)
             NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgEnd, clientId, w);
+        }
+
+        /// <summary>호스트 — R 전원 동의 성립. 전원 로비/재시작으로.</summary>
+        public static void HostSendRestart()
+        {
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe((byte)1);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgRestart, w);
+        }
+
+        static void OnRestartMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            OnRestart?.Invoke();
+        }
+
+        /// <summary>호스트 — 강제 이동(밀침·던지기·낚아채기) 전파. 스냅샷 스냅 대신 포물선이 그려진다.</summary>
+        public static void HostSendPushed(int unitId, Coord to, bool wallCrash)
+        {
+            if (NetworkManager.Singleton?.CustomMessagingManager == null) return;
+            using var w = new FastBufferWriter(32, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(to.x);
+            w.WriteValueSafe(to.y);
+            w.WriteValueSafe(wallCrash);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgPushed, w);
+        }
+
+        static void OnPushedMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int x);
+            r.ReadValueSafe(out int y);
+            r.ReadValueSafe(out bool crash);
+            OnClientPushed?.Invoke(unitId, new Coord(x, y), crash);
         }
 
         // ── 클라 수신 ─────────────────────────────
@@ -586,8 +637,15 @@ namespace SeoYuGi.Net
             var lines = new string[lineCount];
             for (int i = 0; i < lineCount; i++)
                 r.ReadValueSafe(out lines[i]);
+            r.ReadValueSafe(out int zoneCount);
+            var zoneOwners = new int[zoneCount];
+            for (int i = 0; i < zoneCount; i++)
+                r.ReadValueSafe(out zoneOwners[i]);
+            r.ReadValueSafe(out int alive0);
+            r.ReadValueSafe(out int alive1);
+            r.ReadValueSafe(out int endReason);
             boundRound = -1; // 라운드 종료 — 잔여 스냅샷 드롭
-            OnRoundEnd?.Invoke(winner, w0, w1, matchOver, lines);
+            OnRoundEnd?.Invoke(winner, w0, w1, matchOver, lines, zoneOwners, alive0, alive1, endReason);
         }
 
         static void OnSnapMsg(ulong sender, FastBufferReader r)
@@ -598,7 +656,9 @@ namespace SeoYuGi.Net
             if (battle == null || matchRound != boundRound) return; // 조립 전/이전 라운드 — 드롭
 
             r.ReadValueSafe(out float time);
-            battle.time = time;
+            // 클라는 프레임마다 로컬 외삽(러너) — 스냅샷이 뒤로 끌면 예고 타이머가 덜컥거린다.
+            // 앞으로는 즉시, 뒤로는 0.5s 넘게 어긋났을 때만 강제 재동기 (2026-09-05 동기화 감사)
+            if (time > battle.time || time < battle.time - 0.5f) battle.time = time;
 
             r.ReadValueSafe(out byte unitCount);
             for (int i = 0; i < unitCount; i++)

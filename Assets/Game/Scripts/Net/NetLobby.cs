@@ -491,13 +491,19 @@ namespace SeoYuGi.Net
             OnMatchStart?.Invoke();
         }
 
-        /// <summary>내 클라이언트가 점유한 슬롯의 unitId. 없으면 -1.</summary>
+        /// <summary>내 클라이언트가 점유한 슬롯의 unitId. 없으면 -1.
+        /// 시작 페이로드(ReceivedSetup)가 정본 — 로비 Slots 미러는 브로드캐스트가 늦으면
+        /// (팀 변경·재시작 직후) 한 박자 뒤라, 미러만 보면 -1이 터졌다 (2026-09-05 예외 스택).</summary>
         public static int MyUnitId()
         {
             var nm = NetworkManager.Singleton;
-            if (nm == null || Slots == null) return -1;
-            foreach (var s in Slots)
-                if (s.owner != SlotOwner.Bot && s.clientId == nm.LocalClientId) return s.unitId;
+            if (nm == null) return -1;
+            if (ReceivedSetup != null && ReceivedSetup.slots != null)
+                foreach (var s in ReceivedSetup.slots)
+                    if (s.owner == SlotOwner.RemoteHuman && s.ownerClientId == nm.LocalClientId) return s.unitId;
+            if (Slots != null)
+                foreach (var s in Slots)
+                    if (s.owner != SlotOwner.Bot && s.clientId == nm.LocalClientId) return s.unitId;
             return -1;
         }
     }

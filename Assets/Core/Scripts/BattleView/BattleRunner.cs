@@ -576,6 +576,13 @@ namespace SeoYuGi.BattleView
             NetLobby.OnMatchStart += OnNetMatchStart; // 라운드 넘어 유지 — 1회 구독
             NetSync.OnBeginRound += OnNetBeginRound;
             NetSync.OnRoundEnd += OnNetRoundEnd;
+            NetSync.OnRestart += () => { if (IsNetClient) RestartMatch(); }; // R 전원 동의 — 클라도 로비로
+            NetSync.OnClientPushed += (unitId, to, crash) =>
+            {
+                if (!IsNetClient) return;
+                var v = viewRegistry.Get(unitId);
+                if (v != null && v.gameObject.activeInHierarchy) v.PlayThrow(to, crash); // 강제 이동 포물선 (2026-09-05)
+            };
             NetSync.OnClientDamage += OnNetDamage;
             NetSync.OnClientDeath += OnNetDeath;
             NetSync.OnClientZoneOwner += OnNetZoneOwner;
@@ -1067,6 +1074,12 @@ namespace SeoYuGi.BattleView
             matchSetup = setup;
             humanUnitIds = setup.HumanUnitIds();
             playerUnitId = NetLobby.MyUnitId();
+            if (playerUnitId < 0)
+            {
+                // 최후 방어 — 여기서 던지면 매치 시작 자체가 무너진다. 첫 슬롯 폴백 + 원인 로그 (2026-09-05)
+                Debug.LogError("매치 시작: 내 슬롯 미발견 (시작 페이로드·로비 미러 모두 미스) — 첫 슬롯 폴백");
+                playerUnitId = setup.slots[0].unitId;
+            }
             playerTeam = FindSlot(playerUnitId).team;
             // 해킹 시야 강탈 중엔 전부 보임 — 이 함수가 안개·적 예고 필터·타격 VFX 필터의 공통 기준이라 여기서 걷는다
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c)
@@ -1092,7 +1105,8 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>클라 — 라운드 종료 수신. 호스트와 같은 화면 전환.</summary>
-        void OnNetRoundEnd(int winner, int w0, int w1, bool matchOver, string[] briefing)
+        void OnNetRoundEnd(int winner, int w0, int w1, bool matchOver, string[] briefing,
+            int[] hostZoneOwners, int hostAlive0, int hostAlive1, int endReasonInt)
         {
             if (!IsNetClient) return;
             input.enabled = false;
@@ -1101,22 +1115,37 @@ namespace SeoYuGi.BattleView
 
             int endedRound = Match.CurrentRound;
             Match.RecordRoundResult(winner); // 결정론 — 호스트와 같은 스코어로 수렴
+            string reasonText = EndReasonText((RoundSystem.EndReason)endReasonInt, winner);
+            bool myWinR = winner == playerTeam;
             if (matchOver)
             {
-                hud.SetMatchStats(BuildMatchStats());
-                hud.ShowMatchEnd();
                 phase = Phase.MatchOver;
+                ResetReadyGate(); // R 동의 게이트 (2026-09-05)
                 bool myWin = winner == playerTeam;
-                battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
+                hud.SetMatchEndReason(reasonText);
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                {
+                    hud.SetMatchStats(BuildMatchStats());
+                    hud.ShowMatchEnd();
+                    battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
+                }));
             }
             else
             {
-                hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
-                hud.ShowBriefing(endedRound, winner, briefing, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                 phase = Phase.Briefing;
                 ResetReadyGate(); // 클라도 SPACE 동의 상태 초기화
-                battleAudio.PlayBgm("B3_Briefing");
-                battleAudio.SetTypingLoop(true);
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                {
+                    hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
+                    hud.SetBriefingReason(reasonText);
+                    // 거점·생존은 호스트 확정치 — 클라 미러는 스냅샷 지연으로 어긋날 수 있다 (2026-09-05 "동기화가 늦나 봐")
+                    var owners = hostZoneOwners != null && hostZoneOwners.Length > 0 ? hostZoneOwners : ZoneOwners();
+                    int aMine = playerTeam == 0 ? hostAlive0 : hostAlive1;
+                    int aFoe = playerTeam == 0 ? hostAlive1 : hostAlive0;
+                    hud.ShowBriefing(endedRound, winner, briefing, owners, aMine, aFoe);
+                    battleAudio.PlayBgm("B3_Briefing");
+                    battleAudio.SetTypingLoop(true);
+                }));
             }
         }
 
@@ -1805,6 +1834,14 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlaySfx("S4_Miss", 0.6f);
             };
 
+            Combat.OnIntercepted += blockerId =>
+            {
+                // 탄도 요격 가시화 — 표시가 없으면 "관통 버그"처럼 읽힌다 (2026-09-05)
+                var bu = Battle.GetUnit(blockerId);
+                if (bu != null && (bu.team == playerTeam || playerVisibleFn(bu.pos)))
+                    FloatingText.Spawn(gridView.CoordToWorld(bu.pos) + Vector3.up * 0.55f, "차단!",
+                        new Color(1f, 0.78f, 0.25f), 1.05f, 0.8f);
+            };
             Combat.OnStunCombo += (victimId, attackerId) =>
             {
                 // 연계 성사 — "스턴 중 추가타 +1"이 화면에 보상으로 찍힌다 (연계 패스 2026-09-05)
@@ -1839,9 +1876,35 @@ namespace SeoYuGi.BattleView
             {
                 int cells = Mathf.Max(Mathf.Abs(to.x - from.x), Mathf.Abs(to.y - from.y));
                 if (cells < 2 && !crashed) return;
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendPushed(unitId, to, crashed); // 클라도 포물선 — 없으면 스냅샷 순간이동 (2026-09-05)
                 var v = viewRegistry.Get(unitId);
                 if (v == null || !v.gameObject.activeInHierarchy) return; // 시야 밖 — 다시 보일 때 스냅
                 v.PlayThrow(to, crashed);
+            };
+            Combat.OnSnatched += (unitId, from, to) =>
+            {
+                // 낚아채기 끌기 — 호스트 화면은 비행 연출이 대상을 직접 끌지만, 클라는 릴레이가 없으면 순간이동
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendPushed(unitId, to, false);
+            };
+            Combat.OnCharged += (unitId, from, to) =>
+            {
+                // 방패 밀어붙이기·던지기 돌진 — 빠른 미끄러짐 + 후방 바람 줄기 (고라니 돌파와 같은 문법)
+                if (NetBoot.IsOnline && NetBoot.IsHost)
+                    NetSync.HostSendPushed(unitId, to, false);
+                var v = viewRegistry.Get(unitId);
+                if (v != null && v.gameObject.activeInHierarchy)
+                {
+                    v.CancelMove();
+                    v.PlaySlide(to, 0.13f);
+                    var w0 = gridView.CoordToWorld(from);
+                    var w1 = gridView.CoordToWorld(to);
+                    var dir = (w1 - w0).normalized;
+                    for (int i = 0; i < 3; i++)
+                        FxQuad.One(VfxTextures.Wind, w0 + Vector3.up * 0.35f + dir * (i * 0.3f),
+                            new Color(0.9f, 0.95f, 1f), 1.8f, 0.6f, 0.25f, velocity: -dir * 4f);
+                }
             };
             Combat.OnWallCrash += unitId =>
             {
@@ -2358,6 +2421,33 @@ namespace SeoYuGi.BattleView
             humanPrevPos[unitId] = from;
         }
 
+        /// <summary>종료 사유 → 배너·브리핑 문구 (내 관점).</summary>
+        string EndReasonText(RoundSystem.EndReason reason, int winnerTeam)
+        {
+            bool myWin = winnerTeam == playerTeam;
+            switch (reason)
+            {
+                case RoundSystem.EndReason.Elimination: return myWin ? "적 전멸!" : "아군 전멸";
+                case RoundSystem.EndReason.AllZones: return myWin ? "거점 전체 장악!" : "거점을 모두 내줬다";
+                case RoundSystem.EndReason.TimeoutZones: return myWin ? "시간 종료 — 거점 우세" : "시간 종료 — 거점 열세";
+                case RoundSystem.EndReason.TimeoutAlive: return myWin ? "시간 종료 — 생존 우세" : "시간 종료 — 생존 열세";
+                case RoundSystem.EndReason.OvertimeKill: return "추가시간 — 결정적 킬";
+                case RoundSystem.EndReason.OvertimeCapture: return "추가시간 — 거점 탈환";
+                default: return null;
+            }
+        }
+
+        /// <summary>종료 순간 연출 — 1.8초 슬로우모션 + 사유 대문짝, 그 다음 브리핑 (2026-09-05 "너무 빠르게 지나감").</summary>
+        System.Collections.IEnumerator RoundEndBeat(string reasonText, bool myWin, System.Action then)
+        {
+            if (!string.IsNullOrEmpty(reasonText))
+                hud.ShowAnnounce(reasonText, myWin ? new Color(0.45f, 1f, 0.7f) : new Color(1f, 0.5f, 0.4f), 1.9f);
+            Time.timeScale = 0.25f; // 마지막 장면을 천천히 — 무슨 일이 있었는지 눈에 담긴다
+            yield return new WaitForSecondsRealtime(1.8f);
+            Time.timeScale = 1f;
+            then();
+        }
+
         void OnRoundFinished(int winnerTeam)
         {
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
@@ -2372,34 +2462,47 @@ namespace SeoYuGi.BattleView
 
             int endedRound = Match.CurrentRound;
             bool matchOver = Match.RecordRoundResult(winnerTeam);
+            var endReason = Round.Reason;
+            string reasonText = EndReasonText(endReason, winnerTeam);
+            bool myWinR = winnerTeam == playerTeam;
 
-            // 온라인 호스트 — 클라마다 자기 유닛 기준 브리핑을 담아 종료 통지
+            // 온라인 호스트 — 클라마다 자기 유닛 기준 브리핑을 담아 종료 통지 (사유 포함)
             if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
                 foreach (var s in NetLobby.Slots)
                     if (s.owner == SlotOwner.RemoteHuman)
                         NetSync.HostSendRoundEnd(s.clientId, winnerTeam, Match.GetWins(0), Match.GetWins(1),
-                            matchOver, null); // AI 학습 브리핑 폐기 (2026-09-05) — 프로토콜은 유지, 내용만 비운다
+                            matchOver, null, // AI 학습 브리핑 폐기 (2026-09-05) — 프로토콜은 유지, 내용만 비운다
+                            ZoneOwners(), AliveCount(0), AliveCount(1), (int)endReason); // 결과 화면용 호스트 확정치
 
             if (matchOver)
             {
-                hud.SetMatchStats(BuildMatchStats());
-                hud.ShowMatchEnd();
                 phase = Phase.MatchOver;
+                ResetReadyGate(); // R 동의 게이트 (2026-09-05)
                 bool myWin = Match.MatchWinner == playerTeam;
-                battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
-                if (myWin) PlayVoiceLine("Voice_MatchWin", "예측 초과 — 통제 불능");
-                else PlayVoiceLine("Voice_MatchLose", "구역 통제권 회수됨");
+                hud.SetMatchEndReason(reasonText); // 최종 종료도 왜인지 (2026-09-05)
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                {
+                    hud.SetMatchStats(BuildMatchStats());
+                    hud.ShowMatchEnd();
+                    battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
+                    if (myWin) PlayVoiceLine("Voice_MatchWin", "예측 초과 — 통제 불능");
+                    else PlayVoiceLine("Voice_MatchLose", "구역 통제권 회수됨");
+                }));
             }
             else
             {
-                // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
-                hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
-                hud.ShowBriefing(endedRound, winnerTeam, null, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                 phase = Phase.Briefing;
                 ResetReadyGate(); // SPACE 동의 집계 초기화
-                battleAudio.PlayBgm("B3_Briefing");
-                battleAudio.SetTypingLoop(true);
-                PlayVoiceLine("Voice_PredictionApplied", "예측 모델 적용");
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                {
+                    // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
+                    hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
+                    hud.SetBriefingReason(reasonText);
+                    hud.ShowBriefing(endedRound, winnerTeam, null, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
+                    battleAudio.PlayBgm("B3_Briefing");
+                    battleAudio.SetTypingLoop(true);
+                    PlayVoiceLine("Voice_PredictionApplied", "예측 모델 적용");
+                }));
             }
         }
 
@@ -2421,14 +2524,19 @@ namespace SeoYuGi.BattleView
 
         void MarkReady(ulong clientId)
         {
-            if (phase != Phase.Briefing) return;
+            if (phase != Phase.Briefing && phase != Phase.MatchOver) return;
             readyClients.Add(clientId);
             int total = HumanCount();
             hud.SetReadyCount(readyClients.Count, total);
             if (NetBoot.IsOnline && NetBoot.IsHost)
                 NetSync.HostSendReadyState(readyClients.Count, total);
-            if (readyClients.Count >= total)
-                StartNextRound();
+            if (readyClients.Count < total) return;
+            if (phase == Phase.MatchOver) // R 전원 동의 — 새 매치 (SPACE 동의와 같은 관문, 2026-09-05)
+            {
+                if (NetBoot.IsOnline && NetBoot.IsHost) NetSync.HostSendRestart();
+                RestartMatch();
+            }
+            else StartNextRound();
         }
 
         void ResetReadyGate()
@@ -2510,8 +2618,18 @@ namespace SeoYuGi.BattleView
             }
             if (phase == Phase.MatchOver)
             {
-                if (!IsNetClient && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
-                    RestartMatch();
+                // R = 새 매치 동의 (SPACE 동의처럼 전원 관문 — 2026-09-05). 솔로는 1/1이라 즉시.
+                if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame && !localReady)
+                {
+                    if (!NetBoot.IsOnline) { RestartMatch(); return; }
+                    localReady = true;
+                    if (IsNetClient)
+                    {
+                        NetSync.ClientSendReady();
+                        hud.SetReadyCount(1, HumanCount()); // 낙관 표시 — 곧 호스트 브로드캐스트로 보정
+                    }
+                    else MarkReady(0UL); // 호스트 자신
+                }
                 return;
             }
 
@@ -2611,6 +2729,9 @@ namespace SeoYuGi.BattleView
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
             if (IsNetClient)
             {
+                // 시계 외삽 (2026-09-05 동기화 감사): 스냅샷 사이(50ms)에 시계가 얼면
+                // 예고 카운트다운·펄스가 계단이 된다 — 프레임마다 전진, 스냅샷은 보정만.
+                if (Battle != null) Battle.time += Time.deltaTime;
                 vision.Tick(); // 유닛 위치는 스냅샷이 갱신 — 시야는 완전 결정론이라 로컬 재계산
                 SyncPresentation();
                 return;

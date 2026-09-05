@@ -941,6 +941,13 @@ namespace SeoYuGi.BattleView
             GUI.color = myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f);
             GUI.Label(new Rect(box.x, box.y + 46, box.width, 26),
                 $"ROUND {briefingRound} — {(myWin ? "승리" : "패배")}", briefTitleStyle);
+            if (!string.IsNullOrEmpty(briefingReason))
+            {
+                GUI.color = Color.white;
+                ShadowLabel(new Rect(box.x, box.y + 96f, box.width, 18f), briefingReason,
+                    new GUIStyle(roundStyle) { fontSize = 14, alignment = TextAnchor.MiddleCenter },
+                    myWin ? new Color(0.6f, 1f, 0.75f) : new Color(1f, 0.6f, 0.5f));
+            }
             GUI.color = Color.white;
 
             DrawBriefingStatus(box);
@@ -1107,6 +1114,10 @@ namespace SeoYuGi.BattleView
         }
 
         string roundRuleChip; // 라운드 변형 규칙 상시 표시 — null이면 평범한 라운드
+        string briefingReason; // 라운드 종료 사유 한 줄 — 헤더 아래 (2026-09-05 "왜 이겼는지")
+        public void SetBriefingReason(string r) => briefingReason = r;
+        string matchEndReason; // 최종 종료 사유 (2026-09-05)
+        public void SetMatchEndReason(string r) => matchEndReason = r;
         public void SetRoundRule(string title) => roundRuleChip = title;
 
         /// <summary>매치엔드 통계 한 줄 — 초상+닉네임+K/D. 러너가 매치 종료 직전 채운다.</summary>
@@ -1245,8 +1256,10 @@ namespace SeoYuGi.BattleView
                     }
                     x += GroupGap;
                 }
+                string closing = myWin ? "도시 관리 AI 소탕 완료" : "작전 실패 — 재정비하라";
+                if (!string.IsNullOrEmpty(matchEndReason)) closing = $"{matchEndReason}  ·  {closing}"; // 왜인지 (2026-09-05)
                 ShadowLabel(new Rect(0, cy + 168f, W, 24f),
-                    myWin ? "도시 관리 AI 소탕 완료" : "작전 실패 — 재정비하라",
+                    closing,
                     new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
                     new Color(0.75f, 0.8f, 0.88f, scoreA * (1f - mvpT)));
             }
@@ -1344,7 +1357,8 @@ namespace SeoYuGi.BattleView
                     new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
                     new Color(0.88f, 0.9f, 0.96f, mvpT));
 
-                ShadowLabel(new Rect(0, big.yMax + 116f + rise * 0.3f, W, 20f), "R — 새 매치",
+                string rHint = readyTotal > 1 ? $"R — 새 매치 동의  ({readyCount}/{readyTotal})" : "R — 새 매치";
+                ShadowLabel(new Rect(0, big.yMax + 116f + rise * 0.3f, W, 20f), rHint,
                     new GUIStyle(roundStyle) { fontSize = 14, alignment = TextAnchor.MiddleCenter },
                     new Color(0.6f, 0.68f, 0.78f, (0.6f + 0.4f * Mathf.Sin(age * 3f)) * mvpT));
             }

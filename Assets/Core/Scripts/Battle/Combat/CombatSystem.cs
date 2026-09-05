@@ -59,6 +59,12 @@ namespace SeoYuGi.Battle
         public event Action<int> OnWallCrash;            // 밀침으로 벽/맵 경계 충돌
         /// <summary>(unitId, from, to, wallCrash) — 밀침 한 번의 전체 이동. 뷰가 궤적을 그리는 데 쓴다.</summary>
         public event Action<int, Coord, Coord, bool> OnPushed;
+        /// <summary>(unitId, from, to) — 낚아채기로 끌려온 이동. 클라 릴레이용 (2026-09-05 동기화 감사).</summary>
+        public event Action<int, Coord, Coord> OnSnatched;
+        /// <summary>(unitId, from, to) — 방패 밀어붙이기·던지기의 시전자 돌진 (2026-09-05 "고라니처럼").</summary>
+        public event Action<int, Coord, Coord> OnCharged;
+        /// <summary>(blockerId) — 탄이 목표 대신 경로 위 유닛에 막힘. "차단!" 표시용 (2026-09-05).</summary>
+        public event Action<int> OnIntercepted;
 
         readonly List<TelegraphStrike> strikes = new List<TelegraphStrike>();
 
@@ -470,8 +476,10 @@ namespace SeoYuGi.Battle
             }
 
             bool falls = State.Grid.IsHighland(victim.pos) && !State.Grid.IsHighland(landing);
+            var fromPos = victim.pos;
             State.Grid.MoveOccupant(victim.pos, landing);
             victim.pos = landing;
+            OnSnatched?.Invoke(victim.id, fromPos, landing); // 클라 릴레이 — 없으면 순간이동으로 보인다
             if (falls) OnWallCrash?.Invoke(victim.id); // 고지에서 끌려 내려오면 낙하 연출
         }
 
@@ -776,7 +784,27 @@ namespace SeoYuGi.Battle
         {
             var attacker = State.GetUnit(strike.attackerId);
             bool hit = false;
+            bool intercepted = false;
             int dealt = 0;
+
+            // 탄도 요격 (2026-09-05 "공격 경로에 겹치면 피격"): 직선 탄(평타·넉백샷·저격)은
+            // 공격선 중간 칸에 적이 서 있으면 목표 칸 전에 그 몸에 맞는다 — 몸으로 막기가 성립한다.
+            // 근접 평타는 중간 칸이 없어 그대로, 포물선(폭탄·낚아채기)·자기중심(비명)은 해당 없음.
+            if (attacker != null && strike.cells.Count == 1 &&
+                (strike.kind == SkillKind.BasicAttack || strike.kind == SkillKind.KnockShot || strike.kind == SkillKind.Snipe))
+            {
+                foreach (var c in LineBetween(attacker.pos, strike.cells[0]))
+                {
+                    int bid = State.Grid.GetUnitAt(c);
+                    if (bid == Cell.NoUnit) continue;
+                    var blocker = State.GetUnit(bid);
+                    if (blocker == null || !blocker.alive || blocker.team == strike.team || IsFlying(blocker)) continue;
+                    strike.cells[0] = c; // 요격 — 탄이 여기서 멈춘다
+                    intercepted = true;   // 몸으로 받은 탄은 회피 불가 — 빗나감 판정이 요격을 먹던 문제 (2026-09-05 "회피로 뜨던데")
+                    OnIntercepted?.Invoke(bid);
+                    break;
+                }
+            }
 
             // 유닛 잠금 예고(낚아채기) — 대상이 예고 중 이동했으면 현재 칸으로 판정을 옮긴다
             if (strike.targetUnitId != Cell.NoUnit)
@@ -807,7 +835,7 @@ namespace SeoYuGi.Battle
                 // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다.
                 // 빗나감 = "피해"만 무효 — 이동 성분(낚아채기 끌기·밀치기)은 그대로 간다 (2026-09-05
                 // "빗나가면 스킬이동을 포기하네"). 엄폐로 몸은 지켜도 위치는 뺏길 수 있다.
-                if (attacker != null && RollMiss(strike, attacker, unit))
+                if (!intercepted && attacker != null && RollMiss(strike, attacker, unit))
                 {
                     OnMissed?.Invoke(unit.id, strike.attackerId);
                     if (unit.alive && attacker.alive)
@@ -837,11 +865,43 @@ namespace SeoYuGi.Battle
                     SnatchPull(attacker, unit);
             }
 
+            // 방패 밀어붙이기·던지기 — 시전자가 목표 칸까지 실제 돌진 (2026-09-05 "고라니처럼").
+            // 대상을 밀어내거나 던져서 비운 그 칸에 들어선다. 허공 시전이면 그냥 돌진.
+            if ((strike.kind == SkillKind.ShieldPush || strike.kind == SkillKind.Smash) &&
+                attacker != null && attacker.alive && strike.cells.Count == 1)
+            {
+                var dest = strike.cells[0];
+                if (dest != attacker.pos && State.Grid.IsWalkableTerrain(dest) &&
+                    State.Grid.GetUnitAt(dest) == Cell.NoUnit)
+                {
+                    var chargeFrom = attacker.pos;
+                    State.Grid.MoveOccupant(attacker.pos, dest);
+                    attacker.pos = dest;
+                    OnCharged?.Invoke(attacker.id, chargeFrom, dest);
+                }
+            }
+
             // 적중 = 예측 성공 → 보상 훅 (해킹 게이지 충전 등은 구독자 소관)
             if (dealt > 0 && attacker != null && attacker.alive)
                 OnDamageDealt?.Invoke(attacker.id, dealt);
 
             OnStrikeResolved?.Invoke(strike, hit);
+        }
+
+        /// <summary>from→to 직선의 중간 칸들 (양 끝 제외, from에서 가까운 순) — 탄도 요격용 브레젠험.</summary>
+        static IEnumerable<Coord> LineBetween(Coord from, Coord to)
+        {
+            int dx = Math.Abs(to.x - from.x), dy = -Math.Abs(to.y - from.y);
+            int sx = Math.Sign(to.x - from.x), sy = Math.Sign(to.y - from.y);
+            int err = dx + dy, x = from.x, y = from.y;
+            while (true)
+            {
+                int e2 = 2 * err;
+                if (e2 >= dy) { err += dy; x += sx; }
+                if (e2 <= dx) { err += dx; y += sy; }
+                if (x == to.x && y == to.y) yield break;
+                yield return new Coord(x, y);
+            }
         }
 
         const float CoverMissMax = 0.5f; // 정면 엄폐 최대 빗나감 확률

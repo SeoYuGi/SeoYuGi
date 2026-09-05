@@ -368,5 +368,20 @@ namespace SeoYuGi.Battle.Tests
             Assert.AreEqual(new Coord(5, 6), enemy.pos, "적이 시전자 앞칸으로 끌려와야 한다");
             Assert.Less(enemy.hp, hp, "적 낚아채기는 피해 있음");
         }
+
+        [Test]
+        public void Attack_InterceptedByUnitOnPath()
+        {
+            // 탄도 요격 (2026-09-05): 허공 조준이라도 공격선 중간에 적이 서 있으면 그 몸에 맞는다
+            Add(1, 0, new Coord(5, 5), UnitClass.Sniper);
+            var blocker = Add(2, 1, new Coord(5, 7)); // 경로 위
+            int hp = blocker.hp;
+            var combat = NewCombat();
+
+            Assert.AreEqual(ActDenied.None, combat.TryAttack(1, new Coord(5, 8))); // 빈 칸 조준 (Square2 범위 3)
+            combat.Tick(2.0f);
+
+            Assert.Less(blocker.hp, hp, "경로 위의 적이 탄을 몸으로 받아야 한다");
+        }
     }
 }

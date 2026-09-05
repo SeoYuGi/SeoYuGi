@@ -44,8 +44,11 @@ public class UIClassSelectPopup : UIPopup
     readonly List<Text> slotLabels = new List<Text>();
     Text statusText;
 
+    bool bakedUi; // 베이크된 프리팹(SeoYuGi/UI/Bake ClassSelect Popup Prefab) — 배치는 프리팹이 정답, 코드는 덮어쓰지 않는다
+
     public override void Init()
     {
+        bakedUi = transform.Find("TeamSlot0") != null;
         Bind<GameObject>(typeof(Buttons));
         for (int i = 0; i < 5; i++)
         {
@@ -53,7 +56,8 @@ public class UIClassSelectPopup : UIPopup
             var rt = (RectTransform)Get<GameObject>(i).transform;
             cardRts[i] = rt;
             ClassCard.Build(rt, i, 1f);
-            rt.anchoredPosition = new Vector2((i - 2) * (ClassCard.BaseW + 22f), -125f); // 로비와 같은 자리 — 슬롯 줄 아래
+            if (!bakedUi)
+                rt.anchoredPosition = new Vector2((i - 2) * (ClassCard.BaseW + 22f), -125f); // 로비와 같은 자리 — 슬롯 줄 아래
             BindEvent(Get<GameObject>(i), _ => Pick(cls));
         }
     }
@@ -110,8 +114,13 @@ public class UIClassSelectPopup : UIPopup
         deadline = seconds > 0f ? Time.unscaledTime + seconds : -1f;
         if (timerText == null)
         {
-            timerText = MakeText(transform, "", 40, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0.5f, 1f), new Vector2(360f, -90f), new Vector2(200f, 56f), GameFonts.Title); // 제목(600폭) 오른쪽 옆
+            timerText = transform.Find("TimerText")?.GetComponent<Text>(); // 베이크된 프리팹 노드 우선
+            if (timerText == null)
+            {
+                timerText = MakeText(transform, "", 40, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+                    new Vector2(0.5f, 1f), new Vector2(360f, -90f), new Vector2(200f, 56f), GameFonts.Title); // 제목(600폭) 오른쪽 옆
+                timerText.gameObject.name = "TimerText";
+            }
         }
     }
 
@@ -127,6 +136,7 @@ public class UIClassSelectPopup : UIPopup
         BuildTeamSlots();
         // 훈련장(허수아비뿐)·튜토리얼(하급 고정)은 난이도 고를 게 없다 (2026-09-06)
         if (!GameModeState.Training && !Guide.TutorialMode) BuildDifficultyBar();
+        else transform.Find("DiffBar")?.gameObject.SetActive(false); // 베이크된 난이도 바는 숨긴다
         RefreshTeamSlots();
     }
 
@@ -143,6 +153,25 @@ public class UIClassSelectPopup : UIPopup
 
     void BuildDifficultyBar()
     {
+        // 베이크된 프리팹 노드 우선 — 배치는 프리팹, 클릭·선택 표시만 여기서
+        var baked = transform.Find("DiffBar");
+        if (baked != null)
+        {
+            baked.gameObject.SetActive(true);
+            for (int i = 0; i < 3; i++)
+            {
+                int idx = i;
+                var opt = baked.Find("Diff" + i);
+                if (opt == null) continue;
+                diffBgs[i] = opt.GetComponent<Image>();
+                if (diffBgs[i] != null) diffBgs[i].raycastTarget = true;
+                diffTexts[i] = opt.Find("Label")?.GetComponent<Text>();
+                BindEvent(opt.gameObject, _ => { AiConfig.Difficulty = DiffOptions[idx].diff; RefreshDifficulty(); });
+            }
+            RefreshDifficulty();
+            return;
+        }
+
         // 분대 슬롯 왼쪽에 세로로 쌓는다 — 슬롯 위 가로 띠는 편집 확대 슬롯과 겹쳤다 (2026-09-06 "슬롯 왼쪽으로").
         // 슬롯 왼끝 -250(3칸 기준) 에서 여유 두고 x -400. 라벨 → 하/중/상 순으로 내려간다.
         const float bw = 150f, bh = 36f, gap = 6f, x = -400f;
@@ -183,6 +212,36 @@ public class UIClassSelectPopup : UIPopup
     void BuildTeamSlots()
     {
         int n = teamNames.Length;
+
+        // 베이크된 프리팹 노드 우선 (SeoYuGi/UI/Bake ClassSelect Popup Prefab) — 배치는 프리팹, 값·이벤트만 여기서
+        if (bakedUi)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                var root = transform.Find("TeamSlot" + i) as RectTransform;
+                if (root == null) continue;
+                if (i >= n) { root.gameObject.SetActive(false); continue; } // 훈련장은 1칸
+                root.gameObject.SetActive(true);
+                if (n != 3) root.anchoredPosition = new Vector2((i - (n - 1) * 0.5f) * SlotGap, SlotY); // 1칸이면 가운데
+                int idx = i;
+                var rimg = root.GetComponent<Image>();
+                if (rimg != null) rimg.raycastTarget = true;
+                BindEvent(root.gameObject, _ => { editIdx = idx; RefreshTeamSlots(); });
+                slotRoots.Add(root);
+                slotPortraits.Add(root.Find("Portrait")?.GetComponent<Image>());
+                slotLabels.Add(root.Find("LabelBack/Label")?.GetComponent<Text>());
+            }
+            statusText = transform.Find("StatusText")?.GetComponent<Text>();
+            var launch = transform.Find("BtnLaunch");
+            if (launch != null)
+            {
+                var limg = launch.GetComponent<Image>();
+                if (limg != null) limg.raycastTarget = true;
+                BindEvent(launch.gameObject, _ => StartTeam());
+            }
+            return;
+        }
+
         var frame = UISkin.SlotFrame();
         // 로비 ApplySkin과 같은 내 팀(파랑) 틴트 — 프레임 디테일이 살아남게 밝게 끌어올린 값
         var frameColor = frame != null ? Color.Lerp(new Color(0.45f, 0.6f, 1f), Color.white, 0.45f)
@@ -193,6 +252,7 @@ public class UIClassSelectPopup : UIPopup
             int idx = i;
             float cx = (i - (n - 1) * 0.5f) * SlotGap; // 3칸이면 -220/0/220, 1칸(훈련장)이면 가운데
             var root = MakeImage(transform, frame, frameColor, new Vector2(0.5f, 0.5f), new Vector2(cx, SlotY), new Vector2(SlotW, SlotH));
+            root.name = "TeamSlot" + i;
             root.GetComponent<Image>().raycastTarget = true;
             BindEvent(root.gameObject, _ => { editIdx = idx; RefreshTeamSlots(); }); // 슬롯 클릭 = 그 칸 다시 고르기
             slotRoots.Add(root);
@@ -217,11 +277,13 @@ public class UIClassSelectPopup : UIPopup
 
         statusText = MakeText(transform, "", 26, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter,
             new Vector2(0.5f, 0.5f), new Vector2(0f, StatusY), new Vector2(700f, 44f), GameFonts.Hud);
+        statusText.gameObject.name = "StatusText";
 
         // 출격 — 로비 하단 버튼과 같은 판·치수·글자 (UILobbyPopup.BottomButtonSize)
         var plate = UISkin.ButtonPlate();
         var btn = MakeImage(transform, plate, plate != null ? Color.white : new Color(0.16f, 0.7f, 0.55f),
             new Vector2(0.5f, 0.5f), new Vector2(0f, ButtonY), UILobbyPopup.BottomButtonSize);
+        btn.name = "BtnLaunch";
         btn.GetComponent<Image>().raycastTarget = true;
         btn.GetComponent<Image>().preserveAspect = false; // 키잉 플레이트 비율 변화 대응 (2026-09-05)
         BindEvent(btn.gameObject, _ => StartTeam());

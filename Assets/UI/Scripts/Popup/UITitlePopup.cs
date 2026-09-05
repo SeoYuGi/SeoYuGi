@@ -79,11 +79,17 @@ public class UITitlePopup : UIPopup
 
     // ── 배치 ─────────────────────────────────────────────
 
-    /// <summary>배경 아트 — 원본 비율 유지, 화면과 비율이 다르면 남는 쪽은 검정.</summary>
+    /// <summary>배경 아트 — 원본 비율 유지, 화면과 비율이 다르면 남는 쪽은 검정.
+    /// 베이크된 프리팹(UITitlePopupBuilder)에 이미 있으면 그대로 재사용 — 사람이 고친 배치를 지킨다.</summary>
     RectTransform BuildBackground()
     {
         var oldLetter = transform.Find("Letterbox");
-        if (oldLetter != null) DestroyImmediate(oldLetter.gameObject); // Init 재실행 대비
+        if (oldLetter != null)
+        {
+            var baked = oldLetter.Find("Background") as RectTransform;
+            if (baked != null && baked.GetComponent<Image>()?.sprite != null) return baked;
+            DestroyImmediate(oldLetter.gameObject); // 스프라이트 없는 옛 잔재만 재생성
+        }
 
         var back = new GameObject("Letterbox", typeof(RectTransform), typeof(Image));
         var brt = (RectTransform)back.transform;
@@ -125,13 +131,17 @@ public class UITitlePopup : UIPopup
         BindEvent(btn, _ => { if (!searching) onClick?.Invoke(); });
 
         var rt = (RectTransform)btn.transform;
-        if (bgRect != null) rt.SetParent(bgRect, false);
-        var row = BtnRows[index];
-        rt.anchorMin = new Vector2(BtnX0, 1f - row.bottom);
-        rt.anchorMax = new Vector2(BtnX1, 1f - row.top);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
-        rt.SetAsLastSibling();
+        // 베이크된 프리팹이면 이미 배경 밑에 배치돼 있다 — 레이아웃을 덮어쓰지 않는다 (사람 수정 보존)
+        if (bgRect == null || rt.parent != bgRect)
+        {
+            if (bgRect != null) rt.SetParent(bgRect, false);
+            var row = BtnRows[index];
+            rt.anchorMin = new Vector2(BtnX0, 1f - row.bottom);
+            rt.anchorMax = new Vector2(BtnX1, 1f - row.top);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+            rt.SetAsLastSibling();
+        }
 
         // 레이캐스트만 받는 투명 Image. 프리팹의 Image가 있으면 그것을 쓴다.
         var img = btn.GetComponent<Image>();
@@ -243,7 +253,13 @@ public class UITitlePopup : UIPopup
     {
         var parent = bgRect != null ? bgRect : (RectTransform)transform;
         var existing = parent.Find(name);
-        if (existing != null) DestroyImmediate(existing.gameObject); // Init 재실행 대비
+        if (existing != null)
+        {
+            // 베이크된 프리팹 노드 재사용 — 배치는 프리팹이, 이벤트만 여기서 (BindEvent는 중복 안전)
+            existing.gameObject.SetActive(true);
+            BindEvent(existing.gameObject, _ => { if (!searching) onClick?.Invoke(); });
+            return;
+        }
 
         var go = new GameObject(name, typeof(RectTransform), typeof(Image));
         var rt = (RectTransform)go.transform;
@@ -282,38 +298,52 @@ public class UITitlePopup : UIPopup
         var parent = bgRect != null ? bgRect : (RectTransform)transform;
         var font = GameFonts.Title != null ? GameFonts.Title : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-        MakeText("NickLabel", "닉네임", 15, FontStyle.Normal, new Color(0.55f, 0.75f, 0.85f),
-            new Vector2(0.135f, 0.115f), Vector2.zero, new Vector2(220f, 22f), font);
-
-        var go = new GameObject("NickInput", typeof(RectTransform), typeof(Image));
-        var rt = (RectTransform)go.transform;
-        rt.SetParent(parent, false);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.135f, 0.075f);
-        rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(220f, 40f);
-        go.GetComponent<Image>().color = new Color(0.02f, 0.05f, 0.1f, 0.88f);
-
-        Text MakeChild(string n, string txt, Color c)
+        // 베이크된 프리팹(UITitlePopupBuilder)에 이미 있으면 배치는 프리팹 그대로, 값·리스너만 여기서
+        var baked = parent.Find("NickInput");
+        if (baked != null)
         {
-            var cgo = new GameObject(n, typeof(RectTransform), typeof(Text));
-            var crt = (RectTransform)cgo.transform;
-            crt.SetParent(rt, false);
-            crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
-            crt.offsetMin = new Vector2(12f, 4f); crt.offsetMax = new Vector2(-12f, -4f);
-            var t = cgo.GetComponent<Text>();
-            t.text = txt; t.fontSize = 18; t.color = c;
-            t.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 (2026-09-05)
-            t.font = font;
-            return t;
+            foreach (var t in baked.GetComponentsInChildren<Text>(true)) t.font = font; // 폰트는 런타임 로더가 정답
+            var label = parent.Find("NickLabel")?.GetComponent<Text>();
+            if (label != null) label.font = font;
+            nickInput = baked.GetComponent<InputField>();
         }
-        var textC = MakeChild("Text", "", new Color(0.9f, 0.96f, 1f));
-        var ph = MakeChild("Placeholder", "닉네임 입력 (엔터)", new Color(0.45f, 0.55f, 0.65f));
+        else
+        {
+            MakeText("NickLabel", "닉네임", 15, FontStyle.Normal, new Color(0.55f, 0.75f, 0.85f),
+                new Vector2(0.135f, 0.115f), Vector2.zero, new Vector2(220f, 22f), font);
 
-        nickInput = go.AddComponent<InputField>();
-        nickInput.textComponent = textC;
-        nickInput.placeholder = ph;
+            var go = new GameObject("NickInput", typeof(RectTransform), typeof(Image));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(parent, false);
+            rt.anchorMin = rt.anchorMax = new Vector2(0.135f, 0.075f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(220f, 40f);
+            go.GetComponent<Image>().color = new Color(0.02f, 0.05f, 0.1f, 0.88f);
+
+            Text MakeChild(string n, string txt, Color c)
+            {
+                var cgo = new GameObject(n, typeof(RectTransform), typeof(Text));
+                var crt = (RectTransform)cgo.transform;
+                crt.SetParent(rt, false);
+                crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
+                crt.offsetMin = new Vector2(12f, 4f); crt.offsetMax = new Vector2(-12f, -4f);
+                var t = cgo.GetComponent<Text>();
+                t.text = txt; t.fontSize = 18; t.color = c;
+                t.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 (2026-09-05)
+                t.font = font;
+                return t;
+            }
+            var textC = MakeChild("Text", "", new Color(0.9f, 0.96f, 1f));
+            var ph = MakeChild("Placeholder", "닉네임 입력 (엔터)", new Color(0.45f, 0.55f, 0.65f));
+
+            nickInput = go.AddComponent<InputField>();
+            nickInput.textComponent = textC;
+            nickInput.placeholder = ph;
+        }
+
         nickInput.characterLimit = 6; // 6자 제한 (2026-09-05)
         nickInput.text = PlayerPrefs.GetString("sy_nickname", "");
+        nickInput.onEndEdit.RemoveAllListeners(); // Init 재실행 대비
         nickInput.onEndEdit.AddListener(v =>
         {
             v = v?.Trim();

@@ -35,13 +35,44 @@ namespace SeoYuGi.UI
         static readonly Color DimText = new Color(0.55f, 0.62f, 0.72f);
         static readonly Color EmptyDot = new Color(0.16f, 0.19f, 0.26f);
 
-        /// <summary>카드 RectTransform에 클래스 i의 카드를 그린다. sizeDelta를 scale에 맞춰 설정한다.</summary>
+        /// <summary>카드 RectTransform에 클래스 i의 카드를 그린다. sizeDelta를 scale에 맞춰 설정한다.
+        /// 프리팹(Resources/UI/Prefabs/ClassCard_i)이 있으면 그것을 쓴다 — 배치는 프리팹에서 사람이 수정.
+        /// 프리팹은 에디터 메뉴 SeoYuGi/UI/Bake Class Card Prefabs 로 굽는다. 밸런스 수치가 바뀌면 다시 굽기.</summary>
         public static void Build(RectTransform card, int i, float scale = 1f)
         {
             // 작은 슬롯(로비 픽 칸 등)은 풀 카드 스탯이 깨알이 돼 못 읽는다 —
             // 초상+이름만 있는 컴팩트 카드로 분기. 글씨는 스케일 무관 고정 크기. (2026-09-05 "너무작아")
             if (scale < 0.5f) { BuildCompact(card, i); return; }
 
+            var prefab = Resources.Load<GameObject>("UI/Prefabs/ClassCard_" + i);
+            if (prefab != null) { BuildFromPrefab(card, prefab, scale); return; }
+
+            BuildCoded(card, i, scale);
+        }
+
+        /// <summary>베이크된 카드 프리팹을 슬롯에 끼운다 — 구조·배치는 프리팹, 크기만 scale.</summary>
+        static void BuildFromPrefab(RectTransform card, GameObject prefab, float scale)
+        {
+            card.anchorMin = card.anchorMax = card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(BaseW * scale, BaseH * scale);
+            ClearChildren(card);
+
+            var rootImg = card.GetComponent<Image>();
+            if (rootImg != null) { rootImg.sprite = null; rootImg.color = CardBg; }
+
+            var inst = UnityEngine.Object.Instantiate(prefab, card);
+            inst.name = "Card";
+            var rt = (RectTransform)inst.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.localScale = Vector3.one * scale;
+            foreach (var g in inst.GetComponentsInChildren<Graphic>(true))
+                g.raycastTarget = false; // 클릭은 슬롯 루트가 받는다
+        }
+
+        /// <summary>코드 드로잉 경로 — 프리팹이 없을 때의 폴백이자, 에디터 베이커가 굽는 원본.</summary>
+        public static void BuildCoded(RectTransform card, int i, float scale = 1f)
+        {
             var meta = Meta[i];
             var def = ClassCatalog.Get((UnitClass)i);
             float W = BaseW * scale, H = BaseH * scale;
@@ -125,11 +156,16 @@ namespace SeoYuGi.UI
         }
 
         /// <summary>프리팹 기존 자식 전부 제거 — 옛 이름(치즈태비)·초상·라벨 잔재가
-        /// 이름 규칙과 무관하게 남아 카드를 뚫고 보이던 문제. ClassCard가 전부 새로 그린다.</summary>
+        /// 이름 규칙과 무관하게 남아 카드를 뚫고 보이던 문제. ClassCard가 전부 새로 그린다.
+        /// 에디터(베이크) 중엔 Destroy가 금지라 즉시 제거로 분기.</summary>
         static void ClearChildren(RectTransform card)
         {
             for (int c = card.childCount - 1; c >= 0; c--)
-                UnityEngine.Object.Destroy(card.GetChild(c).gameObject);
+            {
+                var go = card.GetChild(c).gameObject;
+                if (Application.isPlaying) UnityEngine.Object.Destroy(go);
+                else UnityEngine.Object.DestroyImmediate(go);
+            }
         }
 
         /// <summary>컴팩트 카드 — 슬롯 크기 그대로(비율 강제 없음), 초상 + 하단 이름 스트립.

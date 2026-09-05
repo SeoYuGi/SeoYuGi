@@ -85,6 +85,7 @@ namespace SeoYuGi.BattleView
         public CommandState Orders { get; } = new CommandState();
 
         RadioWindow radio; // 지휘관 모드 전용 무전 채팅바. 멀티 모드에선 비활성.
+        PauseMenu pauseMenu; // ESC 일시정지 — 모드 무관
         VoiceRadio voice;  // 음성 무전 (V 꾹 — push-to-talk). 지휘관 모드 전용.
         bool typingPrev;   // 텍스트 입력 상태 엣지 — 유닛 조작 잠금/복원용
 
@@ -107,6 +108,16 @@ namespace SeoYuGi.BattleView
             radio.enabled = GameModeState.IsCommander;
             voice.enabled = GameModeState.IsCommander;
             if (!radio.enabled) radio.Close(); // 모드가 바뀌었는데 시간이 느린 채로 남지 않게
+
+            if (pauseMenu == null)
+            {
+                pauseMenu = gameObject.AddComponent<PauseMenu>();
+                pauseMenu.Audio = battleAudio;
+                // ESC는 조준 취소·무전 닫기가 먼저 쓴다. 둘 다 아닐 때만 메뉴가 뜬다.
+                pauseMenu.CanOpen = () =>
+                    (input == null || input.CurrentAim == UnitMoveInput.AimMode.None) &&
+                    (radio == null || !radio.IsOpen);
+            }
         }
 
         /// <summary>자연어 무전 발신 — 채팅바·음성 공용. 내 발신·분대 응답 모두 채팅 로그에 남는다.</summary>
@@ -253,6 +264,25 @@ namespace SeoYuGi.BattleView
                 case UnitClass.Sniper: return "저격수";
                 default: return "";
             }
+        }
+
+        /// <summary>거점별 소유 팀 (-1 = 중립) — 라운드 결과 화면용.</summary>
+        int[] ZoneOwners()
+        {
+            if (Round == null) return new int[0];
+            var owners = new int[Round.Zones.Count];
+            for (int i = 0; i < owners.Length; i++) owners[i] = Round.Zones[i].owner;
+            return owners;
+        }
+
+        /// <summary>그 팀의 생존 수 — 라운드 결과 화면용.</summary>
+        int AliveCount(int team)
+        {
+            int n = 0;
+            if (Battle != null)
+                foreach (var u in Battle.Units)
+                    if (u.team == team && u.alive) n++;
+            return n;
         }
 
         /// <summary>지휘 대상 — 내 팀에서 나를 뺀 살아있는 봇.</summary>
@@ -781,7 +811,7 @@ namespace SeoYuGi.BattleView
             }
             else
             {
-                hud.ShowBriefing(endedRound, winner, briefing);
+                hud.ShowBriefing(endedRound, winner, briefing, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                 phase = Phase.Briefing;
                 ResetReadyGate(); // 클라도 SPACE 동의 상태 초기화
                 battleAudio.PlayBgm("B3_Briefing");
@@ -1873,7 +1903,7 @@ namespace SeoYuGi.BattleView
             else
             {
                 // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
-                hud.ShowBriefing(endedRound, winnerTeam, null);
+                hud.ShowBriefing(endedRound, winnerTeam, null, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                 phase = Phase.Briefing;
                 ResetReadyGate(); // SPACE 동의 집계 초기화
                 battleAudio.PlayBgm("B3_Briefing");
@@ -1997,6 +2027,10 @@ namespace SeoYuGi.BattleView
                 hud.SetCountdown(0);
                 input.enabled = true;
             }
+
+            // ESC 일시정지 — 조준·무전이 ESC를 쓰지 않을 때만 열린다
+            if (pauseMenu != null) pauseMenu.HandleHotkey();
+            if (pauseMenu != null && pauseMenu.IsOpen) return; // 멈춘 동안엔 다른 입력을 받지 않는다
 
             // 무전 채팅바 (Enter) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
             if (radio != null && radio.enabled) radio.HandleHotkey();

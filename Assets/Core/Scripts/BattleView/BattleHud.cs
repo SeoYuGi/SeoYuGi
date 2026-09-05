@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using SeoYuGi.Battle;
 using UnityEngine;
 
@@ -31,6 +31,8 @@ namespace SeoYuGi.BattleView
         int briefingRound;   // 방금 끝난 라운드 번호
         int briefingWinner;
         string[] briefingLines;
+        int[] briefingZones;          // 거점별 소유 팀 (-1 = 중립)
+        int briefingAliveMine, briefingAliveEnemy;
 
         // 관제 AI 보이스 자막 (영어 보이스 + 한글 자막)
         string subtitleText;
@@ -317,11 +319,19 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>라운드 사이 결과 화면. lines는 폐기된 브리핑 잔재 — null로 온다.</summary>
-        public void ShowBriefing(int endedRound, int roundWinnerTeam, string[] lines)
+        /// <summary>
+        /// 라운드 결과 화면. 문구 대신 전황을 보여준다 — 거점 A/B/C를 누가 쥐었는지와 양 팀 생존 수.
+        /// zoneOwners[i] = 그 거점의 소유 팀(-1 중립), aliveMine/aliveEnemy = 라운드 종료 시점 생존 수.
+        /// </summary>
+        public void ShowBriefing(int endedRound, int roundWinnerTeam, string[] lines,
+            int[] zoneOwners = null, int aliveMine = 0, int aliveEnemy = 0)
         {
             briefingRound = endedRound;
             briefingWinner = roundWinnerTeam;
             briefingLines = lines;
+            briefingZones = zoneOwners;
+            briefingAliveMine = aliveMine;
+            briefingAliveEnemy = aliveEnemy;
             overlay = Overlay.Briefing;
         }
 
@@ -770,16 +780,71 @@ namespace SeoYuGi.BattleView
 
         // ── 오버레이 ──────────────────────────────────────────────
 
+        /// <summary>
+        /// 라운드 결과의 알맹이 — 거점을 누가 쥐었나와 양 팀이 몇 명 남았나.
+        /// 색이 소속을 말한다: 파랑=우리, 빨강=적, 회색=중립 (전투 화면의 팀 색 언어와 같다).
+        /// </summary>
+        void DrawBriefingStatus(Rect box)
+        {
+            var mine = new Color(0.35f, 0.7f, 1f);
+            var foe = new Color(1f, 0.35f, 0.28f);
+            var neutral = new Color(0.45f, 0.5f, 0.58f);
+
+            float y = box.y + 112f;
+            GUI.color = new Color(0.6f, 0.68f, 0.78f);
+            GUI.Label(new Rect(box.x, y, box.width, 20f), "거점",
+                new GUIStyle(subStyle) { alignment = TextAnchor.MiddleCenter });
+            GUI.color = Color.white;
+            y += 24f;
+
+            int zoneN = briefingZones != null ? briefingZones.Length : 0;
+            var zoneStyle = new GUIStyle(briefTitleStyle) { fontSize = 34 };
+            const float ZoneW = 78f;
+            float zx = box.x + box.width / 2f - zoneN * ZoneW / 2f;
+            for (int i = 0; i < zoneN; i++)
+            {
+                int owner = briefingZones[i];
+                GUI.color = owner < 0 ? neutral : (owner == playerTeam ? mine : foe);
+                GUI.Label(new Rect(zx + i * ZoneW, y, ZoneW, 40f),
+                    OrderPresets.ZoneName(i), zoneStyle);
+            }
+            GUI.color = Color.white;
+            y += 56f;
+
+            GUI.color = new Color(0.6f, 0.68f, 0.78f);
+            GUI.Label(new Rect(box.x, y, box.width, 20f), "생존",
+                new GUIStyle(subStyle) { alignment = TextAnchor.MiddleCenter });
+            GUI.color = Color.white;
+            y += 26f;
+
+            // 우리 파랑 · 적 빨강 동그라미 — 숫자보다 개수가 한눈에 읽힌다
+            const float Dot = 18f, DotGap = 8f, SideGap = 34f;
+            float mineW = briefingAliveMine * (Dot + DotGap);
+            float foeW = briefingAliveEnemy * (Dot + DotGap);
+            float startX = box.x + box.width / 2f - (mineW + SideGap + foeW) / 2f;
+
+            for (int i = 0; i < briefingAliveMine; i++)
+                Dish(new Rect(startX + i * (Dot + DotGap), y, Dot, Dot), mine);
+            float fx = startX + mineW + SideGap;
+            for (int i = 0; i < briefingAliveEnemy; i++)
+                Dish(new Rect(fx + i * (Dot + DotGap), y, Dot, Dot), foe);
+        }
+
+        /// <summary>동그라미 하나 — 원형 텍스처가 없어 사각형을 겹쳐 둥글게 낸다.</summary>
+        void Dish(Rect r, Color c)
+        {
+            GUI.color = c;
+            GUI.DrawTexture(new Rect(r.x + r.width * 0.22f, r.y, r.width * 0.56f, r.height), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.x, r.y + r.height * 0.22f, r.width, r.height * 0.56f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.x + r.width * 0.11f, r.y + r.height * 0.11f, r.width * 0.78f, r.height * 0.78f), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+        }
+
         void DrawBriefing()
         {
             bool myWin = briefingWinner == playerTeam;
-            // 높이 = 헤더(106) + 줄 실측 합 + SPACE 바 여유(100) — 줄바꿈된 긴 줄이 푸터에 낑기지 않게 (2026-09-05)
-            const float LineW = 540f - 88f, LineGap = 14f;
-            float linesH = 0f;
-            if (briefingLines != null)
-                foreach (var line in briefingLines)
-                    linesH += briefLineStyle.CalcHeight(new GUIContent($"▸ {line}"), LineW) + LineGap;
-            float boxH = Mathf.Max(320f, 106f + linesH + 100f);
+            // 전황 두 줄(거점·생존)이라 높이가 고정이다 — 문구 브리핑을 걷어낸 뒤(2026-09-05) 실측이 필요 없어졌다
+            const float boxH = 360f;
             var box = new Rect(W / 2f - 270, H / 2f - boxH / 2f, 540, boxH);
             briefingBottomY = box.yMax; // 자막 겹침 방지용 — DrawSubtitle이 참조
             NeonPanel(box, myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));
@@ -794,14 +859,7 @@ namespace SeoYuGi.BattleView
                 $"ROUND {briefingRound} — {(myWin ? "승리" : "패배")}", briefTitleStyle);
             GUI.color = Color.white;
 
-            float y = box.y + 106;
-            if (briefingLines != null)
-                foreach (var line in briefingLines)
-                {
-                    float h = briefLineStyle.CalcHeight(new GUIContent($"▸ {line}"), LineW); // 줄바꿈 실측
-                    GUI.Label(new Rect(box.x + 44, y, LineW, h), $"▸ {line}", briefLineStyle);
-                    y += h + LineGap;
-                }
+            DrawBriefingStatus(box);
 
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(new Rect(box.x + 50, box.y + box.height - 60, box.width - 100, 24), Texture2D.whiteTexture);
@@ -864,9 +922,7 @@ namespace SeoYuGi.BattleView
                 boxY = Mathf.Min(H - boxH - 10f, briefingBottomY + 12f);
             var box = new Rect(W / 2f - boxW / 2f, boxY, boxW, boxH);
             NeonPanel(box, new Color(0.55f, 0.95f, 1f));
-            GUI.color = new Color(0.55f, 0.95f, 1f); // 관제 AI 시안 톤
-            GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "도시관리 AI",
-                new GUIStyle(subStyle) { fontStyle = FontStyle.Bold });
+            GUI.color = new Color(0.55f, 0.95f, 1f);
             GUI.Label(new Rect(box.x + 20f, box.y + 14f, box.width - 40f, textH), subtitleText, subtitleStyle);
             GUI.color = Color.white;
         }

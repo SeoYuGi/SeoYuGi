@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace SeoYuGi.BattleView
@@ -13,6 +13,16 @@ namespace SeoYuGi.BattleView
         [Range(0f, 1f)] [SerializeField] float bgmVolume = 0.3f;
         [Range(0f, 1f)] [SerializeField] float sfxVolume = 0.85f;
         [Range(0f, 1f)] [SerializeField] float voiceVolume = 1f;
+
+        // 일시정지 설정에서 조절한다. BGM은 재생 중인 소스에 즉시 반영해야 하지만,
+        // 효과음·음성은 매번 새 소스를 만들어 쓰므로 값만 바꿔두면 다음 소리부터 적용된다.
+        public float BgmVolume
+        {
+            get => bgmVolume;
+            set { bgmVolume = Mathf.Clamp01(value); if (bgm != null) bgm.volume = bgmVolume; }
+        }
+        public float SfxVolume { get => sfxVolume; set => sfxVolume = Mathf.Clamp01(value); }
+        public float VoiceVolume { get => voiceVolume; set => voiceVolume = Mathf.Clamp01(value); }
 
         AudioSource bgm;
         AudioSource captureLoop;

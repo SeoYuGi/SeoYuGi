@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using SeoYuGi.Battle;
@@ -47,11 +47,14 @@ namespace SeoYuGi.Art
             { (0, UnitClass.Assassin),  "blackcat_assassin_rigged" },
             { (0, UnitClass.Grenadier), "pigeon_grenadier_rigged" },
             { (0, UnitClass.Sniper),    "magpie_sniper_rigged" },
-            { (1, UnitClass.Tank),      "cleaning_bot" },
-            { (1, UnitClass.Balance),   "delivery_bot" },
-            { (1, UnitClass.Assassin),  "patrol_drone" },
-            { (1, UnitClass.Grenadier), "sprayer_drone" },
-            { (1, UnitClass.Sniper),    "surveillance_drone" },
+            // 기계팀은 같은 동물 모델을 쓰고 표면만 금속으로 바꾼다 (MakeMachine).
+            // "기계 동물 vs 진짜 동물"이라는 그림이고, 덤으로 기계팀도 애니메이션을 얻는다 —
+            // 구 드론 모델(cleaning_bot 등)에는 _idle/_anim/_atk 변형이 없어 둥실거리기만 했다.
+            { (1, UnitClass.Tank),      "raccoon_tank_rigged" },
+            { (1, UnitClass.Balance),   "gorani_runner_rigged" },
+            { (1, UnitClass.Assassin),  "blackcat_assassin_rigged" },
+            { (1, UnitClass.Grenadier), "pigeon_grenadier_rigged" },
+            { (1, UnitClass.Sniper),    "magpie_sniper_rigged" },
         };
 
         // 같은 클립이라도 클래스별 배속으로 성격 부여 (묵직↔날렵)
@@ -166,12 +169,75 @@ namespace SeoYuGi.Art
                 skin.AddComponent<WaddleBounce>().Init(view, idleGo);
             }
 
-            // 드론류 기계는 부유 연출
-            if (unit.team == 1 && unit.unitClass != UnitClass.Tank && unit.unitClass != UnitClass.Balance)
-                skin.AddComponent<HoverBob>();
+            // 기계팀 — 같은 동물 모델의 표면만 금속으로. 실루엣은 같고 재질로 갈린다.
+            if (unit.team == 1) MakeMachine(skin);
 
             var cube = view.GetComponent<MeshRenderer>();
             if (cube != null) cube.enabled = false;
+        }
+
+        // URP Lit 과 glTFast(glTF/PbrMetallicRoughness) 양쪽 프로퍼티 이름을 다 본다 —
+        // GLB가 어느 셰이더로 임포트됐는지는 프로젝트 설정에 따라 갈린다.
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        static readonly int GltfBaseColorId = Shader.PropertyToID("baseColorFactor");
+        static readonly int MetallicId = Shader.PropertyToID("_Metallic");
+        static readonly int GltfMetallicId = Shader.PropertyToID("metallicFactor");
+        static readonly int SmoothnessId = Shader.PropertyToID("_Smoothness");
+        static readonly int GltfRoughnessId = Shader.PropertyToID("roughnessFactor");
+
+        /// <summary>강철 색조. 알베도 텍스처에 곱해지므로 원래 무늬가 금속 각인처럼 남는다.</summary>
+        static readonly Color SteelTint = new Color(0.62f, 0.66f, 0.72f);
+
+        /// <summary>
+        /// 기계 동물 — 팀1은 같은 동물 모델을 쓰되 표면만 금속으로 바꾼다.
+        ///
+        /// 텍스처를 지우지 않는 것이 요령이다. 지우면 밋밋한 회색 덩어리가 되지만,
+        /// 남기면 털·깃 무늬가 금속 표면의 패널 라인처럼 읽혀 "기계 너구리"가 된다.
+        /// 금속감은 색이 아니라 metallic·smoothness가 만든다 — 주변을 반사해야 쇠로 보인다.
+        ///
+        /// 원본 머티리얼당 금속 사본을 한 번만 만들어 캐시하고 sharedMaterials로 붙인다.
+        /// r.materials를 쓰면 렌더러마다 인스턴스가 새로 생기는데, 유닛은 라운드마다
+        /// 재생성되므로 그 사본들이 계속 쌓인다(파괴되지 않는다). 원본 에셋은 건드리지 않으므로
+        /// 같은 모델을 쓰는 동물팀은 영향받지 않는다.
+        /// </summary>
+        static readonly Dictionary<Material, Material> metalCache = new();
+
+        static void MakeMachine(GameObject skin)
+        {
+            foreach (var r in skin.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer) continue;
+                var src = r.sharedMaterials;
+                var outMats = new Material[src.Length];
+                for (int i = 0; i < src.Length; i++) outMats[i] = MetalVersionOf(src[i]);
+                r.sharedMaterials = outMats;
+            }
+        }
+
+        static Material MetalVersionOf(Material src)
+        {
+            if (src == null) return null;
+            if (metalCache.TryGetValue(src, out var cached) && cached != null) return cached;
+
+            var m = new Material(src); // 텍스처·셰이더는 그대로 이어받는다
+            if (m.HasProperty(BaseColorId)) m.SetColor(BaseColorId, Tint(m.GetColor(BaseColorId)));
+            else if (m.HasProperty(GltfBaseColorId)) m.SetColor(GltfBaseColorId, Tint(m.GetColor(GltfBaseColorId)));
+
+            if (m.HasProperty(MetallicId)) m.SetFloat(MetallicId, 0.85f);
+            if (m.HasProperty(GltfMetallicId)) m.SetFloat(GltfMetallicId, 0.85f);
+
+            if (m.HasProperty(SmoothnessId)) m.SetFloat(SmoothnessId, 0.6f);
+            if (m.HasProperty(GltfRoughnessId)) m.SetFloat(GltfRoughnessId, 0.4f); // roughness = 1 - smoothness
+
+            metalCache[src] = m;
+            return m;
+        }
+
+        /// <summary>원래 색의 명암은 살리고 채도만 죽여 강철 색조를 입힌다.</summary>
+        static Color Tint(Color c)
+        {
+            float lum = c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
+            return new Color(SteelTint.r * lum, SteelTint.g * lum, SteelTint.b * lum, c.a);
         }
 
         /// <summary>모델 변형(<이름>_anim/_atk) 로드 + 배치 + 클립 재생. 없으면 null.</summary>

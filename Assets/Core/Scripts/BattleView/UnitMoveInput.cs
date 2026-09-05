@@ -22,9 +22,9 @@ namespace SeoYuGi.BattleView
         static readonly Color blueRangeColor = new Color(0.3f, 0.6f, 1f);
         static readonly Color yellowRangeColor = new Color(1f, 0.85f, 0.2f);
         static readonly Color telegraphColor = new Color(0.91f, 0.25f, 0.12f);      // 적 예고 — 유일한 빨강
-        static readonly Color allyTelegraphColor = new Color(0.7f, 1f, 0.95f);       // 내 예고 — 틸-흰 (아군 = 틸 계열, 기획서 §06)
-        static readonly Color aimRangeColor = new Color(0.3f, 0.8f, 0.75f);          // 조준 가능 칸 — 틸 (구 연노랑: 이동 노랑과 헷갈렸다)
-        static readonly Color aimImpactColor = new Color(0.8f, 1f, 0.97f);           // 발사 시 맞는 칸 — 틸-흰 (구 진빨강: 적 위협과 혼동)
+        static readonly Color allyTelegraphColor = new Color(0.45f, 0.55f, 0.68f);   // 내 팀 예고 — 저휘도 회청 (파랑은 이동과 겹쳐 뜻이 두 개가 됐다 — 색 4규칙 2026-09-05)
+        static readonly Color aimRangeColor = new Color(0.95f, 0.97f, 1f);           // 조준 가능 칸 — 흰색 (2026-09-05 요청; 구 틸은 팀색과 겹쳤다)
+        static readonly Color aimImpactColor = new Color(1f, 1f, 1f);                // 발사 시 맞는 칸 — 순흰 (색 4규칙: 흰 = 내 공격. 시안 채널 폐지 2026-09-05)
         static readonly Color aimInvalidColor = new Color(0.35f, 0.6f, 1f);          // 타겟 아닌 호버 칸 (파랑) = 클릭하면 이동
 
         Camera rayCamera; // Camera.main 자동 연결
@@ -146,6 +146,8 @@ namespace SeoYuGi.BattleView
         public bool TryGetHoverCell(out Coord cell) => TryHoverCell(out cell);
 
         /// <summary>HUD 슬롯 클릭 = 단축키(A/S/D)와 동일한 조준 토글 — 쿨타임 게이트도 동일 (2026-09-05).</summary>
+        float aimOpenedAt = -99f; // 조준 진입 시각 — 사거리 플래시(밝게 떴다 은은하게 정착)용
+
         public void ToggleAim(AimMode mode)
         {
             if (selectedUnitId == -1 || mode == AimMode.None) { aim = AimMode.None; return; }
@@ -155,7 +157,7 @@ namespace SeoYuGi.BattleView
             bool ready = mode == AimMode.Attack ? su.attackReadyAt <= now
                 : mode == AimMode.Skill ? su.skillReadyAt[0] <= now
                 : su.skillReadyAt[1] <= now;
-            if (ready) aim = mode; // 쿨 중이면 조용히 무시 — 키보드와 같은 규칙
+            if (ready) { aim = mode; aimOpenedAt = Time.time; } // 쿨 중이면 조용히 무시 — 키보드와 같은 규칙. 진입 시 사거리 플래시
         }
 
         bool TryHoverCell(out Coord cell)
@@ -254,7 +256,11 @@ namespace SeoYuGi.BattleView
                 int skillIdx = aim == AimMode.Skill2 ? 1 : 0;
                 if (aim == AimMode.Attack) combat.GetAttackRange(selectedUnitId, aimRange);
                 else combat.GetSkillRange(selectedUnitId, skillIdx, aimRange);
-                foreach (var c in aimRange) { cells.Add(c); colors.Add(aimRangeColor); }
+                // 진입 순간 0.3초 흰색 플래시 → 은은한 저휘도로 정착 (2026-09-05 "잠깐 뜨고" 절충 —
+                // 완전 페이드는 조준 중 사거리 판단 근거가 사라져 비추)
+                float settle = Mathf.SmoothStep(1f, 0.42f, Mathf.Clamp01((Time.time - aimOpenedAt) / 0.3f));
+                var rangeCol = new Color(aimRangeColor.r * settle, aimRangeColor.g * settle, aimRangeColor.b * settle, aimRangeColor.a);
+                foreach (var c in aimRange) { cells.Add(c); colors.Add(rangeCol); }
 
                 if (TryHoverCell(out var hover))
                 {
@@ -304,7 +310,7 @@ namespace SeoYuGi.BattleView
             var me = moveSystem.State.GetUnit(playerUnitId);
             float pulseK = Mathf.PingPong(Time.time * 2.5f, 0.4f);
             var threatPulse = Color.Lerp(telegraphColor, Color.white, pulseK);
-            var calmEnemy = telegraphColor * 0.7f;
+            var calmEnemy = telegraphColor * 0.92f; // 0.7은 밝은 거점 바닥에서 묻혔다 (2026-09-05)
             calmEnemy.a = 1f;
             foreach (var strike in combat.ActiveStrikes)
             {

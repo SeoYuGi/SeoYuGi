@@ -232,6 +232,18 @@ namespace SeoYuGi.Ai
             if (step.HasValue)
                 return AiCommand.Of(CommandType.Move, step.Value);
 
+            // 4.5) 사냥 — 먹을 수 있는 거점이 하나도 없으면(전부 봉쇄·굳음) 남은 승리 조건은 전멸뿐.
+            //      가장 가까운 적에게 접근한다 (탈환 방지 라운드에서 멀뚱 방지 — 2026-09-05).
+            if (!AnyCapturableZone(world, me.Team))
+            {
+                var prey = NearestEnemy(world, me, out int preyDist);
+                if (prey.HasValue && preyDist > 1)
+                {
+                    var hunt = GreedyStep(world, me, prey.Value.Pos);
+                    if (hunt.HasValue) return AiCommand.Of(CommandType.Move, hunt.Value);
+                }
+            }
+
             // 5) 대기
             return AiCommand.None;
         }
@@ -561,13 +573,16 @@ namespace SeoYuGi.Ai
             // 전부 우리 것이면 가장 가까운 거점을 수비.
             bool anyNotOurs = false;
             foreach (var z in world.Zones)
-                if (!(z.HasOwner && z.Owner == me.Team)) { anyNotOurs = true; break; }
+                if (z.Capturable && !(z.HasOwner && z.Owner == me.Team)) { anyNotOurs = true; break; }
 
             ZoneState? goal = null;
             float bestScore = float.MinValue;
             foreach (var z in world.Zones)
             {
                 bool ours = z.HasOwner && z.Owner == me.Team;
+                // 봉쇄·탈환불가 거점은 목표가 못 된다 — 남의 것은 못 뺏고, 내 것은 뺏길 일이 없다.
+                // (탈환 방지 라운드에서 굳은 자기 거점을 "수비"하며 멀뚱 서 있던 구멍 — 2026-09-05 2차)
+                if (!z.Capturable) continue;
                 if (anyNotOurs && ours) continue; // 먹은 거점에 눌러앉지 말 것
                 float score = -Manhattan(me.Pos, z.Cell);
                 if (TeammateNear(world, me, z.Cell, 3)) score += _cfg.CohesionBonus; // 뭉치기 — 아군이 붙은 거점을 선호 (클래스별: 서포터 높고 암살자 낮음)
@@ -700,10 +715,18 @@ namespace SeoYuGi.Ai
             return fallback;
         }
 
+        private static bool AnyCapturableZone(IWorldView world, TeamId team)
+        {
+            foreach (var z in world.Zones)
+                if (z.Capturable) return true;
+            return false;
+        }
+
         private bool OnAnyZonePatch(IWorldView world, Cell pos)
         {
             foreach (var z in world.Zones)
             {
+                if (!z.Capturable) continue; // 봉쇄·굳은 거점 위 = 활동으로 안 쳐준다 — 워치독이 끌어낸다
                 var patch = z.Cells ?? new[] { z.Cell };
                 foreach (var c in patch)
                     if (c.Equals(pos)) return true;

@@ -1093,6 +1093,25 @@ namespace SeoYuGi.BattleView
 
         float matchEndAt = -1f; // 오버레이 진입 시각 — 등장 애니메이션 기준
 
+        static Texture2D radialTex;
+        /// <summary>부드러운 방사형 광원 — 매치엔드 타이틀 글로우용 (제곱 감쇠, 가장자리 0).</summary>
+        static Texture2D RadialTex()
+        {
+            if (radialTex != null) return radialTex;
+            const int n = 96;
+            var t = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            float c = (n - 1) * 0.5f;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c;
+                    float a = Mathf.Clamp01(1f - d);
+                    t.SetPixel(x, y, new Color(1f, 1f, 1f, a * a));
+                }
+            t.Apply();
+            return radialTex = t;
+        }
+
         void DrawMatchEnd()
         {
             if (matchEndAt < 0f) matchEndAt = Time.unscaledTime;
@@ -1123,14 +1142,30 @@ namespace SeoYuGi.BattleView
 
             var titleStyle = new GUIStyle(bannerStyle) { fontSize = Mathf.RoundToInt(62 * pop) };
             string title = myWin ? "승리" : "패배";
-            GUI.color = new Color(accent.r, accent.g, accent.b, 0.25f); // 타이트한 글로우 한 겹
-            GUI.Label(new Rect(0, cy - 50f + 2f, W, 80f), title, titleStyle);
-            GUI.color = Color.white;
-            ShadowLabel(new Rect(0, cy - 50f, W, 80f), title, titleStyle, Color.Lerp(Color.white, accent, 0.25f));
 
-            // 타이틀 아래 액센트 언더라인 — 밴드와 같은 속도로 열린다
+            // 네온 글로우 (2026-09-05 "IO게임같아"): 방사형 광원 웅덩이 + 8방향 텍스트 번짐 + 밝은 코어
+            float breathe = 0.8f + 0.2f * Mathf.Sin(age * 2.6f); // 은은한 호흡
+            GUI.color = new Color(accent.r, accent.g, accent.b, 0.34f * breathe);
+            GUI.DrawTexture(new Rect(W / 2f - 340f, cy - 130f, 680f, 240f), RadialTex());
+            GUI.color = new Color(1f, 1f, 1f, 0.18f * breathe); // 중심은 흰 광원 — 색만 쌓이면 탁해진다
+            GUI.DrawTexture(new Rect(W / 2f - 170f, cy - 80f, 340f, 140f), RadialTex());
+
+            for (int ring = 3; ring >= 1; ring--) // 바깥 겹일수록 멀고 옅게 — IMGUI식 블러
+            {
+                float off = ring * 2.6f;
+                GUI.color = new Color(accent.r, accent.g, accent.b, (0.08f + 0.05f * (3 - ring)) * breathe);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        if (dx != 0 || dy != 0)
+                            GUI.Label(new Rect(dx * off, cy - 50f + dy * off, W, 80f), title, titleStyle);
+            }
+            GUI.color = Color.white;
+            ShadowLabel(new Rect(0, cy - 50f, W, 80f), title, titleStyle, Color.Lerp(Color.white, accent, 0.2f));
+
+            // 타이틀 아래 액센트 언더라인 — 밴드와 같은 속도로 열리고, 글로우를 두른다
             float underW = 240f * open;
-            Fill(new Rect(W / 2f - underW / 2f, cy + 30f, underW, 2f), accent);
+            Fill(new Rect(W / 2f - underW / 2f, cy + 28f, underW, 6f), new Color(accent.r, accent.g, accent.b, 0.25f));
+            Fill(new Rect(W / 2f - underW / 2f, cy + 30f, underW, 2f), Color.Lerp(accent, Color.white, 0.3f));
 
             // 스코어 + 임무 문구 (조금 늦게 페이드인)
             float scoreA = Mathf.Clamp01((age - 0.4f) / 0.4f);

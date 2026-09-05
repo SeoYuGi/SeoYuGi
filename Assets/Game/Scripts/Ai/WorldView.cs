@@ -41,6 +41,7 @@ namespace SeoYuGi.Ai
         public Cell[] Cells;           // 패치 전체 칸 — null이면 Cell 1칸 취급
         public bool HasOwner;
         public TeamId Owner;
+        public bool Capturable;        // 봉쇄·탈환불가 라운드 규칙 반영 — false면 밟아도 무의미 (2026-09-05)
     }
 
     /// 설치 공격 예고: Cell에 ImpactTime(절대 시각)에 판정이 떨어진다.

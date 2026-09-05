@@ -446,9 +446,24 @@ namespace SeoYuGi.Battle
             if (dir == Coord.Zero) return;
 
             var landing = attacker.pos + dir;
-            if (landing == victim.pos) return;                        // 이미 앞칸에 있다
-            if (!State.Grid.IsWalkableTerrain(landing)) return;       // 벽·구덩이
-            if (State.Grid.GetUnitAt(landing) != Cell.NoUnit) return; // 누가 서 있다
+            if (landing == victim.pos) return; // 이미 앞칸에 있다
+
+            // 앞칸이 막혔으면 시전자 주변 8칸 중 대상 방향에 가까운 순으로 대체 착지 (2026-09-05).
+            // 예전엔 조용히 포기했다 — 연출은 끌고 오는데 시뮬은 제자리라 "끌려왔다 원위치 스냅백"으로 보였다.
+            if (!State.Grid.IsWalkableTerrain(landing) || State.Grid.GetUnitAt(landing) != Cell.NoUnit)
+            {
+                landing = Coord.Zero;
+                int best = int.MaxValue;
+                foreach (var d8 in Coord.Directions8)
+                {
+                    var c = attacker.pos + d8;
+                    if (c == victim.pos) continue;
+                    if (!State.Grid.IsWalkableTerrain(c) || State.Grid.GetUnitAt(c) != Cell.NoUnit) continue;
+                    int score = Math.Abs(d8.x - dir.x) + Math.Abs(d8.y - dir.y); // 원래 방향과 가까울수록
+                    if (score < best) { best = score; landing = c; }
+                }
+                if (best == int.MaxValue) return; // 시전자 주변이 전부 막힘 — 정말로 놓을 데가 없다
+            }
 
             bool falls = State.Grid.IsHighland(victim.pos) && !State.Grid.IsHighland(landing);
             State.Grid.MoveOccupant(victim.pos, landing);

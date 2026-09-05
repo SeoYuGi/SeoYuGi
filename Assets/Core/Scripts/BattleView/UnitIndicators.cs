@@ -77,10 +77,22 @@ namespace SeoYuGi.BattleView
             // 스케일에 곱해지면 클래스마다 높이가 달라져 이름표(1.35)와 겹친다 (2026-09-05 "화살표랑 닉네임 겹쳐")
             go.transform.localPosition = new Vector3(0f, height / Mathf.Max(0.01f, unit.localScale.y), 0f);
             go.transform.localScale = Vector3.one / Mathf.Max(0.01f, unit.localScale.y);
+            // 그림자 사본 — 민짜 글리프는 밝은 배경에서 묻히고 IO풍 (2026-09-05 탈IO 패스)
+            var shadow = new GameObject("Shadow");
+            shadow.transform.SetParent(go.transform, false);
+            shadow.transform.localPosition = new Vector3(0.02f, -0.02f, 0.001f);
+            var stm = shadow.AddComponent<TextMesh>();
+            stm.text = "▼";
+            stm.fontSize = 48;
+            stm.characterSize = 0.08f;
+            stm.anchor = TextAnchor.MiddleCenter;
+            stm.alignment = TextAlignment.Center;
+            stm.color = new Color(0.02f, 0.03f, 0.05f, 0.85f);
+
             var tm = go.AddComponent<TextMesh>();
             tm.text = "▼";
             tm.fontSize = 48;
-            tm.characterSize = 0.09f;
+            tm.characterSize = 0.08f;
             tm.anchor = TextAnchor.MiddleCenter;
             tm.alignment = TextAlignment.Center;
             tm.color = Color.Lerp(teamColor, Color.white, 0.4f);

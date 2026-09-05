@@ -79,12 +79,16 @@ namespace SeoYuGi.Battle
         public int BlueSteps(UnitState unit) => (int)unit.moveGauge;
 
         /// <summary>이동 범위 조회. 쿨타임 중이면 둘 다 빈 채로 반환.</summary>
+        /// <summary>스킬 시전(예고) 중인가 — 러너가 CombatSystem을 연결. 시전 중엔 발이 묶인다 (2026-09-05).</summary>
+        public Func<int, bool> IsCastingFn;
+
         public void GetRanges(int unitId, List<Coord> blue, List<Coord> yellow)
         {
             blue.Clear();
             yellow.Clear();
             var unit = State.GetUnit(unitId);
             if (unit == null || !unit.alive || unit.moveCooldown > 0f) return;
+            if (IsCastingFn != null && IsCastingFn(unitId)) return; // 시전 중 — 이동 범위도 안 보여준다
 
             int blueSteps = BlueSteps(unit);
             var reach = Pathfinding.FloodFill(State.Grid, unit.pos, MaxRange(unit), OtherUnitCells(unitId));
@@ -101,6 +105,8 @@ namespace SeoYuGi.Battle
                 return new MoveAttempt { denied = MoveDenied.Locked };
             if (unit.stunnedUntil > State.time || unit.flyingUntil > State.time)
                 return new MoveAttempt { denied = MoveDenied.Locked }; // 스턴·비행 중 = 제자리 고정
+            if (IsCastingFn != null && IsCastingFn(unitId))
+                return new MoveAttempt { denied = MoveDenied.Locked }; // 스킬 시전 중 — 예고를 걸었으면 발이 묶인다 (2026-09-05)
 
             var p = unit.profile;
             var path = Pathfinding.FindPath(State.Grid, unit.pos, dest, MaxRange(unit), OtherUnitCells(unitId));

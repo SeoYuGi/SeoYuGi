@@ -41,6 +41,7 @@ namespace SeoYuGi.BattleView
             LaserBeam.Spawn(root.transform, casterWorld + Vector3.up * 0.55f, aimWorld + Vector3.up * 0.15f, lineColor);
 
             SkillIcon(root.transform, strike.kind, aimWorld, lineColor); // 무슨 스킬인지 — 연계를 짜려면 알아야 한다
+            TelegraphPie.Attach(root.transform, aimWorld, lineColor, seconds); // 판정까지 차오르는 링 — 긴 예고가 "고장"이 아니라 "시전 중"으로 읽히게 (2026-09-05)
 
             if (cls == UnitClass.Sniper)
                 ScopeMarker.Spawn(root.transform, aimWorld, lineColor, 1f); // 조준경 — 조준 칸 하나
@@ -65,10 +66,11 @@ namespace SeoYuGi.BattleView
             var tex = Resources.Load<Texture2D>("UI/" + SkillIconName(kind));
             if (tex == null) return;
 
-            var rim = color; rim.a = 0.9f;
-            Plate(parent, DiscTex(), aimWorld, 0.085f, 0.88f, rim);                                  // 팀색 테두리
-            Plate(parent, DiscTex(), aimWorld, 0.088f, 0.74f, new Color(0.04f, 0.05f, 0.08f, 0.88f)); // 어두운 속판
-            Plate(parent, tex, aimWorld, 0.091f, 0.52f, new Color(1f, 1f, 1f, 0.98f));               // 흰 아이콘
+            // 계기판 스타일 (2026-09-05 "IO스럽다"): 꽉 찬 색 원판 대신 얇은 아웃라인 링 + 어두운 유리판
+            var rim = color; rim.a = 0.85f;
+            Plate(parent, RingTex(), aimWorld, 0.089f, 0.6f, rim);                                    // 얇은 팀색 링
+            Plate(parent, DiscTex(), aimWorld, 0.086f, 0.54f, new Color(0.03f, 0.04f, 0.07f, 0.78f)); // 유리판
+            Plate(parent, tex, aimWorld, 0.092f, 0.34f, new Color(1f, 1f, 1f, 0.95f));                // 흰 아이콘
         }
 
         /// <summary>바닥에 눕힌 사각 쿼드 한 장 — 아이콘 판 3겹의 공용 부품.</summary>
@@ -91,7 +93,26 @@ namespace SeoYuGi.BattleView
             rend.receiveShadows = false;
         }
 
-        static Texture2D discTex;
+        static Texture2D discTex, ringTex;
+
+        /// <summary>얇은 아웃라인 링 — 아이콘 받침용 (두꺼운 색 원판의 대체, 2026-09-05).</summary>
+        static Texture2D RingTex()
+        {
+            if (ringTex != null) return ringTex;
+            const int n = 96;
+            var t = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            float c = (n - 1) * 0.5f;
+            float rOut = c - 1f, thick = n * 0.045f;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                float a = Mathf.Clamp01(1f - Mathf.Abs(d - (rOut - thick)) / thick); // 링 중심선 기준 부드러운 낙차
+                t.SetPixel(x, y, new Color(1f, 1f, 1f, a * a));
+            }
+            t.Apply();
+            return ringTex = t;
+        }
 
         /// <summary>아이콘 받침용 원판 — 절차 생성 1회. 가장자리 안티에일리어싱.</summary>
         static Texture2D DiscTex()
@@ -468,6 +489,125 @@ namespace SeoYuGi.BattleView
                 if (interval > 0f) yield return new WaitForSeconds(interval);
             }
             Destroy(gameObject);
+        }
+    }
+
+    /// <summary>
+    /// 예고 카운트다운 링 — 흐린 트랙 위를 가는 팀색 아크가 12시부터 시계방향으로 차오르고,
+    /// 아크 머리에 점광이 달린다. 꽉 참 = 판정. (굵은 색 밴드는 IO풍이라 폐기 — 2026-09-05)
+    /// 텔레그래프 루트의 자식이라 판정 순간 루트와 함께 파괴된다.
+    /// </summary>
+    public class TelegraphPie : MonoBehaviour
+    {
+        const float RMid = 0.36f, Thick = 0.022f, StepDeg = 6f; // 반경 축소 (2026-09-05 "둘레가 너무 커")
+
+        float duration, elapsed;
+        Mesh mesh;
+        Transform head;
+
+        public static void Attach(Transform parent, Vector3 aimWorld, Color color, float seconds)
+        {
+            if (seconds < 0.35f) return; // 즉발급 — 링이 뜨자마자 사라져 소음만 된다
+            var go = new GameObject("TelegraphPie", typeof(MeshFilter), typeof(MeshRenderer));
+            go.transform.SetParent(parent, false);
+            go.transform.position = aimWorld + Vector3.up * 0.1f;
+
+            var pie = go.AddComponent<TelegraphPie>();
+            pie.duration = seconds;
+            pie.mesh = new Mesh { name = "TelegraphArc" };
+            go.GetComponent<MeshFilter>().sharedMesh = pie.mesh;
+
+            var bright = Color.Lerp(color, Color.white, 0.25f); bright.a = 0.95f;
+            go.GetComponent<MeshRenderer>().sharedMaterial = MakeMat(bright);
+            var rend = go.GetComponent<MeshRenderer>();
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rend.receiveShadows = false;
+
+            // 흐린 풀 트랙 — "여기까지 차야 한다"의 기준선
+            var track = new GameObject("Track", typeof(MeshFilter), typeof(MeshRenderer));
+            track.transform.SetParent(go.transform, false);
+            track.transform.localPosition = new Vector3(0f, -0.004f, 0f);
+            var tm = new Mesh { name = "TelegraphTrack" };
+            BuildArc(tm, 1f);
+            track.GetComponent<MeshFilter>().sharedMesh = tm;
+            var dim = color; dim.a = 0.16f;
+            var tr = track.GetComponent<MeshRenderer>();
+            tr.sharedMaterial = MakeMat(dim);
+            tr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            tr.receiveShadows = false;
+
+            // 아크 머리 점광
+            var dot = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            UnityEngine.Object.Destroy(dot.GetComponent<Collider>());
+            dot.name = "Head";
+            dot.transform.SetParent(go.transform, false);
+            dot.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            dot.transform.localScale = Vector3.one * 0.08f;
+            var dmat = MakeMat(Color.Lerp(color, Color.white, 0.6f));
+            dmat.mainTexture = DotTex();
+            dot.GetComponent<Renderer>().material = dmat;
+            pie.head = dot.transform;
+        }
+
+        static Material MakeMat(Color c)
+        {
+            var m = new Material(Shader.Find("Sprites/Default"));
+            m.color = c;
+            return m;
+        }
+
+        static Texture2D dotTex;
+        static Texture2D DotTex()
+        {
+            if (dotTex != null) return dotTex;
+            const int n = 32;
+            var t = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            float c = (n - 1) * 0.5f;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c;
+                float a = Mathf.Clamp01(1f - d);
+                t.SetPixel(x, y, new Color(1f, 1f, 1f, a * a));
+            }
+            t.Apply();
+            return dotTex = t;
+        }
+
+        void Update()
+        {
+            elapsed += Time.deltaTime; // 히트스톱과 함께 멈춘다 — 시뮬 시간과 같은 스케일
+            float frac = Mathf.Clamp01(elapsed / duration);
+            BuildArc(mesh, frac);
+            if (head != null)
+            {
+                float a = Mathf.Deg2Rad * (90f - 360f * frac);
+                head.localPosition = new Vector3(Mathf.Cos(a) * RMid, 0.004f, Mathf.Sin(a) * RMid);
+            }
+        }
+
+        /// <summary>12시부터 시계방향 가는 아크 — frac만큼.</summary>
+        static void BuildArc(Mesh m, float frac)
+        {
+            int steps = Mathf.Max(1, Mathf.CeilToInt(360f * frac / StepDeg));
+            var verts = new Vector3[(steps + 1) * 2];
+            var tris = new int[steps * 6];
+            for (int i = 0; i <= steps; i++)
+            {
+                float a = Mathf.Deg2Rad * (90f - 360f * frac * i / steps);
+                float ca = Mathf.Cos(a), sa = Mathf.Sin(a);
+                verts[i * 2] = new Vector3(ca * (RMid - Thick), 0f, sa * (RMid - Thick));
+                verts[i * 2 + 1] = new Vector3(ca * (RMid + Thick), 0f, sa * (RMid + Thick));
+            }
+            for (int i = 0; i < steps; i++)
+            {
+                int b = i * 2;
+                tris[i * 6] = b; tris[i * 6 + 1] = b + 1; tris[i * 6 + 2] = b + 3;
+                tris[i * 6 + 3] = b; tris[i * 6 + 4] = b + 3; tris[i * 6 + 5] = b + 2;
+            }
+            m.Clear();
+            m.vertices = verts;
+            m.triangles = tris;
         }
     }
 }

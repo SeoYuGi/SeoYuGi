@@ -22,26 +22,29 @@ namespace SeoYuGi.Battle
             }
         }
 
-        /// <summary>start에서 비용 maxDist 이내 도달 가능한 셀 목록(start 제외). 비용 오름차순.</summary>
+        /// <summary>start에서 비용 maxDist 이내 도달 가능한 셀 목록(start 제외). 비용 오름차순.
+        /// blocked(유닛 칸)는 통과는 되지만 착지 불가 — 사면 포위여도 틈새로 빠져나갈 수 있다 (2026-09-05).</summary>
         public static List<Reach> FloodFill(GridModel grid, Coord start, int maxDist, HashSet<Coord> blocked)
         {
-            var best = Dijkstra(grid, start, maxDist, blocked, null, out var buckets);
+            var best = Dijkstra(grid, start, maxDist, null, out var buckets);
             var result = new List<Reach>();
             var seen = new HashSet<Coord> { start };
             for (int d = 1; d < buckets.Count; d++)
                 foreach (var c in buckets[d])
-                    if (best[c] == d && seen.Add(c))
+                    if (best[c] == d && seen.Add(c) && (blocked == null || !blocked.Contains(c)))
                         result.Add(new Reach(c, d));
             return result;
         }
 
-        /// <summary>최소 비용 경로의 셀 목록(start 제외, goal 포함). 도달 불가·비용 초과면 null.</summary>
+        /// <summary>최소 비용 경로의 셀 목록(start 제외, goal 포함). 도달 불가·비용 초과·점유 목적지면 null.
+        /// 유닛 칸은 지나가되(포위 탈출) 멈출 수는 없다 (2026-09-05).</summary>
         public static List<Coord> FindPath(GridModel grid, Coord start, Coord goal, int maxDist, HashSet<Coord> blocked)
         {
             if (start == goal) return null;
+            if (blocked != null && blocked.Contains(goal)) return null; // 착지 불가 — 통과만 허용
 
             var parent = new Dictionary<Coord, Coord>();
-            var best = Dijkstra(grid, start, maxDist, blocked, parent, out _);
+            var best = Dijkstra(grid, start, maxDist, parent, out _);
             if (!best.ContainsKey(goal)) return null;
 
             var path = new List<Coord>();
@@ -53,7 +56,7 @@ namespace SeoYuGi.Battle
 
         /// <summary>비용 {1,2} 버킷 다익스트라 — 우선순위 큐 없이 결정론 보장.</summary>
         static Dictionary<Coord, int> Dijkstra(GridModel grid, Coord start, int maxDist,
-            HashSet<Coord> blocked, Dictionary<Coord, Coord> parent, out List<List<Coord>> buckets)
+            Dictionary<Coord, Coord> parent, out List<List<Coord>> buckets)
         {
             // int.MaxValue 호출 대비 — 도달 가능한 최대 비용은 전 칸 × 2를 넘지 못한다
             int cap = Math.Min(maxDist, grid.Width * grid.Height * 2);
@@ -73,7 +76,6 @@ namespace SeoYuGi.Battle
                     {
                         var next = cur + dir;
                         if (!grid.IsWalkableTerrain(next)) continue;
-                        if (blocked != null && blocked.Contains(next)) continue;
 
                         int nd = d + grid.EnterCost(next);
                         if (nd > cap) continue;

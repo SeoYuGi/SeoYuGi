@@ -205,6 +205,19 @@ public class UITitlePopup : UIPopup
         if (searchRing != null) searchRing.gameObject.SetActive(true);
     }
 
+    /// <summary>매칭 취소 — 검색 연출을 걷고 버튼 열을 되살린다 (ESC, 2026-09-05).</summary>
+    public void HideSearching()
+    {
+        searching = false;
+        foreach (var h in hits) if (h != null) h.SetActive(true);
+        if (searchShade != null) searchShade.gameObject.SetActive(false);
+        if (searchText != null) searchText.gameObject.SetActive(false);
+        if (searchRing != null) searchRing.gameObject.SetActive(false);
+    }
+
+    /// <summary>검색 중 ESC — 러너가 구독해 매치메이킹을 중단한다.</summary>
+    public Action OnCancelSearch;
+
     /// <summary>매칭 대기 애니메이션 텍스트 갱신 — 러너가 매 프레임 호출.</summary>
     public void SetSearchDots(int dots)
     {
@@ -223,6 +236,8 @@ public class UITitlePopup : UIPopup
             (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame))
             Pick(); // 신 Input System — 구 Input API는 이 프로젝트에서 예외를 던진다
         if (searching && searchRing != null) searchRing.Rotate(0f, 0f, -120f * Time.unscaledDeltaTime);
+        if (searching && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            OnCancelSearch?.Invoke(); // ESC = 매칭 취소 → 타이틀 버튼 복귀 (2026-09-05)
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────

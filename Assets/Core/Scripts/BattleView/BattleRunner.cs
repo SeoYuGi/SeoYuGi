@@ -366,6 +366,7 @@ namespace SeoYuGi.BattleView
             new Dictionary<Coord, (PushArrow, float)>();
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
         readonly List<ZoneBorderRing> zoneBorders = new List<ZoneBorderRing>(); // 거점 테두리 띠 — 소유 표시
+        float nextZoneRuleHint; // 점령 불가 안내 쿨다운 — 밟고 있는 동안 도배 방지
         readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
         ThreatWarning threatWarning; // "내 칸에 예고 떨어짐" 경고 — 매치 내내 1개, 라운드 무관
 
@@ -742,17 +743,31 @@ namespace SeoYuGi.BattleView
 
         /// <summary>매칭 — 매치메이커로 실사람을 찾고, 못 채우면 봇전으로 폴백.
         /// 세션 성사 시 SDK가 NGO를 시작 → NetLobby로 이어진다.</summary>
+        bool matchmakeCancelled; // ESC 취소 — 루틴이 매 대기 프레임 확인
+
         System.Collections.IEnumerator MatchmakeRoutine(UITitlePopup popup)
         {
+            matchmakeCancelled = false;
+            popup.OnCancelSearch = () => matchmakeCancelled = true;
             popup.ShowSearching();
             var task = NetBoot.QuickMatchAsync(); // 빈 세션 합류 or 방 생성 — 이후 대기는 로비(n/6 표시)에서
             const float Timeout = 20f; // 퀵조인 탐색(8s)+세션 생성 여유 — 이 안에 못 끝나면 네트워크 문제
             float t = 0f;
             while (!task.IsCompleted && t < Timeout)
             {
+                if (matchmakeCancelled) break;
                 popup.SetSearchDots(1 + (int)(t * 2f) % 3);
                 t += Time.deltaTime;
                 yield return null;
+            }
+
+            if (matchmakeCancelled)
+            {
+                // ESC 취소 — 이미 세션이 잡혔을 수 있으니 정리하고 타이틀 버튼으로 복귀
+                popup.OnCancelSearch = null;
+                popup.HideSearching();
+                NetBoot.Shutdown(); // 잡힌 세션·NGO 정리
+                yield break;
             }
 
             bool matched = task.IsCompleted && !task.IsFaulted && task.Result;
@@ -762,11 +777,18 @@ namespace SeoYuGi.BattleView
             if (matched)
             {
                 float t2 = 0f;
-                while (t2 < 10f && !NetBoot.IsOnline)
+                while (t2 < 10f && !NetBoot.IsOnline && !matchmakeCancelled)
                 {
                     popup.SetSearchDots(1 + (int)((t + t2) * 2f) % 3);
                     t2 += Time.deltaTime;
                     yield return null;
+                }
+                if (matchmakeCancelled)
+                {
+                    popup.OnCancelSearch = null;
+                    popup.HideSearching();
+                    NetBoot.Shutdown(); // 잡힌 세션·NGO 정리
+                    yield break;
                 }
                 if (!NetBoot.IsOnline)
                 {
@@ -775,6 +797,7 @@ namespace SeoYuGi.BattleView
                 }
             }
 
+            popup.OnCancelSearch = null; // 이후 단계에선 취소 불가
             UIManager.Instance.ClosePopupUI(popup);
 
             if (matched)
@@ -1160,6 +1183,13 @@ namespace SeoYuGi.BattleView
             Round.SyncZoneActive();
             Combat.Rule = Rule;
             Move.Rule = Rule;
+            // 시전 중 이동 금지 (2026-09-05 "시전하는 동안 못 움직이게, 모두") — 평타 예고 포함 전부
+            Move.IsCastingFn = unitId =>
+            {
+                foreach (var st in Combat.PendingStrikes)
+                    if (st.attackerId == unitId) return true;
+                return false;
+            };
 
             // 해킹 궁게이지 — 슬롯 확보(충전은 라운드 넘겨 유지) + 적중 데미지 충전 배선.
             // Combat은 라운드마다 새로 나므로 매번 재구독 (이전 Combat은 통째로 버려짐).
@@ -1863,8 +1893,9 @@ namespace SeoYuGi.BattleView
         {
             var cam = Camera.main;
             if (cam == null) return;
-            if (cam.GetComponent<QuarterViewCamera>() != null ||
-                cam.GetComponent<SeoYuGi.Art.TacticalCamera>() != null) return; // 추적/전술 캠 우선 — 프레이밍 양보 (Y·Q/W·줌은 TacticalCamera 소관)
+            var tacCam = cam.GetComponent<SeoYuGi.Art.TacticalCamera>();
+            if (tacCam != null) { tacCam.Retarget(); return; } // 재빌드 후 새 유닛 즉시 추적 — 재시작 검정화면 방지 (2026-09-05)
+            if (cam.GetComponent<QuarterViewCamera>() != null) return; // 추적 캠 우선 — 프레이밍 양보
             var center = (gridView.CoordToWorld(new Coord(0, 0)) +
                           gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1))) * 0.5f;
             cam.transform.rotation = Quaternion.Euler(cameraPitch, 0f, 0f);
@@ -2345,7 +2376,27 @@ namespace SeoYuGi.BattleView
                 var z = Round.Zones[i];
                 float frac = z.capturingTeam >= 0 ? z.progress / roundConfig.captureSeconds : 0f;
                 zoneDiscs[i].SetProgress(frac, z.capturingTeam >= 0 ? teamColors[z.capturingTeam] : Color.clear);
-                if (i < zoneBorders.Count) zoneBorders[i].SetOwnerColor(z.owner, teamColors); // 테두리 = 소유 상태 (팀원 ZoneBorderRing 채택)
+                if (i < zoneBorders.Count)
+                {
+                    // 봉쇄 거점은 어두운 회색 — "지금은 못 먹는 곳"이 테두리에서 읽힌다 (2026-09-05 "점령 안 되는 버그")
+                    if (!z.active) zoneBorders[i].SetLocked();
+                    else zoneBorders[i].SetOwnerColor(z.owner, teamColors); // 테두리 = 소유 상태 (팀원 ZoneBorderRing 채택)
+                }
+
+                // 내 유닛이 점령 불가 거점을 밟고 있으면 이유를 말해준다 — 규칙 자막을 놓치면 버그로 느낀다
+                var meUnit = Battle.GetUnit(playerUnitId);
+                if (meUnit != null && meUnit.alive && Time.time >= nextZoneRuleHint && z.cells.Contains(meUnit.pos))
+                {
+                    string hint = null;
+                    if (!z.active) hint = "봉쇄된 거점 — 이전 거점부터 점령하세요";
+                    else if (z.owner >= 0 && z.owner != playerTeam && Rule != null && Rule.NoTakebacks) hint = "탈환 불가 라운드 — 이미 굳은 거점입니다";
+                    if (hint != null)
+                    {
+                        nextZoneRuleHint = Time.time + 4f;
+                        FloatingText.Spawn(gridView.CoordToWorld(meUnit.pos) + Vector3.up * 0.4f, hint,
+                            new Color(1f, 0.78f, 0.25f), 0.95f, 1.4f); // 호박색 = 시스템 안내
+                    }
+                }
                 if (z.capturingTeam >= 0 && z.progress > 0f) anyCapturing = true;
 
                 // 경합 감지 — 양 팀이 같은 거점을 밟는 순간 1회 긴장음 (게이지 동결의 청각 신호)

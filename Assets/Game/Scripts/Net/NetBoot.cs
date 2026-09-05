@@ -120,6 +120,7 @@ namespace SeoYuGi.Net
                 };
                 var session = await MultiplayerService.Instance.MatchmakeSessionAsync(
                     quick, new SessionOptions { MaxPlayers = MaxPlayers }.WithRelayNetwork());
+                currentSession = session; // ESC 취소 시 명시적으로 떠나야 유령 세션이 안 남는다 (2026-09-05)
                 JoinCode = null; // 퀵조인은 조인 코드 불필요
                 return session != null;
             }
@@ -151,8 +152,17 @@ namespace SeoYuGi.Net
             return nm.StartClient();
         }
 
+        static object currentSession; // ISession — SEOYUGI_RELAY 밖에서도 컴파일되게 object로
+
         public static void Shutdown()
         {
+#if SEOYUGI_RELAY
+            if (currentSession is ISession s)
+            {
+                try { _ = s.LeaveAsync(); } catch { /* 이미 끊긴 세션 — 무시 */ }
+                currentSession = null;
+            }
+#endif
             if (NetworkManager.Singleton != null) NetworkManager.Singleton.Shutdown();
             JoinCode = null;
         }

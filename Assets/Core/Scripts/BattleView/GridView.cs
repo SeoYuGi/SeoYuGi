@@ -386,7 +386,13 @@ namespace SeoYuGi.BattleView
                 var c = coords[i];
                 if (!grid.InBounds(c) || tiles[c.x, c.y] == null) continue; // Void 칸은 타일 없음
                 // 틴트는 텍스처와 곱해져 어두워진다 — 흰쪽으로 살짝 끌어올려 매트 깔린 바닥 위에서 확실히 뜨게 (가시성 패스)
-                mpb.SetColor(BaseColorId, Color.Lerp(colors[i], Color.white, 0.3f));
+                // 단, 위협 빨강은 예외 (2026-09-05 "피격 범위 안 보여"): 흰 보정이 분홍으로 씻어
+                // 밝은 거점 바닥에서 묻혔다 — 채도 유지 + 강도 부스트로 어디서든 빨갛게.
+                var col = colors[i];
+                bool threatRed = col.r > 0.8f && col.g < 0.5f && col.b < 0.5f;
+                mpb.SetColor(BaseColorId, threatRed
+                    ? new Color(col.r * 1.45f, col.g * 0.55f, col.b * 0.55f, col.a)
+                    : Color.Lerp(col, Color.white, 0.3f));
                 ApplyBlock(c, mpb);
                 highlighted.Add(c);
             }

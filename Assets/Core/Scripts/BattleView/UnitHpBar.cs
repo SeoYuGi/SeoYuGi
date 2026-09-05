@@ -55,13 +55,26 @@ namespace SeoYuGi.BattleView
             var go = new GameObject("Name");
             go.transform.SetParent(transform);
             go.transform.localPosition = new Vector3(0f, BarHeight * 1.2f, 0f);
+            // 외곽선 4방 — 민짜 색 글자는 배경에 묻히고 IO풍 (2026-09-05 탈IO 패스)
+            var offs = new[] { new Vector3(0.018f, 0.018f, 0.001f), new Vector3(-0.018f, 0.018f, 0.001f),
+                               new Vector3(0.018f, -0.018f, 0.001f), new Vector3(-0.018f, -0.018f, 0.001f) };
+            foreach (var off in offs)
+                NameLabel(go.transform, displayName, off, new Color(0.02f, 0.03f, 0.05f, 0.85f));
+            NameLabel(go.transform, displayName, Vector3.zero, Color.Lerp(color, Color.white, 0.35f));
+        }
+
+        static void NameLabel(Transform parent, string text, Vector3 offset, Color color)
+        {
+            var go = new GameObject("NameLabel");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = offset;
             var tm = go.AddComponent<TextMesh>();
-            tm.text = displayName;
-            tm.fontSize = 48;              // 큰 폰트 + 작은 characterSize = 선명
-            tm.characterSize = 0.06f; // 0.045 → 0.06 — 이름표도 같이 키움
+            tm.text = text;
+            tm.fontSize = 48;         // 큰 폰트 + 작은 characterSize = 선명
+            tm.characterSize = 0.055f;
             tm.anchor = TextAnchor.LowerCenter;
             tm.alignment = TextAlignment.Center;
-            tm.color = Color.Lerp(color, Color.white, 0.35f);
+            tm.color = color;
             GameFonts.Apply(tm, GameFonts.Hud); // 콜사인 = SUIT
         }
 

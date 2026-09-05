@@ -337,5 +337,36 @@ namespace SeoYuGi.Battle.Tests
             Assert.AreEqual(1, dealtBy);  // 즉발 명중도 예측 성공 취급
             Assert.AreEqual(1, dealtSum);
         }
+
+        [Test]
+        public void Snatch_PullsAllyToFront_NoDamage()
+        {
+            // 아군 낚아채기 (2026-09-05) — 적과 똑같이 끌어오되 피해는 없다
+            var pigeon = Add(1, 0, new Coord(5, 5), UnitClass.Grenadier);
+            var ally = Add(2, 0, new Coord(5, 9)); // 맨해튼 4 ≤ range 5
+            int allyHp = ally.hp;
+            var combat = NewCombat();
+
+            Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 1, new Coord(5, 9)));
+            combat.Tick(1.1f); // telegraph 1.0s 경과 — 판정
+
+            Assert.AreEqual(new Coord(5, 6), ally.pos, "아군이 시전자 앞칸으로 끌려와야 한다");
+            Assert.AreEqual(allyHp, ally.hp, "아군 낚아채기는 무피해");
+        }
+
+        [Test]
+        public void Snatch_PullsEnemyToFront_WithDamage()
+        {
+            var pigeon = Add(1, 0, new Coord(5, 5), UnitClass.Grenadier);
+            var enemy = Add(2, 1, new Coord(5, 9));
+            int hp = enemy.hp;
+            var combat = NewCombat();
+
+            Assert.AreEqual(ActDenied.None, combat.TrySkill(1, 1, new Coord(5, 9)));
+            combat.Tick(1.1f);
+
+            Assert.AreEqual(new Coord(5, 6), enemy.pos, "적이 시전자 앞칸으로 끌려와야 한다");
+            Assert.Less(enemy.hp, hp, "적 낚아채기는 피해 있음");
+        }
     }
 }

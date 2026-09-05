@@ -94,12 +94,16 @@ namespace SeoYuGi.Integration
                     for (int j = 0; j < z.cells.Count; j++)
                         zoneCellCache[i][j] = new AiCell(z.cells[j].x, z.cells[j].y);
                 }
+                // 봉쇄(z.active=false)·탈환불가(주인 굳음) 거점은 못 먹는 곳 — AI가 알아야
+                // 잠긴 거점 위에서 하염없이 서 있지 않는다 (2026-09-05 "봇이 멀뚱").
+                bool capturable = z.active && !(z.owner >= 0 && round.Rule != null && round.Rule.NoTakebacks);
                 zones.Add(new ZoneState
                 {
                     Cell = new AiCell(z.Center.x, z.Center.y),
                     Cells = zoneCellCache[i], // 패치 전체 — AI가 빈 칸으로 분산 진입
                     HasOwner = z.owner >= 0,
-                    Owner = z.owner >= 0 ? (TeamId)z.owner : default
+                    Owner = z.owner >= 0 ? (TeamId)z.owner : default,
+                    Capturable = capturable
                 });
             }
 

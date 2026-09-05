@@ -122,6 +122,21 @@ namespace SeoYuGi.Art
             focus += move.normalized * (speed * Time.deltaTime);
         }
 
+        /// <summary>라운드·매치 재빌드 직후 — 파괴된 타깃을 버리고 새 내 유닛을 즉시 다시 잡는다.
+        /// 프리캠 상태로 재시작하면 카메라가 옛 맵 자리(새 맵 밖 허공)를 보며 검정 화면이 됐다 (2026-09-05).</summary>
+        public void Retarget()
+        {
+            target = null;
+            Locked = true; // 새 판은 내 유닛 추적으로 시작
+            if (TryFindTarget())
+            {
+                var rot = Quaternion.Euler(pitch, yaw, 0f);
+                transform.position = focus - rot * Vector3.forward * distance; // 스냅 — 허공에서 날아오지 않게
+                transform.rotation = rot;
+                velocity = Vector3.zero;
+            }
+        }
+
         bool TryFindTarget()
         {
             if (runner == null || runner.Battle == null) return false;

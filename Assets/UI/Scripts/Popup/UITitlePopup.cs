@@ -110,16 +110,25 @@ public class UITitlePopup : UIPopup
     {
         var btn = Get<GameObject>((int)Buttons.BtnHost);
         btn.SetActive(true);
-        BindEvent(btn, _ => { if (!searching) OnCommander?.Invoke(); });
+        BindEvent(btn, _ =>
+        {
+            Debug.Log($"[지휘관] 버튼 클릭 — searching={searching}, 핸들러={(OnCommander != null ? "있음" : "없음")}");
+            if (!searching) OnCommander?.Invoke();
+        });
 
         var rt = (RectTransform)btn.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = new Vector2(0f, -212f); // 매칭 버튼(-130) 아래
         rt.sizeDelta = new Vector2(340f, 58f);
+        rt.SetAsLastSibling(); // 나중에 만들어진 장식(로고·태그라인)에 덮이지 않게
 
+        // 이 버튼은 프리팹에서 꺼진 채 방치돼 있어 클릭 판정이 없을 수 있다.
+        // Image가 없거나 raycastTarget이 꺼져 있으면 눌러도 아무 일이 안 일어난다.
         var img = btn.GetComponent<Image>();
+        if (img == null) img = btn.AddComponent<Image>();
         img.sprite = null;
         img.color = new Color(0.03f, 0.05f, 0.1f, 0.92f);
+        img.raycastTarget = true;
 
         var ol = btn.GetComponent<Outline>();
         if (ol == null) ol = btn.AddComponent<Outline>();

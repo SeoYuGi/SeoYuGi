@@ -463,9 +463,12 @@ namespace SeoYuGi.BattleView
             popup.OnCommander = () =>
             {
                 // 지휘관 모드 — 매칭 없이 바로 봇전. 팀원 2기를 무전으로 지휘한다.
+                Debug.Log("[지휘관] 핸들러 진입");
                 GameModeState.Current = GameMode.Commander;
                 UIManager.Instance.ClosePopupUI(popup);
+                Debug.Log("[지휘관] 타이틀 닫음 → 맵 뽑기");
                 PickRandomMap();
+                Debug.Log("[지휘관] PickRandomMap 통과");
             };
         }
 

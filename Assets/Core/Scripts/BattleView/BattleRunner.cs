@@ -186,11 +186,12 @@ namespace SeoYuGi.BattleView
         {
             var u = Battle?.GetUnit(unitId);
             if (u == null) return;
-            var view = viewRegistry.Get(unitId);
-            if (view != null && view.gameObject.activeInHierarchy)
-                ChatBubble.Show(unitId, view.transform, text, Color.white, 3.5f); // 무전 문장은 길다 — 기본 2.4초보다 오래 (2026-09-06)
-            hud.AddChatLine(FindSlot(unitId).callsign, text, Color.Lerp(teamColors[u.team], Color.white, 0.55f));
+            // 머리 위 말풍선은 은퇴 (2026-09-06 "대사가 다 겹쳐 정신없다") — 채팅 로그에 역할군(클래스) 색으로만 표시
+            hud.AddChatLine(FindSlot(unitId).callsign, text, ChatColor(u.unitClass));
         }
+
+        /// <summary>채팅 로그 대사 색 = 클래스 시그니처색을 살짝 밝힌 것 — 누가 말했는지 색으로 읽힌다 (2026-09-06).</summary>
+        static Color ChatColor(UnitClass cls) => Color.Lerp(ClassHue(cls), Color.white, 0.25f);
 
         /// <summary>복종 가시화 — 명령 받은 봇 머리 위에 뭘 할지 띄운다. "말이 게임을 바꿨다"가 눈에 보이게.</summary>
         void ShowOrderMarkers(List<UnitOrder> orders)
@@ -774,10 +775,7 @@ namespace SeoYuGi.BattleView
             if (u == null || u.team != playerTeam) return;
 
             string text = QuickChat.TextOf(lineId);
-            var view = viewRegistry.Get(unitId);
-            if (view != null && view.gameObject.activeInHierarchy)
-                ChatBubble.Show(unitId, view.transform, text, Color.white);
-            hud.AddChatLine(FindSlot(unitId).callsign, text, Color.Lerp(teamColors[u.team], Color.white, 0.55f));
+            hud.AddChatLine(FindSlot(unitId).callsign, text, ChatColor(u.unitClass)); // 말풍선 없이 로그에 클래스 색으로 (2026-09-06)
             battleAudio.PlaySfx("S22_DetectPing", 0.4f); // 전용 무전음 나오기 전까지 핑 재사용
         }
 

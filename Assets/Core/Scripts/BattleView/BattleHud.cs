@@ -55,7 +55,7 @@ namespace SeoYuGi.BattleView
         struct ChatEntry { public string text; public Color color; public float until; }
         readonly List<ChatEntry> chatLog = new List<ChatEntry>();
         GUIStyle chatStyle; // 채팅 로그 전용 — labelStyle + 줄바꿈
-        const int ChatLogMax = 3;
+        const int ChatLogMax = 2; // 3줄은 길었다 (2026-09-06)
 
         // 킬피드 — 우상단에 최근 5줄. "킬러 ⚔ 피해자".
         readonly List<ChatEntry> killFeed = new List<ChatEntry>();
@@ -1195,7 +1195,7 @@ namespace SeoYuGi.BattleView
                 total += hs[i];
             }
             // 채팅 로그 = 중앙 하단 (2026-09-06 B안): 무전 입력줄이 있으면 그 바로 위, 없으면(멀티) 하단바 바로 위.
-            // 공지 배너(화면 37% 높이)와 안 겹치고 시선이 가운데. 최대 3줄(ChatLogMax), 아래에서 위로 쌓인다. 열고 닫아도 자리 안 튄다.
+            // 공지 배너(화면 37% 높이)와 안 겹치고 시선이 가운데. 최대 2줄(ChatLogMax), 아래에서 위로 쌓인다. 열고 닫아도 자리 안 튄다.
             float logX = W / 2f - boxW / 2f, logW = boxW;
             float baseTop = RadioWindow.Shown ? RadioFieldTopHud : BottomBarTopHud;
             float y = (baseTop > 0f ? baseTop : H - 96f) - 10f - total;

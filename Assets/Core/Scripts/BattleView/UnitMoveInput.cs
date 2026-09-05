@@ -26,6 +26,7 @@ namespace SeoYuGi.BattleView
         static readonly Color aimRangeColor = new Color(0.95f, 0.97f, 1f);           // 조준 가능 칸 — 흰색 (2026-09-05 요청; 구 틸은 팀색과 겹쳤다)
         static readonly Color aimImpactColor = new Color(1f, 1f, 1f);                // 발사 시 맞는 칸 — 순흰 (색 4규칙: 흰 = 내 공격. 시안 채널 폐지 2026-09-05)
         static readonly Color aimInvalidColor = new Color(0.35f, 0.6f, 1f);          // 타겟 아닌 호버 칸 (파랑) = 클릭하면 이동
+        static readonly Color aimFillColor = new Color(0.85f, 0.9f, 1f);             // 범위기 판정 칸 채움 — 흰 계열 (내 공격 = 흰)
 
         Camera rayCamera; // Camera.main 자동 연결
 
@@ -306,6 +307,10 @@ namespace SeoYuGi.BattleView
                     if (valid)
                     {
                         gridView.AddOutline(aimImpact, aimImpactColor, 0.14f); // 맞는 칸들 — 밝은 윤곽
+                        // 범위기(판정 2칸 이상)는 칸을 흰색으로 채운다 — 윤곽만으론 "1칸 때리는" 걸로 읽혔다 (2026-09-06).
+                        // 단일 타겟은 그대로 윤곽 + 아이콘. 채움은 바닥 틴트라 아이콘·윤곽 밑에 깔린다.
+                        if (aimImpact.Count > 1)
+                            foreach (var c in aimImpact) { cells.Add(c); colors.Add(aimFillColor); }
                         gridView.ShowCursorIcon(hover, icon, aimImpactColor);
                         ShowPushPreview(hover);
                     }

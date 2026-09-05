@@ -122,9 +122,10 @@ namespace SeoYuGi.BattleView
                 case SkillKind.Blink: return "Icon_Skill_Blink";
                 case SkillKind.Burst: return "Icon_Skill_Burst";
                 case SkillKind.Snipe: return "Icon_Skill_Snipe";
-                case SkillKind.ShieldPush: return "Icon_Guard";
-                case SkillKind.Claw: return "Icon_Attack";
-                case SkillKind.KnockShot: return "Icon_Attack";
+                case SkillKind.ShieldPush: return "Icon_Skill_ShieldPush";
+                case SkillKind.Claw: return "Icon_Skill_Claw";
+                case SkillKind.KnockShot: return "Icon_Skill_KnockShot";
+                case SkillKind.Scream: return "Icon_Skill_Scream";
                 case SkillKind.BombDeliver: return "Icon_Skill_BombDeliver";
                 case SkillKind.BasicAttack: return "Icon_Attack";
                 default: return "Icon_Skill_Generic";

@@ -406,7 +406,7 @@ namespace SeoYuGi.BattleView
             bannerTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
             killStyle = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
-            announceStyle = new GUIStyle(GUI.skin.label) { fontSize = 30, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            announceStyle = new GUIStyle(GUI.skin.label) { fontSize = 30, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, wordWrap = true };
             bannerStyle = new GUIStyle(GUI.skin.label) { fontSize = 44, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefLineStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleLeft, wordWrap = true };
@@ -723,9 +723,13 @@ namespace SeoYuGi.BattleView
         void DrawBriefing()
         {
             bool myWin = briefingWinner == playerTeam;
-            // 높이 = 헤더(106) + 줄들(40씩) + SPACE 바 여유(74) — 줄 수 늘어도 안 겹침
-            int lineCount = briefingLines != null ? briefingLines.Length : 0;
-            float boxH = Mathf.Max(320f, 106f + lineCount * 40f + 74f);
+            // 높이 = 헤더(106) + 줄 실측 합 + SPACE 바 여유(100) — 줄바꿈된 긴 줄이 푸터에 낑기지 않게 (2026-09-05)
+            const float LineW = 540f - 88f, LineGap = 14f;
+            float linesH = 0f;
+            if (briefingLines != null)
+                foreach (var line in briefingLines)
+                    linesH += briefLineStyle.CalcHeight(new GUIContent($"▸ {line}"), LineW) + LineGap;
+            float boxH = Mathf.Max(320f, 106f + linesH + 100f);
             var box = new Rect(W / 2f - 270, H / 2f - boxH / 2f, 540, boxH);
             NeonPanel(box, myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));
             if (panelBriefing != null)
@@ -748,8 +752,9 @@ namespace SeoYuGi.BattleView
             if (briefingLines != null)
                 foreach (var line in briefingLines)
                 {
-                    GUI.Label(new Rect(box.x + 44, y, box.width - 88, 38), $"▸ {line}", briefLineStyle);
-                    y += 40;
+                    float h = briefLineStyle.CalcHeight(new GUIContent($"▸ {line}"), LineW); // 줄바꿈 실측
+                    GUI.Label(new Rect(box.x + 44, y, LineW, h), $"▸ {line}", briefLineStyle);
+                    y += h + LineGap;
                 }
 
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
@@ -780,7 +785,12 @@ namespace SeoYuGi.BattleView
             float remain = announceUntil - Time.time;
             float a = Mathf.Clamp01(remain / 0.5f); // 마지막 0.5초 페이드아웃
 
-            var box = new Rect(W / 2f - 320, H * 0.24f, 640, 66);
+            // 박스 크기 = 텍스트 실측 — 긴 문구(시야해킹 안내 등)가 잘리지 않게. 화면 폭 초과 시 줄바꿈.
+            var content = new GUIContent(announceText);
+            float boxW = Mathf.Min(W - 40f, Mathf.Max(640f, announceStyle.CalcSize(content).x + 80f));
+            float textH = announceStyle.CalcHeight(content, boxW - 60f);
+            float boxH = Mathf.Max(66f, textH + 26f);
+            var box = new Rect(W / 2f - boxW / 2f, H * 0.24f, boxW, boxH);
             GUI.color = new Color(0f, 0f, 0f, 0.6f * a);
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             // 팀 색 상·하 액센트 바
@@ -788,7 +798,8 @@ namespace SeoYuGi.BattleView
             GUI.DrawTexture(new Rect(box.x, box.y, box.width, 3f), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(box.x, box.y + box.height - 3f, box.width, 3f), Texture2D.whiteTexture);
             GUI.color = Color.white;
-            ShadowLabel(new Rect(box.x, box.y + 12, box.width, 42), announceText, announceStyle,
+            ShadowLabel(new Rect(box.x + 30f, box.y + (boxH - textH) / 2f, box.width - 60f, textH),
+                announceText, announceStyle,
                 new Color(announceColor.r, announceColor.g, announceColor.b, a));
         }
 

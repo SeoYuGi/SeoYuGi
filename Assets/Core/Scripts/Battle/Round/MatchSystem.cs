@@ -6,8 +6,8 @@ namespace SeoYuGi.Battle
     /// </summary>
     public class MatchSystem
     {
-        public const int MaxRounds = 5;
-        public const int WinsNeeded = 3;
+        public const int MaxRounds = 3;  // 3판 2선승 (2026-09-05 유저 확정 — 구 5판 3선승에서 복귀)
+        public const int WinsNeeded = 2;
 
         /// <summary>진행 중인 라운드 번호 1..3. 라운드 결과 기록 시 자동 전진.</summary>
         public int CurrentRound { get; private set; } = 1;

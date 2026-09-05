@@ -528,7 +528,12 @@ namespace SeoYuGi.BattleView
             var view = viewRegistry.Get(unitId);
             view?.PlayHit(Vector3.zero);
             if (view != null && view.gameObject.activeInHierarchy)
-                FloatingText.Spawn(view.transform.position, $"-{dmg}", new Color(1f, 0.25f, 0.2f), 1.1f);
+            {
+                FloatingText.Spawn(view.transform.position, $"-{dmg}",
+                    dmg >= 3 ? new Color(1f, 0.45f, 0.15f) : new Color(1f, 0.25f, 0.2f),
+                    Mathf.Min(0.9f + dmg * 0.22f, 1.7f)); // 데미지 비례 크기 — 호스트 경로와 동일
+                HitStop.Do(0.02f + 0.012f * dmg);
+            }
             battleAudio.PlaySfx("S9_Hurt", 0.6f);
             if (unitId == playerUnitId) CameraShaker.Shake(0.12f); // 가독성 다이어트 — 내 피격만 미세 셰이크, 비네트 없음
         }
@@ -899,7 +904,7 @@ namespace SeoYuGi.BattleView
 
             hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindSlot(playerUnitId).callsign,
                 () => hackSystem.Charge(playerUnitId));
-            hud.ShowChatCheatsheet = false; // 빠른채팅 치트시트는 접은 채로 진입 (Tab으로 토글) — 펼쳐두면 화면 우측 1/6을 상시 점유
+            hud.ShowChatCheatsheet = true; // 빠른채팅은 펼친 채로 진입 (Tab으로 접기) — 2026-09-05 유저: 기본 열어둬
             // input.Init은 아래에서 intentSink 생성 직후 호출
 
             Round.OnZoneCaptured += zone =>
@@ -1208,11 +1213,14 @@ namespace SeoYuGi.BattleView
                 var victimView = viewRegistry.Get(unitId);
                 victimView?.PlayHit(new Vector3(hitDir.x, 0f, hitDir.y)); // 리코일 틸트 + 플래시
                 if (victimView != null && victimView.gameObject.activeInHierarchy)
-                    FloatingText.Spawn(victimView.transform.position, $"-{dmg}", new Color(1f, 0.25f, 0.2f), 1.1f);
+                    FloatingText.Spawn(victimView.transform.position, $"-{dmg}",
+                        dmg >= 3 ? new Color(1f, 0.45f, 0.15f) : new Color(1f, 0.25f, 0.2f), // 큰 딜은 주황빛으로 격상
+                        Mathf.Min(0.9f + dmg * 0.22f, 1.7f));                                 // 데미지 비례 크기
                 Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {victim.hp}/{victim.maxHp})");
                 battleAudio.PlaySfx("S9_Hurt", 0.6f);
                 if (IsUnitVisibleToPlayer(unitId))
                 {
+                    HitStop.Do(0.02f + 0.012f * dmg); // 마이크로 히트스톱 — 격파용(0.08+)보다 훨씬 짧아 가독성 유지
                     // 가독성 다이어트: 셰이크·히트스톱·비네트는 격파 전용. 일반 피격은 칸 안 연출 + 숫자 + 소리만.
                     // 내가 맞았을 때만 아주 짧은 셰이크 — "내 문제"는 몸으로 알아야 하니까.
                     if (unitId == playerUnitId) CameraShaker.Shake(0.12f);

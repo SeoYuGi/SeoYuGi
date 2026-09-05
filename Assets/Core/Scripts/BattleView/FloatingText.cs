@@ -33,11 +33,14 @@ namespace SeoYuGi.BattleView
             elapsed += Time.deltaTime;
             if (elapsed >= duration) { Destroy(gameObject); return; }
 
-            transform.position += Vector3.up * (riseSpeed * Time.deltaTime);
+            float k = elapsed / duration;
+            // 팝: 처음 0.12초 1.6배→1배로 탁 박힘 / 상승은 점점 감속 — "찍히고 스르륵"
+            float pop = Mathf.SmoothStep(1.6f, 1f, Mathf.Clamp01(elapsed / 0.12f));
+            transform.localScale = Vector3.one * pop;
+            transform.position += Vector3.up * (riseSpeed * (1f - 0.65f * k) * Time.deltaTime);
             if (Camera.main != null)
                 transform.rotation = Camera.main.transform.rotation; // 빌보드
 
-            float k = elapsed / duration;
             tm.color = new Color(baseColor.r, baseColor.g, baseColor.b, 1f - k * k); // 끝에서 급격히 페이드
         }
     }

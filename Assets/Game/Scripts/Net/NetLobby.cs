@@ -200,7 +200,7 @@ namespace SeoYuGi.Net
                     unitId = Slots[i].unitId,
                     team = Slots[i].team,
                     cls = Slots[i].cls,
-                    callsign = Slots[i].callsign,
+                    callsign = Slots[i].owner == SlotOwner.Bot ? ClassNames.Nick(Slots[i].team, Slots[i].cls) : Slots[i].callsign, // 봇 = 클래스 별명
                     owner = Slots[i].owner,
                     ownerClientId = Slots[i].clientId
                 };
@@ -263,6 +263,7 @@ namespace SeoYuGi.Net
                             if (pool.Contains(d)) { want = d; break; }
                     }
                     Slots[i].cls = want;
+                    Slots[i].callsign = ClassNames.Nick(team, want); // 로비 카드에도 별명으로
                     pool.Remove(want);
                 }
             }
@@ -324,7 +325,7 @@ namespace SeoYuGi.Net
                     var callsign = Slots[i].callsign;
                     Slots[i].owner = SlotOwner.Bot;
                     Slots[i].clientId = 0;
-                    Slots[i].callsign = Template[i].name; // 빈 슬롯은 기본 콜사인 복원
+                    Slots[i].callsign = ClassNames.Nick(Slots[i].team, Slots[i].cls); // 빈 슬롯 = 봇 별명 (AssignBotClasses가 곧 다시 맞춘다)
                     Slots[dst].owner = owner;
                     Slots[dst].clientId = clientId;
                     Slots[dst].cls = cls;

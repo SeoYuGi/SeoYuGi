@@ -1258,7 +1258,8 @@ namespace SeoYuGi.BattleView
                     unitId = roster[i].id,
                     team = roster[i].team,
                     cls = roster[i].cls,
-                    callsign = ClassNames.For(roster[i].team, roster[i].cls),
+                    callsign = roster[i].id == playerUnitId ? ClassNames.For(roster[i].team, roster[i].cls)
+                                                             : ClassNames.Nick(roster[i].team, roster[i].cls), // 봇 = 너굴/라니/깜냥/둘기/까돌
                     owner = roster[i].id == playerUnitId ? SlotOwner.LocalHuman : SlotOwner.Bot
                 };
             DisambiguateCallsigns(slots);

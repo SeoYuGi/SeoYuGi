@@ -72,6 +72,12 @@
 
         public static string For(int team, UnitClass cls) =>
             (team == 1 ? Machine : Animal)[(int)cls];
+
+        // 봇 콜사인 (2026-09-05 유저 지정) — 양 팀 동일. 기계팀은 같은 동물을 "모방"하는 컨셉이라 이름도 같다.
+        // 같은 팀 안 중복은 DisambiguateCallsigns가 ①② 붙임. 상대팀과 겹치는 건 팀 색으로 갈린다.
+        static readonly string[] Nicks = { "너굴", "라니", "깜냥", "둘기", "까돌" };
+
+        public static string Nick(int team, UnitClass cls) => Nicks[(int)cls];
     }
 
     /// <summary>

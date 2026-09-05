@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace SeoYuGi.Battle
@@ -25,6 +25,7 @@ namespace SeoYuGi.Battle
         public int pushCells;
         public int wallBonusDamage; // 벽/맵 경계에 밀려 부딪히면 추가 피해
         public float stunSeconds;   // 비명 교란: 판정 시 스턴 부여
+        public SkillKind kind;      // 이 예고가 무슨 스킬인가 — 예고 아이콘용. 평타는 SkillKind.BasicAttack
         public Coord aimCell;       // 시전자가 지정한 칸 — 연출용(조준경·공격선). 광역은 중심, 자기중심 스킬은 시전자 칸
     }
 
@@ -136,6 +137,7 @@ namespace SeoYuGi.Battle
             Place(new TelegraphStrike
             {
                 attackerId = unitId,
+                kind = SkillKind.BasicAttack,
                 team = unit.team,
                 cells = { target },
                 aimCell = target,
@@ -162,12 +164,15 @@ namespace SeoYuGi.Battle
             ActDenied result;
             switch (skill.kind)
             {
-                case SkillKind.ShieldPush: result = CastMeleeStrike(unit, target, skill, pushCells: 2, wallBonus: 1); break;
-                case SkillKind.Smash: result = CastMeleeStrike(unit, target, skill, pushCells: 1, wallBonus: 0); break;
+                case SkillKind.ShieldPush:
+                case SkillKind.Smash:
+                case SkillKind.Claw:
+                    PushSpecOf(skill.kind, out int meleePush, out int meleeWall, out _);
+                    result = CastMeleeStrike(unit, target, skill, meleePush, meleeWall);
+                    break;
                 case SkillKind.Dash: result = CastDash(unit, target, skill); break;
                 case SkillKind.Scream: result = CastScream(unit, skill); break;
                 case SkillKind.Blink: result = CastBlink(unit, target, skill); break;
-                case SkillKind.Claw: result = CastMeleeStrike(unit, target, skill, pushCells: 0, wallBonus: 0); break;
                 case SkillKind.Burst: result = CastBurst(unit, target, skill); break;
                 case SkillKind.BombDeliver: result = CastBombDeliver(unit, target, skill); break;
                 case SkillKind.KnockShot: result = CastKnockShot(unit, target, skill); break;
@@ -199,6 +204,7 @@ namespace SeoYuGi.Battle
             Place(new TelegraphStrike
             {
                 attackerId = unit.id,
+                kind = skill.kind,
                 team = unit.team,
                 cells = { target },
                 aimCell = target,
@@ -263,6 +269,7 @@ namespace SeoYuGi.Battle
             var strike = new TelegraphStrike
             {
                 attackerId = unit.id,
+                kind = skill.kind,
                 team = unit.team,
                 aimCell = unit.pos, // 자기 중심 광역
                 impactTime = State.time + skill.telegraphSeconds,
@@ -304,6 +311,7 @@ namespace SeoYuGi.Battle
             var strike = new TelegraphStrike
             {
                 attackerId = unit.id,
+                kind = skill.kind,
                 team = unit.team,
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
@@ -331,6 +339,7 @@ namespace SeoYuGi.Battle
             var strike = new TelegraphStrike
             {
                 attackerId = unit.id,
+                kind = skill.kind,
                 team = unit.team,
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
@@ -359,7 +368,8 @@ namespace SeoYuGi.Battle
             var dir = new Coord(Math.Sign(d.x), Math.Sign(d.y));
             Damage(victim, skill.damage, dir, unit.id);
             OnDamageDealt?.Invoke(unit.id, skill.damage); // 즉발 명중도 예측 성공 취급
-            Push(unit, new Coord(-dir.x, -dir.y), 2, 0); // 셀프 넉백 — Push가 낙하·막힘 처리
+            PushSpecOf(SkillKind.KnockShot, out int knockCells, out _, out _);
+            Push(unit, new Coord(-dir.x, -dir.y), knockCells, 0); // 셀프 넉백 — Push가 낙하·막힘 처리
             return ActDenied.None;
         }
 
@@ -372,6 +382,7 @@ namespace SeoYuGi.Battle
             var strike = new TelegraphStrike
             {
                 attackerId = unit.id,
+                kind = skill.kind,
                 team = unit.team,
                 aimCell = target,
                 cells = { target },
@@ -675,6 +686,41 @@ namespace SeoYuGi.Battle
                 OnUnitDied?.Invoke(unit.id);
                 OnUnitKilled?.Invoke(unit.id, attackerId); // 킬러 귀속 (환경사 = NoUnit)
             }
+        }
+
+        /// <summary>
+        /// 스킬의 밀침 규격 — 칸수, 벽꿍 추가 피해, 그리고 밀리는 대상(self=true면 시전자 본인).
+        /// TrySkill과 조준 미리보기가 같은 표를 쓰게 하는 단일 출처 — 둘이 어긋나면 연계 설계가 거짓말이 된다.
+        /// </summary>
+        public static void PushSpecOf(SkillKind kind, out int cells, out int wallBonus, out bool self)
+        {
+            switch (kind)
+            {
+                case SkillKind.ShieldPush: cells = 2; wallBonus = 1; self = false; return;
+                case SkillKind.Smash: cells = 1; wallBonus = 0; self = false; return;
+                case SkillKind.KnockShot: cells = 2; wallBonus = 0; self = true; return;   // 본인이 반대로 후퇴
+                default: cells = 0; wallBonus = 0; self = false; return;
+            }
+        }
+
+        /// <summary>
+        /// 밀침 결과 미리보기 — 실제 Push와 같은 규칙으로 도착 칸을 계산한다(상태 변경 없음).
+        /// 연계 설계의 토대: "여기 맞추면 저기로 밀린다"를 예고·조준에 그리려면 코어와 답이 같아야 한다.
+        /// </summary>
+        public Coord PreviewPush(Coord from, Coord dir, int cells, out bool wallCrash)
+        {
+            wallCrash = false;
+            if (dir == Coord.Zero || cells <= 0) return from;
+            var pos = from;
+            for (int i = 0; i < cells; i++)
+            {
+                var next = pos + dir;
+                bool uphill = State.Grid.IsHighland(next) && !State.Grid.IsHighland(pos);
+                if (!State.Grid.IsWalkableTerrain(next) || uphill) { wallCrash = true; return pos; }
+                if (State.Grid.GetUnitAt(next) != Cell.NoUnit) return pos; // 유닛에 막힘 — 추가 피해 없음
+                pos = next;
+            }
+            return pos;
         }
 
         void Push(UnitState unit, Coord dir, int cells, int wallBonusDamage)

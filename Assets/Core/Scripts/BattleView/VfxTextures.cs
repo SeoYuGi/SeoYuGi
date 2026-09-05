@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace SeoYuGi.BattleView
 {
@@ -10,6 +10,21 @@ namespace SeoYuGi.BattleView
     /// </summary>
     public static class VfxTextures
     {
+        /// <summary>
+        /// 가산 이펙트 전역 밝기 계수 (2026-09-05 매트화). 1 = 예전 화려함, 낮출수록 차분.
+        /// 화면이 전부 빛나면 아무것도 도드라지지 않아 예고·화살표 같은 정보가 묻힌다.
+        /// FxQuad가 모든 절차 VFX의 단일 통로라 여기 한 곳만 만지면 전부 따라온다.
+        /// </summary>
+        public const float Brightness = 0.55f;
+
+        /// <summary>가산 VFX에 쓸 색 — 전역 밝기를 먹인다. 알파는 보존(수명 페이드가 쓴다).</summary>
+        public static Color Dim(Color c)
+        {
+            var d = c * Brightness;
+            d.a = c.a;
+            return d;
+        }
+
         static Material glowMat, electricMat, sparkMat, ringMat;
         static Material slashMat, clawMat, crosshairMat, windMat;
 

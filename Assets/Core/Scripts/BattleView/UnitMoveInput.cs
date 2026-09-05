@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using SeoYuGi.Battle;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -52,6 +52,7 @@ namespace SeoYuGi.BattleView
         readonly List<Coord> aimRange = new List<Coord>();
         readonly List<Coord> aimImpact = new List<Coord>();
         readonly List<Transform> markers = new List<Transform>(); // 조준 마커 쿼드 풀
+        PushArrow aimPushArrow;   // 조준 중 "여기 맞추면 저기로 밀린다" — 연계를 미리 짜라고 보여준다
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         MaterialPropertyBlock markerMpb;
         readonly List<Coord> cells = new List<Coord>();
@@ -246,6 +247,7 @@ namespace SeoYuGi.BattleView
                     {
                         foreach (var c in aimImpact) { cells.Add(c); colors.Add(aimImpactColor); }
                         UpdateMarkers(aimImpact, aimImpactColor);
+                        ShowPushPreview(hover);
                     }
                     else
                     {
@@ -253,18 +255,21 @@ namespace SeoYuGi.BattleView
                         aimImpact.Clear();
                         aimImpact.Add(hover);
                         UpdateMarkers(aimImpact, aimInvalidColor);
+                        ClearPushPreview();
                     }
                 }
                 else
                 {
                     aimImpact.Clear();
                     UpdateMarkers(aimImpact, aimImpactColor);
+                    ClearPushPreview();
                 }
             }
             else
             {
                 aimImpact.Clear();
                 UpdateMarkers(aimImpact, aimImpactColor); // 비조준 — 마커 전부 숨김
+                ClearPushPreview();
 
                 if (selectedUnitId != -1)
                 {
@@ -313,6 +318,47 @@ namespace SeoYuGi.BattleView
         // ── 조준 마커 (틴트 위에 뜬 밝은 쿼드 — 풀 재사용) ─────────
 
         /// <summary>마커를 cellList에 맞춰 배치. 빈 리스트면 전부 숨김. 펄스로 두근거림.</summary>
+        /// <summary>
+        /// 조준 중 밀침 미리보기 — 지금 겨눈 칸에 맞으면 누가 어디로 밀리는지 바닥 화살표로.
+        /// 밀림 규격·도착 칸은 코어(PushSpecOf·PreviewPush)가 계산한다 — 실제 판정과 어긋나면 거짓말이 된다.
+        /// </summary>
+        void ShowPushPreview(Coord hover)
+        {
+            ClearPushPreview();
+            if (aim == AimMode.None || aim == AimMode.Attack) return; // 평타는 밀침 없음
+
+            var me = combat.State.GetUnit(selectedUnitId);
+            if (me == null) return;
+            var skills = ClassCatalog.Get(me.unitClass).skills;
+            int skillIdx = aim == AimMode.Skill ? 0 : 1;
+            if (skillIdx >= skills.Length) return;
+
+            CombatSystem.PushSpecOf(skills[skillIdx].kind, out int pushCells, out _, out bool self);
+            if (pushCells <= 0) return;
+
+            var d = hover - me.pos;
+            var dir = new Coord(System.Math.Sign(d.x), System.Math.Sign(d.y));
+            if (dir == Coord.Zero) return;
+
+            // 넉백샷은 시전자 본인이 반대 방향으로 후퇴한다 — 밀리는 주체가 다르다
+            var from = self ? me.pos : hover;
+            if (self) dir = new Coord(-dir.x, -dir.y);
+
+            var dest = combat.PreviewPush(from, dir, pushCells, out bool crash);
+            if (dest == from && !crash) return;
+
+            var color = aimImpactColor; color.a = 0.75f;
+            aimPushArrow = PushArrow.Create(transform, gridView.CoordToWorld(from),
+                gridView.CoordToWorld(dest), color, crash);
+        }
+
+        void ClearPushPreview()
+        {
+            if (aimPushArrow == null) return;
+            Destroy(aimPushArrow.gameObject);
+            aimPushArrow = null;
+        }
+
         void UpdateMarkers(List<Coord> cellList, Color color)
         {
             if (markerMpb == null) markerMpb = new MaterialPropertyBlock();

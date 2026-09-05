@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Unity.Collections;
 using Unity.Netcode;
 using SeoYuGi.Battle;
@@ -109,11 +109,19 @@ namespace SeoYuGi.Net
         /// <summary>호스트 — 예고를 특정 클라에게. 수신 필터(팀·시야)는 러너가 결정.</summary>
         public static void HostSendTelegraph(ulong clientId, TelegraphStrike s)
         {
-            using var w = new FastBufferWriter(32 + s.cells.Count * 8, Allocator.Temp);
+            using var w = new FastBufferWriter(48 + s.cells.Count * 8, Allocator.Temp);
             w.WriteValueSafe(s.id);
             w.WriteValueSafe(s.attackerId);
             w.WriteValueSafe(s.team);
             w.WriteValueSafe(s.impactTime);
+            // 밀침·조준칸·스킬종류 — 클라에서도 밀침 화살표와 스킬 아이콘을 그리려면 필요하다
+            w.WriteValueSafe((sbyte)s.pushDir.x);
+            w.WriteValueSafe((sbyte)s.pushDir.y);
+            w.WriteValueSafe((byte)s.pushCells);
+            w.WriteValueSafe((byte)s.wallBonusDamage);
+            w.WriteValueSafe((byte)s.aimCell.x);
+            w.WriteValueSafe((byte)s.aimCell.y);
+            w.WriteValueSafe((byte)s.kind);
             w.WriteValueSafe((byte)s.cells.Count);
             foreach (var c in s.cells)
             {
@@ -140,6 +148,18 @@ namespace SeoYuGi.Net
             r.ReadValueSafe(out s.attackerId);
             r.ReadValueSafe(out s.team);
             r.ReadValueSafe(out s.impactTime);
+            r.ReadValueSafe(out sbyte pdx);
+            r.ReadValueSafe(out sbyte pdy);
+            r.ReadValueSafe(out byte pushCells);
+            r.ReadValueSafe(out byte wallBonus);
+            r.ReadValueSafe(out byte aimX);
+            r.ReadValueSafe(out byte aimY);
+            r.ReadValueSafe(out byte kind);
+            s.pushDir = new Coord(pdx, pdy);
+            s.pushCells = pushCells;
+            s.wallBonusDamage = wallBonus;
+            s.aimCell = new Coord(aimX, aimY);
+            s.kind = (SkillKind)kind;
             r.ReadValueSafe(out byte count);
             for (int i = 0; i < count; i++)
             {

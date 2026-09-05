@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using SeoYuGi.Battle;
 using UnityEngine;
@@ -64,7 +64,7 @@ namespace SeoYuGi.BattleView
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;
             var block = new MaterialPropertyBlock();
-            var c = color * 0.7f; c.a = 1f; // 가산 — 색 세기로 밝기 조절
+            var c = color * 0.38f; c.a = 1f; // 가산 — 색 세기로 밝기 조절 (2026-09-05 매트화: 0.7은 여섯 유닛이 상시 발광해 화면을 태웠다)
             block.SetColor(BaseColorId, c);
             block.SetColor("_Color", c);
             r.SetPropertyBlock(block);

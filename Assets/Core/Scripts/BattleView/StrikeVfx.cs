@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using SeoYuGi.Battle;
@@ -40,6 +40,8 @@ namespace SeoYuGi.BattleView
 
             LaserBeam.Spawn(root.transform, casterWorld + Vector3.up * 0.55f, aimWorld + Vector3.up * 0.15f, lineColor);
 
+            SkillIcon(root.transform, strike.kind, aimWorld, lineColor); // 무슨 스킬인지 — 연계를 짜려면 알아야 한다
+
             if (cls == UnitClass.Sniper)
                 ScopeMarker.Spawn(root.transform, aimWorld, lineColor, 1f); // 조준경 — 조준 칸 하나
 
@@ -50,6 +52,52 @@ namespace SeoYuGi.BattleView
             }
 
             return root;
+        }
+
+        /// <summary>
+        /// 예고 스킬 아이콘 — 조준 칸 바닥에 눕혀 그린다(빌보드 없음, 그리드와 같이 읽힌다).
+        /// 매트한 알파 블렌드 — 발광은 정보를 묻는다. 아이콘이 없으면 조용히 생략.
+        /// </summary>
+        static void SkillIcon(Transform parent, SkillKind kind, Vector3 aimWorld, Color color)
+        {
+            var tex = Resources.Load<Texture2D>("UI/" + SkillIconName(kind));
+            if (tex == null) return;
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            UnityEngine.Object.Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
+            go.name = "SkillIcon";
+            go.transform.SetParent(parent, false);
+            go.transform.position = aimWorld + Vector3.up * 0.09f; // 밀침 화살표(0.07)보다 살짝 위
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            go.transform.localScale = Vector3.one * 0.52f;
+
+            var mat = new Material(Shader.Find("Sprites/Default")); // 알파 — 매트
+            mat.mainTexture = tex;
+            var c = Color.Lerp(color, Color.white, 0.35f); c.a = 0.85f;
+            mat.color = c;
+            var rend = go.GetComponent<Renderer>();
+            rend.material = mat;
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rend.receiveShadows = false;
+        }
+
+        /// <summary>스킬 → 아이콘 리소스명. ClassCard의 카드용 표와 같은 매핑(레이어가 달라 각자 보유).</summary>
+        static string SkillIconName(SkillKind k)
+        {
+            switch (k)
+            {
+                case SkillKind.Smash: return "Icon_Skill_Smash";
+                case SkillKind.Dash: return "Icon_Skill_Dash";
+                case SkillKind.Blink: return "Icon_Skill_Blink";
+                case SkillKind.Burst: return "Icon_Skill_Burst";
+                case SkillKind.Snipe: return "Icon_Skill_Snipe";
+                case SkillKind.ShieldPush: return "Icon_Guard";
+                case SkillKind.Claw: return "Icon_Attack";
+                case SkillKind.KnockShot: return "Icon_Attack";
+                case SkillKind.BombDeliver: return "Icon_Skill_BombDeliver";
+                case SkillKind.BasicAttack: return "Icon_Attack";
+                default: return "Icon_Skill_Generic";
+            }
         }
 
         /// <summary>판정 순간 — 클래스·팀별 임팩트. cells는 시야 필터를 통과한 칸만. mine = 내 팀 공격(색 언어).</summary>

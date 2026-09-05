@@ -981,6 +981,23 @@ namespace SeoYuGi.BattleView
                         mineStrike, aimWorld);
                     if (fx != null) strikeTelegraphFx[strike.id] = fx;
 
+                    // 밀침 화살표 — 예고 칸에 서 있는 유닛이 어디로 밀릴지 바닥에 그린다.
+                    // 연계의 전제: 밀릴 자리가 미리 보여야 폭격 유닛이 그 자리를 선점할 수 있다.
+                    if (fx != null && strike.pushCells > 0 && strike.pushDir != Coord.Zero)
+                    {
+                        var arrowColor = StrikeVfx.TeamColor(mineStrike);
+                        arrowColor.a = 0.7f;
+                        foreach (var c in strike.cells)
+                        {
+                            if (!mineStrike && !playerVisibleFn(c)) continue;
+                            if (Battle.Grid.GetUnitAt(c) == SeoYuGi.Battle.Cell.NoUnit) continue; // Prediction.Cell과 이름 충돌 — 정규화
+                            var dest = Combat.PreviewPush(c, strike.pushDir, strike.pushCells, out bool crash);
+                            if (dest == c && !crash) continue; // 못 밀린다 — 그릴 게 없다
+                            PushArrow.Create(fx.transform, gridView.CoordToWorld(c),
+                                gridView.CoordToWorld(dest), arrowColor, crash);
+                        }
+                    }
+
                     // 폭탄 배달 — 왕복 비행 (시뮬 위치는 출발 칸 그대로, 연출만 난다)
                     if (telegraphAttacker.unitClass == UnitClass.Grenadier && Combat.IsFlying(telegraphAttacker)
                         && strike.cells.Count > 1)

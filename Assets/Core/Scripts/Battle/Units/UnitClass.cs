@@ -23,7 +23,8 @@
         Burst,      // 파열탄: 5×5 내 지정 예고 → 십자 5칸 피해1 (자폭 없음)
         BombDeliver,// 폭탄 배달: 맨해튼4 내 지정, 1초 비행(무적) 후 착지 + 십자 5칸 피해2
         KnockShot,  // 넉백샷: 인접8 즉발 피해1 + 본인 반대로 2칸 후퇴(벽 막힘·낙하 자기 부담)
-        Snipe       // 조준 사격: 직선 4방 최대 5칸 관통 예고 → 피해3, 벽 차단(고지 사수는 관통)
+        Snipe,       // 조준 사격: 직선 4방 최대 5칸 관통 예고 → 피해3, 벽 차단(고지 사수는 관통)
+        BasicAttack  // 평타 — 스킬 슬롯엔 없다. 예고 아이콘 표시용 꼬리표 (뒤에 붙여 기존 값 불변)
     }
 
     /// <summary>기본공격 사거리 모양 (범위 다이어그램 원본).</summary>
@@ -83,8 +84,8 @@
                 move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.85f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.2f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 0.6f, damage = 1, range = 1, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 0.6f, damage = 2, range = 1, cooldownSeconds = 8f }
+                    new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 1.5f, damage = 1, range = 1, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 1.5f, damage = 2, range = 1, cooldownSeconds = 8f }
                 }
             },
             new ClassDef
@@ -94,7 +95,7 @@
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 0.4f, damage = 0, range = 1, cooldownSeconds = 8f, stunSeconds = 1f }
+                    new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 1.2f, damage = 0, range = 1, cooldownSeconds = 8f, stunSeconds = 1f }
                 }
             },
             new ClassDef
@@ -104,7 +105,7 @@
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Blink, telegraphSeconds = 0f, damage = 0, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Claw, telegraphSeconds = 0.8f, damage = 3, range = 1, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Claw, telegraphSeconds = 1.8f, damage = 3, range = 1, cooldownSeconds = 10f }
                 }
             },
             new ClassDef
@@ -113,8 +114,8 @@
                 move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.8f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 0.8f, damage = 1, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 1f, damage = 2, range = 4, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 1.8f, damage = 1, range = 2, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 2f, damage = 2, range = 4, cooldownSeconds = 10f }
                 }
             },
             new ClassDef
@@ -124,7 +125,7 @@
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 1, cooldownSeconds = 7f },
-                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 0.8f, damage = 3, range = 5, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 1.8f, damage = 3, range = 5, cooldownSeconds = 10f }
                 }
             }
         };

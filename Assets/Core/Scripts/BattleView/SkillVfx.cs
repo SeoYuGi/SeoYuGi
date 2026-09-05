@@ -1,4 +1,4 @@
-using SeoYuGi.Battle;
+﻿using SeoYuGi.Battle;
 using UnityEngine;
 
 namespace SeoYuGi.BattleView
@@ -125,7 +125,7 @@ namespace SeoYuGi.BattleView
 
             var f = go.AddComponent<FxQuad>();
             f.mat = mat;
-            f.color = color;
+            f.color = VfxTextures.Dim(color); // 매트화 — 모든 절차 VFX가 이 통로를 지난다
             f.fromScale = scale;
             f.toScale = scale * (1f + scaleGrow);
             f.life = life;

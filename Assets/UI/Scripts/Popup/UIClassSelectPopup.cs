@@ -143,17 +143,17 @@ public class UIClassSelectPopup : UIPopup
 
     void BuildDifficultyBar()
     {
-        // 제목(하단 ~410) 과 분대 슬롯(상단 370, 편집 확대 시 ~380) 사이 띠 (2026-09-06)
-        const float bw = 150f, bh = 36f, gap = 10f, y = 395f;
-        float total = 3 * bw + 2 * gap;
-        // MiddleRight도 pos는 rect "중심" — 오른쪽 끝이 바 왼쪽에 닿도록 중심을 라벨 반폭만큼 더 왼쪽에
-        MakeText(transform, "AI 난이도", 16, FontStyle.Bold, DimText, TextAnchor.MiddleRight,
-            new Vector2(0.5f, 0.5f), new Vector2(-total / 2f - 14f - 60f, y), new Vector2(120f, bh), GameFonts.Hud);
+        // 분대 슬롯 왼쪽에 세로로 쌓는다 — 슬롯 위 가로 띠는 편집 확대 슬롯과 겹쳤다 (2026-09-06 "슬롯 왼쪽으로").
+        // 슬롯 왼끝 -250(3칸 기준) 에서 여유 두고 x -400. 라벨 → 하/중/상 순으로 내려간다.
+        const float bw = 150f, bh = 36f, gap = 6f, x = -400f;
+        float yTop = SlotY + bh + gap; // 라벨 줄
+        MakeText(transform, "AI 난이도", 16, FontStyle.Bold, DimText, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.5f), new Vector2(x, yTop + (bh + gap)), new Vector2(bw, bh), GameFonts.Hud);
         for (int i = 0; i < 3; i++)
         {
             int idx = i;
-            float cx = -total / 2f + bw / 2f + i * (bw + gap);
-            var bg = MakeImage(transform, null, CardBg, new Vector2(0.5f, 0.5f), new Vector2(cx, y), new Vector2(bw, bh));
+            float y = yTop - i * (bh + gap);
+            var bg = MakeImage(transform, null, CardBg, new Vector2(0.5f, 0.5f), new Vector2(x, y), new Vector2(bw, bh));
             bg.GetComponent<Image>().raycastTarget = true;
             BindEvent(bg.gameObject, _ => { AiConfig.Difficulty = DiffOptions[idx].diff; RefreshDifficulty(); });
             var ol = bg.gameObject.AddComponent<Outline>();

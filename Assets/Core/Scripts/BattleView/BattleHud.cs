@@ -311,6 +311,36 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>그림자 딸린 라벨 — 밝은 맵 위에서도 글자가 뜬다.</summary>
+        // 파이 마스크 텍스처 캐시 — 0..PieSteps 단계 (흰 알파 마스크, GUI.color로 팀 색). 12시부터 시계 방향.
+        const int PieSteps = 36;
+        static readonly Texture2D[] pieTex = new Texture2D[PieSteps + 1];
+
+        static Texture2D PieTex(int step)
+        {
+            step = Mathf.Clamp(step, 0, PieSteps);
+            if (pieTex[step] != null) return pieTex[step];
+            const int N = 40; float c = (N - 1) * 0.5f, r = N * 0.5f - 1f;
+            float sweep = step / (float)PieSteps * Mathf.PI * 2f;
+            var tex = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[N * N];
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                {
+                    float dx = x - c, dy = y - c;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float edge = Mathf.Clamp01(r - d); // 가장자리 1px 안티에일리어싱
+                    float ang = Mathf.Atan2(dx, dy); // 12시(+y) 기준, 시계 방향 양수 (텍스처 y는 위가 +)
+                    if (ang < 0f) ang += Mathf.PI * 2f;
+                    bool inside = step >= PieSteps || ang <= sweep;
+                    byte a = (byte)(inside ? edge * 255f : 0f);
+                    px[y * N + x] = new Color32(255, 255, 255, a);
+                }
+            tex.SetPixels32(px);
+            tex.Apply();
+            pieTex[step] = tex;
+            return tex;
+        }
+
         static void ShadowLabel(Rect r, string text, GUIStyle style, Color color)
         {
             GUI.color = new Color(0f, 0f, 0f, 0.8f * color.a);
@@ -564,16 +594,25 @@ namespace SeoYuGi.BattleView
                 GUI.color = z.owner == -1 ? new Color(0.55f, 0.55f, 0.6f)
                     : Color.Lerp(z.owner == playerTeam ? allyColor : enemyColor, Color.white, 0.25f);
                 if (texChip != null)
-                {
                     GUI.DrawTexture(chipRect, texChip, ScaleMode.StretchToFill);
-                    GUI.color = Color.white;
-                    GUI.Label(chipRect, i < letters.Length ? letters[i] : "?", slotNameStyle);
-                }
                 else
+                    GUI.Box(chipRect, "", chipStyle);
+
+                // 점거 파이 (2026-09-06) — 누가 얼마나 먹어가는지 상단에서 실시간으로. 점거 팀 색, 시계 방향으로 찬다.
+                float capSec = round.Config.captureSeconds;
+                if (z.capturingTeam >= 0 && z.progress > 0f && capSec > 0f)
                 {
-                    GUI.Box(chipRect, i < letters.Length ? letters[i] : "?", chipStyle);
-                    GUI.color = Color.white;
+                    float frac = Mathf.Clamp01(z.progress / capSec);
+                    var pieRect = new Rect(chipRect.x + chipRect.width - 20f, chipRect.y + 2f, 20f, 20f);
+                    GUI.color = new Color(0f, 0f, 0f, 0.45f);
+                    GUI.DrawTexture(pieRect, PieTex(PieSteps), ScaleMode.StretchToFill);
+                    var pc = z.capturingTeam == playerTeam ? allyColor : enemyColor;
+                    GUI.color = new Color(pc.r, pc.g, pc.b, 0.95f);
+                    GUI.DrawTexture(pieRect, PieTex(Mathf.RoundToInt(frac * PieSteps)), ScaleMode.StretchToFill);
                 }
+                GUI.color = Color.white;
+                var letterRect = new Rect(chipRect.x - 4f, chipRect.y, chipRect.width, chipRect.height);
+                GUI.Label(letterRect, i < letters.Length ? letters[i] : "?", slotNameStyle);
             }
 
             // 판세 스코어 (2026-09-05) — "지금 누가 이기고 있나"를 칩 색만으로 못 읽던 문제

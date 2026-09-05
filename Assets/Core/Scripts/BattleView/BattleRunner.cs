@@ -2752,6 +2752,7 @@ namespace SeoYuGi.BattleView
         {
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
             fastForward = false;
+            if (radio != null && radio.IsOpen) radio.Close(); // 채팅 치던 중 끝남 — 무전창의 정지 홀드가 남으면 브리핑이 영영 안 넘어간다 (2026-09-06)
             EndRadioTime(); // 무전 타임 중 끝났으면 정지 해제 (홀드 카운트 정리 후 timeScale 복원)
             GuideSpotlight.Clear();
             nextRadioTimeAt = -1f;

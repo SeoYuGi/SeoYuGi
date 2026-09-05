@@ -23,7 +23,7 @@ namespace SeoYuGi.BattleView
         {
             var go = new GameObject("ZoneCaptureDisc");
             go.transform.SetParent(parent);
-            go.transform.position = center + Vector3.up * 0.08f; // 타일 위, 거점 글자 위
+            go.transform.position = center + Vector3.up * 0.17f; // 거점 캔버스·네온 테두리(0.12)보다 위 — 그 아래 깔려 "게이지가 안 보였다" (2026-09-06)
             var disc = go.AddComponent<ZoneCaptureDisc>();
             disc.width = Mathf.Max(0.1f, width - Inset * 2f);
             disc.depth = Mathf.Max(0.1f, depth - Inset * 2f);

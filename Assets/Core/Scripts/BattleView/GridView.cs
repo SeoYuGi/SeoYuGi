@@ -405,6 +405,114 @@ namespace SeoYuGi.BattleView
             highlighted.Clear();
         }
 
+        // ── 이동 범위 테두리 (2026-09-05) — 칸 채우기(틴트)는 거점 바닥 위에서 안 보였다.
+        //    영역의 바깥 경계만 네온 선으로: 안쪽(게이지 이내)은 파랑, 그 바깥(과부하)은 노랑. 두 겹 윤곽이 두 구역을 가른다.
+        //    + 호버 칸에 발자국 아이콘 — "여기로 간다".
+        readonly List<Transform> outlineSegs = new List<Transform>();
+        int outlineUsed;
+        Material outlineMat;
+        Transform footstep;
+        Material footstepMat;
+        static readonly int OutlineColorId = Shader.PropertyToID("_BaseColor");
+        MaterialPropertyBlock outlineMpb;
+
+        public void SetRangeOutline(IReadOnlyList<Coord> inner, IReadOnlyList<Coord> outer, Color innerColor, Color outerColor)
+        {
+            outlineUsed = 0;
+            if (outlineMpb == null) outlineMpb = new MaterialPropertyBlock();
+            var innerSet = new HashSet<Coord>(inner);
+            var allSet = new HashSet<Coord>(inner);
+            foreach (var c in outer) allSet.Add(c);
+            DrawOutline(innerSet, Color.Lerp(innerColor, Color.white, 0.35f), 0.13f);
+            if (outer.Count > 0) DrawOutline(allSet, Color.Lerp(outerColor, Color.white, 0.25f), 0.12f);
+            for (int i = outlineUsed; i < outlineSegs.Count; i++)
+                if (outlineSegs[i].gameObject.activeSelf) outlineSegs[i].gameObject.SetActive(false);
+        }
+
+        public void ClearRangeOutline()
+        {
+            for (int i = 0; i < outlineSegs.Count; i++)
+                if (outlineSegs[i].gameObject.activeSelf) outlineSegs[i].gameObject.SetActive(false);
+            outlineUsed = 0;
+            HideFootstep();
+        }
+
+        void DrawOutline(HashSet<Coord> set, Color color, float y)
+        {
+            float half = tileSize * 0.5f;
+            foreach (var c in set)
+            {
+                // 이웃이 집합 밖이면 그 변이 경계 — 변 중점에 칸 길이짜리 얇은 쿼드
+                if (!set.Contains(new Coord(c.x, c.y + 1))) Seg(c, new Vector3(0f, y, half), 0f, color);
+                if (!set.Contains(new Coord(c.x, c.y - 1))) Seg(c, new Vector3(0f, y, -half), 0f, color);
+                if (!set.Contains(new Coord(c.x + 1, c.y))) Seg(c, new Vector3(half, y, 0f), 90f, color);
+                if (!set.Contains(new Coord(c.x - 1, c.y))) Seg(c, new Vector3(-half, y, 0f), 90f, color);
+            }
+        }
+
+        void Seg(Coord c, Vector3 offset, float yawDeg, Color color)
+        {
+            if (!grid.InBounds(c) || tiles[c.x, c.y] == null) return;
+            if (outlineUsed >= outlineSegs.Count) outlineSegs.Add(CreateSeg());
+            var t = outlineSegs[outlineUsed++];
+            t.gameObject.SetActive(true);
+            t.position = CoordToWorld(c) + offset;
+            t.rotation = Quaternion.Euler(90f, yawDeg, 0f);
+            t.localScale = new Vector3(tileSize * 1.02f, 0.07f, 1f);
+            outlineMpb.SetColor(OutlineColorId, color);
+            t.GetComponent<Renderer>().SetPropertyBlock(outlineMpb);
+        }
+
+        Transform CreateSeg()
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "RangeOutline";
+            Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
+            go.transform.SetParent(transform);
+            var r = go.GetComponent<Renderer>();
+            if (outlineMat == null)
+            {
+                var sh = Shader.Find("Universal Render Pipeline/Unlit");
+                outlineMat = sh != null ? new Material(sh) : r.sharedMaterial; // 언릿 = 조명 무관 네온 평면
+            }
+            r.sharedMaterial = outlineMat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            return go.transform;
+        }
+
+        /// <summary>호버 칸 발자국 — 이동 가능 칸 위에 마우스가 있을 때. 색 = 그 칸의 구역(파랑/노랑).</summary>
+        public void ShowFootstep(Coord c, Color color)
+        {
+            if (footstep == null)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                go.name = "Footstep";
+                Destroy(go.GetComponent<Collider>());
+                go.transform.SetParent(transform);
+                var r = go.GetComponent<Renderer>();
+                var tex = BattleHud.LoadKeyed("UI/Icon_Move");
+                var sh = Shader.Find("Sprites/Default");
+                footstepMat = sh != null ? new Material(sh) : r.sharedMaterial;
+                if (tex != null) footstepMat.mainTexture = tex;
+                r.sharedMaterial = footstepMat;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+                footstep = go.transform;
+            }
+            footstep.gameObject.SetActive(true);
+            footstep.position = CoordToWorld(c) + Vector3.up * 0.15f;
+            footstep.rotation = Quaternion.Euler(90f, 0f, 0f);
+            float s = tileSize * (0.62f + Mathf.PingPong(Time.time * 1.6f, 0.08f));
+            footstep.localScale = new Vector3(s, s, 1f);
+            footstepMat.color = color;
+        }
+
+        public void HideFootstep()
+        {
+            if (footstep != null && footstep.gameObject.activeSelf) footstep.gameObject.SetActive(false);
+        }
+
         /// <summary>거점 칸을 거점 텍스처로 표시. Build 이후 호출.</summary>
         readonly HashSet<Coord> zoneSet = new HashSet<Coord>(); // 거점 칸 — 배틀 매트 딤 제외 대상
 

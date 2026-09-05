@@ -229,6 +229,7 @@ namespace SeoYuGi.BattleView
             selectedUnitId = -1;
             aim = AimMode.None;
             gridView.ClearHighlights();
+            gridView.ClearRangeOutline();
         }
 
         void TryMove(Coord dest)
@@ -262,6 +263,7 @@ namespace SeoYuGi.BattleView
 
             if (selectedUnitId != -1 && aim != AimMode.None)
             {
+                gridView.ClearRangeOutline(); // 조준 모드 — 이동 구역 테두리·발자국은 끈다
                 // 조준 모드: 이동 범위 대신 조준 가능 칸(틸) + 발사 시 맞는 칸(틸-흰)
                 int skillIdx = aim == AimMode.Skill2 ? 1 : 0;
                 if (aim == AimMode.Attack) combat.GetAttackRange(selectedUnitId, aimRange);
@@ -310,7 +312,14 @@ namespace SeoYuGi.BattleView
                     moveSystem.GetRanges(selectedUnitId, blue, yellow);
                     foreach (var c in blue) { cells.Add(c); colors.Add(blueRangeColor); }
                     foreach (var c in yellow) { cells.Add(c); colors.Add(yellowRangeColor); }
+
+                    // 네온 테두리 두 겹 — 거점 바닥 위에서도 이동 구역이 읽힌다 (2026-09-05). 호버 칸엔 발자국.
+                    gridView.SetRangeOutline(blue, yellow, blueRangeColor, yellowRangeColor);
+                    if (TryHoverCell(out var hoverMove) && (blue.Contains(hoverMove) || yellow.Contains(hoverMove)))
+                        gridView.ShowFootstep(hoverMove, yellow.Contains(hoverMove) ? yellowRangeColor : blueRangeColor);
+                    else gridView.HideFootstep();
                 }
+                else gridView.ClearRangeOutline();
             }
 
             // 설치 공격 예고 표시 — 같은 칸이면 예고가 이김 (나중 쓰기 우선).

@@ -808,6 +808,60 @@ namespace SeoYuGi.BattleView
             SetupCamera();
         }
 
+        /// <summary>
+        /// 가이드 스포트라이트 — 단계마다 봐야 할 곳만 밝게 (2026-09-05 "화면 까매지고 필요한 UI만 강조").
+        /// ① 카운트다운: 거점들 ② 조작 힌트: 내 유닛 ③ 가이드 무전: 무전창. 그 외엔 끔.
+        /// </summary>
+        void TickGuideSpotlight()
+        {
+            if (!Guide.Wanted || phase != Phase.Playing || Camera.main == null) { GuideSpotlight.Clear(); return; }
+            var cam = Camera.main;
+            float s = Mathf.Max(1f, Screen.height / 1080f);
+
+            Rect ScreenRectAround(IEnumerable<Vector3> worldPts, float padPx)
+            {
+                float xMin = float.MaxValue, xMax = float.MinValue, yMin = float.MaxValue, yMax = float.MinValue;
+                foreach (var p in worldPts)
+                {
+                    var sp = cam.WorldToScreenPoint(p);
+                    float gy = Screen.height - sp.y; // GUI는 위에서 아래
+                    xMin = Mathf.Min(xMin, sp.x); xMax = Mathf.Max(xMax, sp.x);
+                    yMin = Mathf.Min(yMin, gy); yMax = Mathf.Max(yMax, gy);
+                }
+                return Rect.MinMaxRect(xMin - padPx, yMin - padPx, xMax + padPx, yMax + padPx);
+            }
+
+            if (countdownRunning && Round != null) // ① 거점
+            {
+                var pts = new List<Vector3>();
+                foreach (var z in Round.Zones) pts.Add(gridView.CoordToWorld(z.Center));
+                GuideSpotlight.Set(ScreenRectAround(pts, 110f * s), "거점 — 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다");
+                return;
+            }
+            if (radioTimeGuided && radio != null && radio.IsOpen) // ③ 무전창 (RadioWindow 배치와 같은 계산)
+            {
+                float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
+                float w = Mathf.Min(560f * rs, Screen.width * 0.5f), fieldH = 42f * rs, pad = 10f * rs;
+                float x = 24f * rs, yField = Screen.height - 205f * rs;
+                GuideSpotlight.Set(new Rect(x - pad - 6f, yField - 30f * rs - pad - 6f, w + pad * 2 + 12f, fieldH + 30f * rs + pad * 2 + 12f),
+                    "무전 — 이렇게 말하면 분대가 알아듣고 움직인다");
+                return;
+            }
+            if (Guide.Active && !GameFreeze.Active) // ② 조작 — 내 유닛
+            {
+                var me = Battle?.GetUnit(playerUnitId);
+                var view = me != null && me.alive ? viewRegistry.Get(playerUnitId) : null;
+                if (view != null && (!Guide.MoveDone || !Guide.AttackDone))
+                {
+                    string cap = !Guide.MoveDone ? "내 유닛 — 파란 칸을 클릭해 이동" : "A 누르고 적 칸 클릭 = 공격";
+                    var p = view.transform.position;
+                    GuideSpotlight.Set(ScreenRectAround(new[] { p + new Vector3(-2.2f, 0f, -2.2f), p + new Vector3(2.2f, 1.2f, 2.2f) }, 20f * s), cap);
+                    return;
+                }
+            }
+            GuideSpotlight.Clear();
+        }
+
         /// <summary>② 조작 힌트 — 내 유닛 위 플로팅 텍스트 1.5초마다. 움직이면 이동 힌트 끝, 적이 보이면 공격 힌트, 쏘면 끝.</summary>
         void TickGuideHints()
         {
@@ -2648,6 +2702,7 @@ namespace SeoYuGi.BattleView
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
             fastForward = false;
             EndRadioTime(); // 무전 타임 중 끝났으면 정지 해제 (홀드 카운트 정리 후 timeScale 복원)
+            GuideSpotlight.Clear();
             nextRadioTimeAt = -1f;
             Time.timeScale = 1f; // 빨리감기 중 끝났으면 정상 속도로
             hud.SetSkipHint(false, false);
@@ -2922,6 +2977,7 @@ namespace SeoYuGi.BattleView
 
             TickRadioTime(); // 지휘관 대전 — 호스트가 주기 판단, 클라는 남은 시간 표시·상한 (양쪽 공통)
             TickGuideHints(); // 첫 판 가이드 ② — 내 유닛 위에 조작 힌트
+            TickGuideSpotlight(); // 가이드 — 화면을 어둡게, 봐야 할 곳만 구멍
 
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
             if (IsNetClient)

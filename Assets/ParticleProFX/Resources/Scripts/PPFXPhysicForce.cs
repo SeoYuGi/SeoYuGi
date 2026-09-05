@@ -32,6 +32,8 @@ public class PPFXPhysicForce : MonoBehaviour {
 		
 		for(int i = 0; i < colliders.Length; i ++)
 		{
+			if(colliders[i] == null) continue;   // 지연 중 파괴된 오브젝트 스킵
+
 			var _rb = colliders[i].GetComponent<Rigidbody>();
 			
 			if(_rb != null)

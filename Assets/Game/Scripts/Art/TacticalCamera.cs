@@ -16,17 +16,17 @@ namespace SeoYuGi.Art
     {
         [SerializeField] BattleRunner runner;   // 비우면 자동 탐색
         [Header("앵글")]
-        [SerializeField] float pitch = 60f;
+        [SerializeField] float pitch = 52f;      // XCOM식 — 60은 탑뷰라 벽면이 안 보였다 (2026-09-05)
         [SerializeField] float yaw = -45f;
         [SerializeField] float smoothTime = 0.12f;
         [SerializeField] float rotateStep = 45f;   // Q/W 한 번당 회전각
         [SerializeField] float rotateSmooth = 0.18f;
         [SerializeField] float lookAhead = 1f;     // 고정 추적 시 내 유닛보다 화면 위쪽(전방) 1칸을 비춤 — 2.2는 너무 당겨졌다
         [Header("줌")]
-        [SerializeField] float distance = 7.5f;   // 시작 줌 — 10은 유닛이 작아 실루엣이 안 읽혔다 (2026-09-05)
-        [SerializeField] float zoomStep = 1.2f;   // 스크롤 한 틱당 거리 변화
-        [SerializeField] float minDistance = 5f;
-        [SerializeField] float maxDistance = 18f;
+        [SerializeField] float distance = 13f;    // FOV 35(망원)에 맞춰 7.5→13 — 화면상 유닛 크기는 동일 (2026-09-05)
+        [SerializeField] float zoomStep = 2f;   // 스크롤 한 틱당 거리 변화
+        [SerializeField] float minDistance = 8f;
+        [SerializeField] float maxDistance = 28f;
         [Header("엣지 팬 (자유 시점)")]
         [SerializeField] float panSpeed = 14f;      // 초당 월드 유닛 (모서리 최심부 기준)
         [SerializeField] int edgePixels = 480;      // 모서리 감지 폭 — 후하게, 깊이 비례 가속이라 넓어도 안 널뜀

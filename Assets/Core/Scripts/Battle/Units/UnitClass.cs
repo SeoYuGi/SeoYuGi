@@ -1,4 +1,4 @@
-namespace SeoYuGi.Battle
+﻿namespace SeoYuGi.Battle
 {
     /// <summary>
     /// 클래스 5종 (캐릭터 기획 v1.7). SeoYuGi.Ai.ClassId와 같은 순서 — 캐스팅 호환 유지할 것.
@@ -53,6 +53,19 @@ namespace SeoYuGi.Battle
         public AttackShape attackShape;
         public MoveProfile move;
         public SkillDef[] skills; // [0] = 스킬1(짧은 쿨), [1] = 스킬2(긴 쿨·고위력)
+    }
+
+    /// <summary>
+    /// 전장 이름표·킬로그용 짧은 호칭. 동물팀(0)은 종(種), 기계팀(1)은 역할.
+    /// 카드 UI의 긴 이름(ClassCard.Meta)과 별개 — 머리 위 이름표는 두세 글자여야 읽힌다.
+    /// </summary>
+    public static class ClassNames
+    {
+        static readonly string[] Animal = { "너구리", "고라니", "검은냥", "비둘기", "까치" };
+        static readonly string[] Machine = { "방패", "돌격", "은신", "포격", "저격" };
+
+        public static string For(int team, UnitClass cls) =>
+            (team == 1 ? Machine : Animal)[(int)cls];
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using SeoYuGi.Battle;
 using SeoYuGi.Chat;
@@ -116,7 +116,8 @@ namespace SeoYuGi.BattleView
 
         // 예측 사격 추적 (G) — 캐스팅 직후 예고와 매칭해 적중/실패 자막
         readonly List<(int attackerId, Coord cell, float time)> pendingPredictedShots = new List<(int, Coord, float)>();
-        static readonly Color PredictPurple = new Color(0.75f, 0.4f, 1f);
+        bool hackReadyAnnounced; // 해킹 만충 공지 — 만충 상태로 올라가는 순간에만 1회
+        bool fastForward;        // 싱글에서 내가 죽은 뒤 SPACE — 라운드 결과까지 6배속 (멀뚱히 기다리지 않게)
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
         float nextFakeCalloutTime; // 사후 귀속 자막 남발 방지
 
@@ -472,6 +473,7 @@ namespace SeoYuGi.BattleView
             hud.ShowAnnounce(ours
                 ? $"아군이 {letter} 거점을 점령했습니다"
                 : $"상대팀이 {letter} 거점을 점령했습니다", teamColors[owner], 2.8f);
+            hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[owner]);
 
             var center = gridView.CoordToWorld(zone.Center);
             RingWave.Spawn(center, teamColors[owner], 5f, 0.7f);
@@ -567,11 +569,27 @@ namespace SeoYuGi.BattleView
                     unitId = roster[i].id,
                     team = roster[i].team,
                     cls = roster[i].cls,
-                    callsign = roster[i].name,
+                    callsign = ClassNames.For(roster[i].team, roster[i].cls),
                     owner = roster[i].id == playerUnitId ? SlotOwner.LocalHuman : SlotOwner.Bot
                 };
+            DisambiguateCallsigns(slots);
             matchSetup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = enemyRollSeed, slots = slots };
             humanUnitIds = matchSetup.HumanUnitIds();
+        }
+
+        /// <summary>같은 팀에 같은 클래스가 겹치면 뒤쪽에 번호 — 내 팀은 중복 픽이 가능하다(적팀은 롤이 중복 없음).</summary>
+        static void DisambiguateCallsigns(SlotConfig[] slots)
+        {
+            var baseName = new string[slots.Length];
+            for (int i = 0; i < slots.Length; i++) baseName[i] = slots[i].callsign;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                int n = 0;
+                for (int j = 0; j < i; j++)
+                    if (slots[j].team == slots[i].team && baseName[j] == baseName[i]) n++;
+                if (n > 0) slots[i].callsign = baseName[i] + (char)('①' + n);
+            }
         }
 
         (int id, int team, UnitClass cls, string name) FindRoster(int unitId)
@@ -621,7 +639,12 @@ namespace SeoYuGi.BattleView
                             enemy.stunnedUntil = Mathf.Max(enemy.stunnedUntil, Battle.time + HackSystem.StunSeconds);
                             var ev = viewRegistry.Get(enemy.id);
                             if (ev != null && ev.gameObject.activeInHierarchy)
+                            {
                                 FloatingText.Spawn(ev.transform.position, "정지", StrikeVfx.MineNeon, 0.9f, 0.7f);
+                                // 스턴 내내 전기 아크 — 0.6초짜리 "정지" 글자만으론 묶인 게 안 보였다
+                                FxQuad.One(VfxTextures.Electric, ev.transform.position + Vector3.up * 0.55f,
+                                    StrikeVfx.MineNeon, 1.3f, 0.2f, HackSystem.StunSeconds);
+                            }
                         }
                 battleAudio.PlaySfx("S18_Blink", 1.3f); // 전용 SFX 나오기 전까지 점멸음 재사용
                 hud.ShowSubtitle(u != null && u.team == playerTeam
@@ -710,7 +733,7 @@ namespace SeoYuGi.BattleView
 
             foreach (var pack in Pickup.Packs)
             {
-                var packView = HealPackView.Create(transform, gridView.CoordToWorld(pack.pos));
+                var packView = HealPackView.Create(transform, gridView.CoordToWorld(pack.pos), gridView.TileSize);
                 healPackViews.Add(packView);
                 roundObjects.Add(packView.gameObject);
             }
@@ -786,7 +809,7 @@ namespace SeoYuGi.BattleView
 
             hud.Init(Battle, Round, combatConfig, Match, playerUnitId, teamColors, FindSlot(playerUnitId).callsign,
                 () => hackSystem.Charge(playerUnitId));
-            hud.ShowChatCheatsheet = true; // 빠른채팅 치트시트 켠 채로 진입 (Tab으로 토글)
+            hud.ShowChatCheatsheet = false; // 빠른채팅 치트시트는 접은 채로 진입 (Tab으로 토글) — 펼쳐두면 화면 우측 1/6을 상시 점유
             // input.Init은 아래에서 intentSink 생성 직후 호출
 
             Round.OnZoneCaptured += zone =>
@@ -814,6 +837,7 @@ namespace SeoYuGi.BattleView
                     ? $"아군이 {letter} 거점을 점령했습니다"
                     : $"상대팀이 {letter} 거점을 점령했습니다";
                 hud.ShowAnnounce(ment, teamColors[zone.owner], 2.8f); // 상단 중앙 큰 공지
+                hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[zone.owner]);
                 battleAudio.PlayVoice(ours ? "Voice_ZoneCaptured" : "Voice_ZoneLost"); // 음성만 (자막은 배너가)
 
                 // 탈환 완료 순간 — 팀 색 충격파가 패치 밖으로 퍼진다
@@ -987,7 +1011,7 @@ namespace SeoYuGi.BattleView
                     var focus = gridView.CoordToWorld(strike.cells[strike.cells.Count / 2]);
                     if (hit)
                     {
-                        hud.ShowAnnounce("읽혔다 — 패턴 예측 사격 적중", PredictPurple, 2.4f);
+                        hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
                         // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽혔다"가 읽힌다.
                         ImpactVfx.Pillar(focus, new Color(0.8f, 0.45f, 1f));
                         RingWave.Spawn(focus, new Color(0.75f, 0.4f, 1f, 0.9f), 3.2f, 0.5f);
@@ -996,7 +1020,7 @@ namespace SeoYuGi.BattleView
                     }
                     else
                     {
-                        hud.ShowAnnounce("예측 빗나감 — 패턴을 배신했다", new Color(0.45f, 1f, 0.95f), 2.2f);
+                        hud.ShowSubtitle("빗나갔습니다. 평소와 다르게 움직이셨군요.", 2.2f);
                         ImpactVfx.Sparks(focus, machine: true, scale: 0.8f); // 빗나간 조준이 흩어짐
                     }
                 }
@@ -1008,7 +1032,7 @@ namespace SeoYuGi.BattleView
                          StrikeCoversPlayer(strike) && UnityEngine.Random.value < 0.35f)
                 {
                     nextFakeCalloutTime = Time.time + 8f;
-                    hud.ShowAnnounce("읽혔다 — 패턴 예측 사격 적중", PredictPurple, 2.4f);
+                    hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
                 }
             };
             Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S8_Guard", 0.8f); // 스턴 SFX (가드 사운드 재활용)
@@ -1268,6 +1292,8 @@ namespace SeoYuGi.BattleView
                 feedColor = Color.Lerp(teamColors[killer.team], Color.white, 0.35f);
             }
             hud.AddKill(killerName, victimName, feedColor);
+            hud.PushEvent(killerName != null ? $"{killerName}이(가) {victimName} 처치!" : $"{victimName} 처치됨",
+                feedColor); // 상단 배너 전황 로그
             battleAudio.PlayVoice(dead.team == playerTeam ? "Voice_AllyDown" : "Voice_EnemyDown");
         }
 
@@ -1373,6 +1399,9 @@ namespace SeoYuGi.BattleView
         void OnRoundFinished(int winnerTeam)
         {
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
+            fastForward = false;
+            Time.timeScale = 1f; // 빨리감기 중 끝났으면 정상 속도로
+            hud.SetSkipHint(false, false);
             Debug.Log($"라운드 {Match.CurrentRound} 종료 — 팀 {winnerTeam} 승리");
             battleAudio.SetCaptureLoop(false);
             battleAudio.PlaySfx("S14_RoundEnd", 1.5f);
@@ -1545,6 +1574,25 @@ namespace SeoYuGi.BattleView
             if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
                 intentSink.Submit(BattleIntent.Hack(playerUnitId));
 
+            // 싱글 — 내가 죽으면 SPACE로 결과까지 빨리감기 (부활 대신, 2026-09-05). 온라인은 남들이 싸우는 중이라 불가.
+            var meForSkip = Battle.GetUnit(playerUnitId);
+            bool canSkip = !NetBoot.IsOnline && meForSkip != null && !meForSkip.alive;
+            if (canSkip && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+                fastForward = !fastForward;
+            if (!canSkip) fastForward = false;
+            if (fastForward) Time.timeScale = 6f;            // 히트스톱이 1로 되돌려도 매 프레임 다시 6
+            else if (Time.timeScale > 1f) Time.timeScale = 1f; // 해제 순간 복원 (히트스톱 0.05는 건드리지 않음)
+            hud.SetSkipHint(canSkip, fastForward);
+
+            // 해킹 만충 순간 한 번 크게 — 게이지가 구석에 있어 다 차도 몰랐다 (2026-09-05 "유용한데 안 쓰게 됨")
+            bool hackReadyNow = hackSystem.IsReady(playerUnitId);
+            if (hackReadyNow && !hackReadyAnnounced)
+            {
+                hud.ShowAnnounce("해킹 준비 완료 — H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
+                battleAudio.PlaySfx("S22_DetectPing", 0.9f);
+            }
+            hackReadyAnnounced = hackReadyNow;
+
             // 빠른채팅 — 숫자키 1~8 즉시 전송. Tab = 치트시트 토글(기본 켜짐, 읽기 전용).
             // 쿨다운·팀 배달은 호스트 권위 — 클라는 요청만 쏜다.
             if (Keyboard.current != null)
@@ -1589,14 +1637,12 @@ namespace SeoYuGi.BattleView
             foreach (var driver in aiDrivers)
                 driver.Tick(worldView);
 
-            // 실시간 패턴 감지 (F) — 학습이 라운드 안에서 째깍거리는 연출. 자막이 아니라 큰 공지로 (2026-09-05: "학습하는 느낌이 안 난다")
+            // 실시간 패턴 감지 자막 (F) — 학습이 라운드 안에서 째깍거리는 연출
             if (predictor.TryDequeueDetection(out var detection))
             {
-                hud.ShowAnnounce($"적 AI 패턴 감지 — {detection}", PredictPurple, 2.8f);
+                hud.ShowSubtitle(detection, 2.8f);
                 battleAudio.PlaySfx("S22_DetectPing", 0.6f);
             }
-
-            hud.SetLearning(predictor.LearningProgress(playerUnitId), Match.CurrentRound);
 
             SyncPresentation();
 
@@ -1633,9 +1679,12 @@ namespace SeoYuGi.BattleView
             }
             battleAudio.SetCaptureLoop(anyCapturing);
 
-            // 힐팩 — 소모되면 숨김, 리스폰되면 다시 표시
+            // 힐팩 — 팩은 소모되면 숨김, 바닥 마커는 상시 + 리스폰 카운트다운
             for (int i = 0; i < healPackViews.Count; i++)
-                healPackViews[i].SetAvailable(Pickup.Packs[i].active);
+            {
+                var pack = Pickup.Packs[i];
+                healPackViews[i].SetState(pack.active, pack.respawnAt - Battle.time);
+            }
 
             // 해킹 시야 강탈 — 지속 중엔 안개 전체가 걷히고(playerVisibleFn) 적 유닛도 전부 드러난다
             bool hackReveal = hackSystem != null && hackSystem.RevealActive(playerTeam, Battle.time);

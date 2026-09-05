@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace SeoYuGi.Battle
@@ -24,7 +24,8 @@ namespace SeoYuGi.Battle
 
     /// <summary>
     /// 거점(맵당 1~3개, 홀수) + 라운드 승패 (기획서 §03 ZN).
-    /// 승리: ① 상대팀 전멸 ② 모든 거점 독점 (즉시 종료) — 거점 1개 맵은 첫 점거가 곧 라운드.
+    /// 승리: ① 상대팀 전멸(즉시) ② 모든 거점 독점 — 단 상대가 거점을 밟고 있으면 추가시간으로 유지.
+    /// 거점 1개 맵은 첫 점거가 곧 라운드(밟고 있던 상대는 이미 밀려난 상태).
     /// 시간 초과: 거점 수 → 생존 수 → 서든데스(다음 탈환 or 킬 즉시 승부).
     /// 시계는 BattleState.time(CombatSystem이 전진), 점거 진행은 Tick의 dt로 계산.
     /// </summary>
@@ -38,8 +39,12 @@ namespace SeoYuGi.Battle
         public int Winner { get; private set; } = -1;
         public bool SuddenDeath { get; private set; }
 
+        /// <summary>거점 독점했지만 상대가 아직 거점을 밟고 있어 라운드가 유지되는 중.</summary>
+        public bool Overtime { get; private set; }
+
         public event Action<Zone> OnZoneCaptured;
         public event Action<bool> OnSuddenDeath; // true 고정 — HUD 연출용
+        public event Action<bool> OnOvertime;    // 추가시간 진입/해제 — HUD 연출용
         public event Action<int> OnRoundEnd;     // 승리 팀
 
         readonly List<Zone> zones = new List<Zone>();
@@ -186,12 +191,16 @@ namespace SeoYuGi.Battle
             if (alive[0] == 0) { EndRound(1); return; }
             if (alive[1] == 0) { EndRound(0); return; }
 
-            // 거점 3개 독점
+            // 거점 독점 — 상대가 아직 거점을 밟고 있으면 추가시간: 발을 뗄 때까지 라운드 유지.
+            // 교착은 스스로 풀린다 — 혼자 밟으면 그 거점을 뺏어 독점이 깨지고, 같이 밟으면 교전,
+            // 그마저 길어지면 roundSeconds 타임아웃이 거점 수로 잘라준다.
             var owned = new int[2];
             foreach (var z in zones)
                 if (z.owner >= 0) owned[z.owner]++;
-            if (owned[0] == zones.Count) { EndRound(0); return; }
-            if (owned[1] == zones.Count) { EndRound(1); return; }
+
+            int monopoly = owned[0] == zones.Count ? 0 : owned[1] == zones.Count ? 1 : -1;
+            if (monopoly >= 0 && !EnemyOnAnyZone(monopoly)) { SetOvertime(false); EndRound(monopoly); return; }
+            SetOvertime(monopoly >= 0);
 
             // 시간 초과 판정: 거점 수 → 생존 수 → 서든데스
             if (!SuddenDeath && State.time >= Config.roundSeconds)
@@ -201,6 +210,26 @@ namespace SeoYuGi.Battle
                 SuddenDeath = true;
                 OnSuddenDeath?.Invoke(true);
             }
+        }
+
+        /// <summary>독점 팀의 상대가 거점 패치를 밟고 있나 — 추가시간 유지 조건.</summary>
+        bool EnemyOnAnyZone(int team)
+        {
+            foreach (var z in zones)
+                foreach (var cell in z.cells)
+                {
+                    int unitId = State.Grid.GetUnitAt(cell);
+                    if (unitId == Cell.NoUnit) continue;
+                    if (State.GetUnit(unitId).team != team) return true;
+                }
+            return false;
+        }
+
+        void SetOvertime(bool on)
+        {
+            if (Overtime == on) return;
+            Overtime = on;
+            OnOvertime?.Invoke(on);
         }
 
         void CountAlive(int[] counts)

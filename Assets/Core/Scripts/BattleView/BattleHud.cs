@@ -36,11 +36,6 @@ namespace SeoYuGi.BattleView
         string subtitleText;
         float subtitleUntil;
 
-        // 적 AI 학습 게이지 — 좌상단. "AI가 나를 학습한다"가 상시 보이게 (러너가 매 프레임 갱신)
-        float learnProgress;
-        int learnRound = 1;
-        static readonly Color PredictPurple = new Color(0.75f, 0.45f, 1f);
-
         // 큰 중앙 공지 (거점 점령 등) — 자막과 별개, 상단 중앙에 크게
         string announceText;
         float announceUntil;
@@ -61,10 +56,11 @@ namespace SeoYuGi.BattleView
         /// <summary>무전 패널의 문구 클릭 — lineId. 전송 경로는 러너가 배선.</summary>
         public event System.Action<int> OnChatClicked;
         bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
+        float idleHintUntil; // 기본 조작 안내(타일 클릭 = 이동)는 진입 후 15초만 — 그 뒤엔 화면 중앙을 비운다
 
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle, killStyle, announceStyle;
-        GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle, learnPctStyle;
+        GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
         bool stylesReady;
         Texture2D iconMove, iconAttack, iconGuard, iconSkill, panelBriefing; // Resources/UI — 없으면 무시
         Texture2D texSlot, texPanel, texInfo, texChip, texBanner;           // 프레임류 — 없으면 GUI.Box 폴백
@@ -90,6 +86,7 @@ namespace SeoYuGi.BattleView
             this.playerName = playerName;
             this.hackCharge = hackCharge;
             playerTeam = battle.GetUnit(playerUnitId).team;
+            idleHintUntil = Time.time + 15f;
             allyColor = teamColors[playerTeam];
             enemyColor = teamColors[1 - playerTeam];
             overlay = Overlay.None;
@@ -247,25 +244,6 @@ namespace SeoYuGi.BattleView
             subtitleUntil = Time.time + seconds;
         }
 
-        public void SetLearning(float progress, int round)
-        {
-            learnProgress = progress;
-            learnRound = round;
-        }
-
-        void DrawLearning()
-        {
-            var box = new Rect(12, 10, 236, 50);
-            DrawFrame(box, texInfo);
-            string title = learnRound >= 3 ? "적 AI · 문맥 예측 가동"
-                : learnRound >= 2 ? "적 AI · 예측 사격 가동" : "적 AI · 패턴 분석 중";
-            GUI.color = PredictPurple;
-            GUI.Label(new Rect(box.x + 14, box.y + 6, 170, 18), title, labelStyle);
-            GUI.Label(new Rect(box.x + box.width - 62, box.y + 6, 48, 18), $"{learnProgress * 100f:0}%", learnPctStyle);
-            GUI.color = Color.white;
-            Bar(new Rect(box.x + 14, box.y + 30, box.width - 28, 8), learnProgress, PredictPurple);
-        }
-
         /// <summary>큰 중앙 공지 — 거점 점령 등 "지금 이거 봐" 급. 팀 색으로.</summary>
         public void ShowAnnounce(string text, Color color, float seconds)
         {
@@ -299,7 +277,6 @@ namespace SeoYuGi.BattleView
             DrawTopBar();
             if (overlay == Overlay.None)
             {
-                DrawLearning();
                 DrawBanner();
                 DrawBottomBar();
                 DrawChatLog();
@@ -339,7 +316,6 @@ namespace SeoYuGi.BattleView
             bigNumStyle = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             subStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
             subtitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-            learnPctStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
 
             // 폰트: 어그로체 = 타이틀·배너·자막 임팩트, SUIT = HUD 전반
             GameFonts.Apply(bannerStyle, GameFonts.Title);      // 매치 승/패 배너
@@ -361,7 +337,6 @@ namespace SeoYuGi.BattleView
             GameFonts.Apply(slotCostStyle, GameFonts.Hud);
             GameFonts.Apply(slotCoolStyle, GameFonts.HudHeavy);
             GameFonts.Apply(subStyle, GameFonts.Hud);
-            GameFonts.Apply(learnPctStyle, GameFonts.HudHeavy);
         }
 
         // ── 상단 바: 생존·스코어 | 남은시간 | 거점 칩 ─────────────────
@@ -375,6 +350,12 @@ namespace SeoYuGi.BattleView
             {
                 GUI.color = new Color(1f, 0.4f, 0.3f);
                 GUI.Label(new Rect(timerBox.x, timerBox.y + 12, timerBox.width, 38), "서든데스", timerStyle);
+                GUI.color = Color.white;
+            }
+            else if (round.Overtime)
+            {
+                GUI.color = new Color(1f, 0.78f, 0.25f); // 호박색 — 빨강은 적 위협 전용
+                GUI.Label(new Rect(timerBox.x, timerBox.y + 12, timerBox.width, 38), "추가시간", timerStyle);
                 GUI.color = Color.white;
             }
             else
@@ -442,30 +423,44 @@ namespace SeoYuGi.BattleView
 
         // ── 상황 안내 배너 (탱고파이브 "공격할 대상을 선택하세요") ────
 
+        bool skipHint, skipActive; // 싱글 사망 후 빨리감기 안내 — 러너가 매 프레임 갱신
+
+        public void SetSkipHint(bool show, bool active)
+        {
+            skipHint = show;
+            skipActive = active;
+        }
+
+        // 상단 배너 = 전황 로그 (2026-09-05 유저: 조작 안내는 의미를 모르겠다 → 킬·거점 이벤트만).
+        // 최근 이벤트 하나를 6초간. 내가 죽었을 땐 빨리감기 안내가 우선.
+        string eventText;
+        Color eventColor;
+        float eventUntil;
+
+        /// <summary>전황 이벤트 한 줄 — "알파가 델타 처치!", "아군이 B 거점 점령!" 등. 팀 색으로.</summary>
+        public void PushEvent(string text, Color color)
+        {
+            eventText = text;
+            eventColor = color;
+            eventUntil = Time.time + 6f;
+        }
+
         void DrawBanner()
         {
             var u = battle.GetUnit(playerUnitId);
             string msg;
             var bannerColor = new Color(0.2f, 0.75f, 0.85f, 0.85f); // 기본 = 탱고파이브 시안
-            if (u == null || !u.alive) msg = "격파됨 — 팀원 AI가 계속 싸웁니다.";
-            else if (moveInput == null || !moveInput.HasSelection) msg = $"{DisplayName()}(내 유닛)를 클릭해 선택하세요.";
-            else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Attack)
+            if ((u == null || !u.alive) && skipHint)
             {
-                msg = "◎ 일반공격 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
-                bannerColor = new Color(1f, 0.6f, 0.15f, 0.9f);
+                msg = skipActive ? "▶▶ 빨리감기 중 (6×) — SPACE: 해제" : "격파됨 — SPACE: 라운드 결과까지 빨리감기";
+                if (skipActive) bannerColor = new Color(1f, 0.78f, 0.25f, 0.9f); // 호박색 — 비정상 속도 표시
             }
-            else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Skill)
+            else if (!string.IsNullOrEmpty(eventText) && Time.time < eventUntil)
             {
-                msg = $"◎ {SkillName(u.unitClass, 0)} 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
-                bannerColor = new Color(1f, 0.3f, 0.2f, 0.9f);
+                msg = eventText;
+                bannerColor = new Color(eventColor.r, eventColor.g, eventColor.b, 0.9f);
             }
-            else if (moveInput.CurrentAim == UnitMoveInput.AimMode.Skill2)
-            {
-                msg = $"◎ {SkillName(u.unitClass, 1)} 조준 — 빨간 칸 = 발사 · 다른 칸 = 이동 · 우클릭 = 취소";
-                bannerColor = new Color(1f, 0.3f, 0.2f, 0.9f);
-            }
-            else if (u.moveCooldown > 0f) msg = $"이동 쿨타임 {u.moveCooldown:0.0}s — 공격/스킬은 가능합니다.";
-            else msg = "타일 클릭 = 이동  ·  A 공격 / S 스킬1 / D 스킬2 / H 해킹";
+            else return;
 
             // 프레임 사선 컷 여백만큼 텍스트를 안쪽에 — 텍스트가 프레임을 뚫지 않게
             var box = new Rect(W / 2f - 240, 118, 480, 34);

@@ -16,11 +16,11 @@ namespace SeoYuGi.BattleView
         [SerializeField] float tileSize = 1f;
         public float TileSize => tileSize; // 칸 간격 — 거점 게이지 사각형 크기 계산 등 외부 뷰용
         [Range(0.5f, 1f)]
-        [SerializeField] float tileFill = 0.96f;  // 타일이 칸을 채우는 비율. 나머지가 틈 = 그리드 라인
+        [SerializeField] float tileFill = 1f;     // 타일이 칸을 채우는 비율. 1 = 틈 없음 — 상시 격자는 보드게임 느낌이라 뺐다 (2026-09-05)
         [SerializeField] float wallHeight = 0.6f; // 장애물 벽 블록 높이
         [SerializeField] float highlandHeight = 0.35f; // 고지대 단상 높이 (벽보다 낮아 올라선 유닛이 보임)
         [SerializeField] Color fogColor = new Color(0.16f, 0.17f, 0.22f); // 시야 밖 타일 — 어둡게 죽여 색 정보 제거
-        [SerializeField] Color fogOverlayColor = new Color(0.34f, 0.38f, 0.5f, 0.5f); // 시야 밖 안개 구름 레이어
+        [SerializeField] Color fogOverlayColor = new Color(0.34f, 0.38f, 0.5f, 0.5f); // 시야 밖 안개 구름 레이어 — 어둡게 낮춰봤지만 구름이 보이는 쪽이 낫다는 결론, 원복 (2026-09-05)
         [SerializeField] float fogOverlayHeight = 1.0f; // 안개 레이어가 뜨는 높이 (타일·낮은 프롭 위)
 
         [Header("Textures")]
@@ -147,6 +147,9 @@ namespace SeoYuGi.BattleView
                 // 벽 블록: 바닥 윗면(y=0.05)에서 시작해 wallHeight만큼
                 go.transform.localScale = new Vector3(side, wallHeight, side);
                 go.transform.position = pos + Vector3.up * (wallHeight * 0.5f - 0.05f);
+                // 칸 좌표 시드로 90° 단위 회전 — 같은 텍스처 블록이 줄지어 복붙으로 읽히는 걸 깬다
+                int h = (Mathf.RoundToInt(pos.x) * 73856093) ^ (Mathf.RoundToInt(pos.z) * 19349663);
+                go.transform.rotation = Quaternion.Euler(0f, 90f * ((h >> 3) & 3), 0f);
             }
             else if (type == CellType.Highland)
             {

@@ -1,3 +1,4 @@
+﻿using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace SeoYuGi.Battle.Tests
@@ -21,6 +22,18 @@ namespace SeoYuGi.Battle.Tests
         }
 
         RoundSystem NewRound() => round = new RoundSystem(battle, config);
+
+        /// <summary>거점을 2칸 패치로 — 1칸 거점은 한 칸에 한 명뿐이라 경합(추가시간)이 성립하지 않는다.</summary>
+        RoundSystem NewWideRound()
+        {
+            var groups = new List<IEnumerable<Coord>>
+            {
+                new[] { zoneL, zoneL + Coord.Up },
+                new[] { zoneM, zoneM + Coord.Up },
+                new[] { zoneR, zoneR + Coord.Up },
+            };
+            return round = new RoundSystem(battle, config, groups);
+        }
 
         UnitState Add(int id, int team, Coord pos)
         {
@@ -138,6 +151,73 @@ namespace SeoYuGi.Battle.Tests
 
             Assert.AreEqual(0, round.Winner);
             Assert.AreEqual(0, winner);
+        }
+
+        [Test]
+        public void AllZones_EnemyStandingOnZone_OvertimeHoldsRound()
+        {
+            Add(1, 0, zoneL);
+            Add(2, 0, zoneM);
+            var c = Add(3, 0, new Coord(7, 6)); // 우측 거점 옆에서 대기
+            var e = Add(4, 1, new Coord(0, 0));
+            NewWideRound();
+
+            bool overtime = false;
+            round.OnOvertime += on => overtime = on;
+
+            round.Tick(2.1f);              // 좌·중 점거 (거점 2개)
+            MoveTo(e, zoneL + Coord.Up);   // 적이 우리 거점 진입 — 경합으로 동결, 소유는 유지
+            MoveTo(c, zoneR);
+            round.Tick(2.1f);              // 우측 점거 → 독점이지만 적이 아직 거점 위
+
+            Assert.AreEqual(0, round.Zones[0].owner); // 경합 중에도 소유는 그대로
+            Assert.AreEqual(-1, round.Winner);        // 라운드 유지
+            Assert.IsTrue(round.Overtime);
+            Assert.IsTrue(overtime);
+        }
+
+        [Test]
+        public void AllZones_EnemyLeavesZone_WinsImmediately()
+        {
+            Add(1, 0, zoneL);
+            Add(2, 0, zoneM);
+            var c = Add(3, 0, new Coord(7, 6));
+            var e = Add(4, 1, new Coord(0, 0));
+            NewWideRound();
+
+            round.Tick(2.1f);
+            MoveTo(e, zoneL + Coord.Up);
+            MoveTo(c, zoneR);
+            round.Tick(2.1f);
+            Assert.IsTrue(round.Overtime);
+
+            MoveTo(e, new Coord(0, 0)); // 발을 뗀다 → 즉시 승부
+            round.Tick(0.1f);
+
+            Assert.AreEqual(0, round.Winner);
+            Assert.IsFalse(round.Overtime);
+        }
+
+        [Test]
+        public void Overtime_Annihilation_StillWinsImmediately()
+        {
+            Add(1, 0, zoneL);
+            Add(2, 0, zoneM);
+            var c = Add(3, 0, new Coord(7, 6));
+            var e = Add(4, 1, new Coord(0, 0));
+            NewWideRound();
+
+            round.Tick(2.1f);
+            MoveTo(e, zoneL + Coord.Up);
+            MoveTo(c, zoneR);
+            round.Tick(2.1f);
+            Assert.IsTrue(round.Overtime);
+
+            e.alive = false;              // 거점 위에서 격파 — 추가시간에 막히면 안 된다
+            battle.Grid.RemoveUnit(e.pos);
+            round.Tick(0.1f);
+
+            Assert.AreEqual(0, round.Winner);
         }
 
         [Test]

@@ -108,9 +108,9 @@ namespace SeoYuGi.BattleView
             if (moveInput == null) moveInput = GetComponent<UnitMoveInput>();
 
             iconMove = LoadKeyed("UI/Icon_Move"); // 검정 배경 키잉 — 알파 없는 생성 아이콘이 검은 사각형으로 붙는 것 방지 (2026-09-05)
-            iconAttack = Resources.Load<Texture2D>("UI/Icon_Attack");
-            iconGuard = Resources.Load<Texture2D>("UI/Icon_Guard");
             var myCls = battle.GetUnit(playerUnitId).unitClass;
+            iconAttack = Resources.Load<Texture2D>(AttackIconPath(myCls)); // 클래스별 일반공격 — 비둘기는 폭탄 (2026-09-06)
+            iconGuard = Resources.Load<Texture2D>("UI/Icon_Guard");
             iconSkill1 = LoadSkillIcon(ClassCatalog.Get(myCls).skills[0].kind); // 스킬별 아이콘 — 10종 전부 아트 확보 (2026-09-05)
             iconSkill2 = LoadSkillIcon(ClassCatalog.Get(myCls).skills[1].kind);
             panelBriefing = Resources.Load<Texture2D>("UI/Panel_Briefing");
@@ -350,6 +350,14 @@ namespace SeoYuGi.BattleView
             GUI.color = color;
             GUI.Label(r, text, style);
             GUI.color = Color.white;
+        }
+
+        /// <summary>일반공격 아이콘 경로 — 클래스 전용(Icon_Attack_<클래스>)이 있으면 그것, 없으면 공용 슬래시.
+        /// 비둘기는 폭탄을 던지는 게 일반공격이라 슬래시가 안 맞는다 (2026-09-06). 조준 커서(UnitMoveInput)도 같은 경로.</summary>
+        public static string AttackIconPath(UnitClass cls)
+        {
+            string p = "UI/Icon_Attack_" + cls;
+            return Resources.Load<Texture2D>(p) != null ? p : "UI/Icon_Attack";
         }
 
         static Texture2D LoadSkillIcon(SkillKind kind)

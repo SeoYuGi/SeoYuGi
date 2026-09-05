@@ -145,13 +145,14 @@ namespace SeoYuGi.BattleView
         static readonly List<Coord> NoCells = new List<Coord>();
         readonly Dictionary<string, Texture2D> iconCache = new Dictionary<string, Texture2D>();
 
-        /// <summary>조준 커서 아이콘 — 공격은 Icon_Attack, 스킬은 Icon_Skill_<종류> (없으면 Generic). HUD 슬롯과 같은 그림.</summary>
+        /// <summary>조준 커서 아이콘 — 공격은 클래스별 Icon_Attack(BattleHud.AttackIconPath), 스킬은 Icon_Skill_<종류> (없으면 Generic). HUD 슬롯과 같은 그림.</summary>
         Texture2D AimIcon(int skillIdx)
         {
-            string path = "UI/Icon_Attack";
-            if (aim != AimMode.Attack)
+            var u = moveSystem.State.GetUnit(selectedUnitId);
+            string path;
+            if (aim == AimMode.Attack) path = BattleHud.AttackIconPath(u.unitClass);
+            else
             {
-                var u = moveSystem.State.GetUnit(selectedUnitId);
                 var skills = ClassCatalog.Get(u.unitClass).skills;
                 path = "UI/Icon_Skill_" + (skillIdx < skills.Length ? skills[skillIdx].kind.ToString() : "Generic");
             }

@@ -104,11 +104,12 @@ namespace SeoYuGi.BattleView
             hintStyle.fontSize = Mathf.RoundToInt(14 * s);
             ackStyle.fontSize = Mathf.RoundToInt(15 * s);
 
-            // 하단 좌측 채팅바 — 시선이 전장에 남는 위치
+            // 하단 좌측 채팅바 — 시선이 전장에 남는 위치.
+            // y는 하단 통합 바(높이 ~110·프레임 여유 포함) 위로 — 겹침 수정 (2026-09-05)
             float w = Mathf.Min(560f * s, Screen.width * 0.5f);
             float fieldH = 42f * s, pad = 10f * s;
             float x = 24f * s;
-            float yField = Screen.height - 120f * s;
+            float yField = Screen.height - 205f * s;
 
             if (!LlmRadio.HasKey)
             {

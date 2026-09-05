@@ -300,6 +300,7 @@ namespace SeoYuGi.BattleView
             return list;
         }
         readonly List<bool> zoneContestedPrev = new List<bool>(); // 거점 경합 상승 엣지 — S33 1회 재생용
+        int prevMyZones = -1, prevEnemyZones = -1; // 거점 우세 경보 엣지 (판세 피드백)
 
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
         static readonly Key[] ChatKeys =
@@ -846,6 +847,7 @@ namespace SeoYuGi.BattleView
             {
                 CameraShaker.Shake(0.55f);
                 ImpactFx.DeathFlash();
+                viewRegistry.Get(unitId)?.PlayDeath(Vector3.zero);
                 ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f); StrikeVfx.Kill(gridView.CoordToWorld(dead.pos), dead.team == 1);
                 CellFlash.Spawn(gridView.CoordToWorld(dead.pos), new Color(1f, 0.2f, 0.15f), 0.6f, 1.1f);
                 FloatingText.Spawn(gridView.CoordToWorld(dead.pos), "격파!", new Color(1f, 0.3f, 0.2f), 1.4f, 1.1f);
@@ -1122,6 +1124,8 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlayThump(big: true);
             };
             vision = new VisionSystem(Battle);
+            // 탱고파이브식 명중 판정 — 공격 팀이 피격자를 못 보면(안개) 빗나갈 수 있다
+            Combat.TeamVisibleFn = (team, c) => vision.IsVisibleTo(team, c);
             Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
             Move.OnUnitMoved += (id, path, _) => Pickup.OnUnitPath(id, path); // 경로 통과 픽업 — 멈추지 않아도 먹는다
 
@@ -1319,6 +1323,12 @@ namespace SeoYuGi.BattleView
 
             Combat.OnTelegraph += strike =>
             {
+                // 시전 런지 (타격감 2차 2026-09-05) — 근거리 예고는 공격자가 몸을 내민다. 인과가 몸짓으로 읽힌다.
+                var lungeAtk = Battle.GetUnit(strike.attackerId);
+                if (lungeAtk != null && lungeAtk.alive && IsUnitVisibleToPlayer(strike.attackerId) &&
+                    Math.Max(Math.Abs(strike.aimCell.x - lungeAtk.pos.x), Math.Abs(strike.aimCell.y - lungeAtk.pos.y)) <= 2)
+                    viewRegistry.Get(strike.attackerId)?.PlayLunge(gridView.CoordToWorld(strike.aimCell));
+
                 // 예고 릴레이 — 시전 팀 클라는 항상, 적팀 클라는 그 팀 시야에 걸리는 예고만
                 if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
                     foreach (var s in NetLobby.Slots)
@@ -1455,6 +1465,16 @@ namespace SeoYuGi.BattleView
                 }
             };
             Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S30_Stun", 1f); // 스턴 = 둔탁한 퍽 (재생성본 — 고역 없음 검증)
+            Combat.OnMissed += (victimId, attackerId) =>
+            {
+                // 엄폐/은신 회피 성공 — "빗나감"이 피격자 위에 떠야 벽 뒤에 서는 플레이가 학습된다
+                var vu = Battle.GetUnit(victimId);
+                if (vu == null || !(vu.team == playerTeam || playerVisibleFn(vu.pos))) return;
+                FloatingText.Spawn(gridView.CoordToWorld(vu.pos) + Vector3.up * 0.4f, "빗나감",
+                    new Color(0.65f, 0.7f, 0.78f), 0.95f, 0.8f);
+                battleAudio.PlaySfx("S4_Miss", 0.6f);
+            };
+
             Combat.OnStunCombo += (victimId, attackerId) =>
             {
                 // 연계 성사 — "스턴 중 추가타 +1"이 화면에 보상으로 찍힌다 (연계 패스 2026-09-05)
@@ -1502,8 +1522,9 @@ namespace SeoYuGi.BattleView
                 if (IsUnitVisibleToPlayer(unitId))
                 {
                     CameraShaker.Shake(0.55f); // 격파 — 가장 무거운 한 방
-                    HitStop.Do(0.09f);
+                    HitStop.Do(0.3f, 0.35f); // 킬 슬로모 — 완전 정지 대신 느린 0.3초 (타격감 2차)
                     ImpactFx.DeathFlash();
+                    viewRegistry.Get(unitId)?.PlayDeath(Vector3.zero); // 쓰러짐 — 펑 사라지지 않게
                     ImpactVfx.Sparks(gridView.CoordToWorld(dead.pos), machine: dead.team == 1, scale: 1.8f); StrikeVfx.Kill(gridView.CoordToWorld(dead.pos), dead.team == 1);
                     battleAudio.PlayThump(big: true);
                 }
@@ -1519,6 +1540,22 @@ namespace SeoYuGi.BattleView
                         dmg >= 3 ? new Color(1f, 0.45f, 0.15f) : new Color(1f, 0.25f, 0.2f), // 큰 딜은 주황빛으로 격상
                         Mathf.Min(0.9f + dmg * 0.22f, 1.7f));                                 // 데미지 비례 크기
                 Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {victim.hp}/{victim.maxHp})");
+
+                // 점령 저지 (2026-09-05): 점령 진행 중인 팀원이 거점 위에서 맞으면 게이지가 깎인다.
+                // 코어는 즉시, 화면 게이지는 디스크가 부드럽게 흘러내리며 빨간 플래시로 알린다.
+                for (int zi = 0; zi < Round.Zones.Count; zi++)
+                {
+                    var z = Round.Zones[zi];
+                    if (z.capturingTeam != victim.team || z.progress <= 0f) continue;
+                    if (!z.cells.Contains(victim.pos)) continue;
+                    z.progress = Mathf.Max(0f, z.progress - roundConfig.captureSeconds * 0.3f);
+                    if (zi < zoneDiscs.Count) zoneDiscs[zi].FlashPenalty();
+                    if (victim.team == playerTeam || playerVisibleFn(victim.pos))
+                        FloatingText.Spawn(gridView.CoordToWorld(z.Center) + Vector3.up * 0.3f, "점령 저지!",
+                            new Color(1f, 0.45f, 0.3f), 1.05f, 0.9f);
+                    break;
+                }
+
                 battleAudio.PlaySfx("S9_Hurt", 0.6f);
                 if (IsUnitVisibleToPlayer(unitId))
                 {
@@ -1663,6 +1700,8 @@ namespace SeoYuGi.BattleView
             input.enabled = false; // 카운트다운 종료 시 해제 — 클라도 조작(인텐트는 NetIntentSink가 호스트로 전송)
             phase = Phase.Playing;
             Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
+            hud.ShowAnnounce("목표 — 거점 3개를 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
+            prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
             countdownRunning = true;
 
@@ -1734,7 +1773,7 @@ namespace SeoYuGi.BattleView
             var cam = Camera.main;
             if (cam == null) return;
             if (cam.GetComponent<QuarterViewCamera>() != null ||
-                cam.GetComponent<SeoYuGi.Art.TacticalCamera>() != null) return; // 추적/전술 캠 우선 — 프레이밍 양보
+                cam.GetComponent<SeoYuGi.Art.TacticalCamera>() != null) return; // 추적/전술 캠 우선 — 프레이밍 양보 (Y·Q/W·줌은 TacticalCamera 소관)
             var center = (gridView.CoordToWorld(new Coord(0, 0)) +
                           gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1))) * 0.5f;
             cam.transform.rotation = Quaternion.Euler(cameraPitch, 0f, 0f);
@@ -2143,6 +2182,25 @@ namespace SeoYuGi.BattleView
                 playerWasOnHighland = onHigh;
             }
 
+            // 판세 피드백 (2026-09-05): 거점 소유 수 변화를 크게 알린다 — "지금 누가 이기고 있나"
+            int myZones = 0, enemyZones = 0;
+            foreach (var zz in Round.Zones)
+            {
+                if (zz.owner == playerTeam) myZones++;
+                else if (zz.owner == 1 - playerTeam) enemyZones++;
+            }
+            if (prevMyZones >= 0 && (myZones != prevMyZones || enemyZones != prevEnemyZones))
+            {
+                if (myZones == 2 && prevMyZones < 2)
+                    hud.ShowAnnounce("아군 거점 2개 확보 — 하나 남았습니다!", teamColors[playerTeam], 2.6f);
+                else if (enemyZones == 2 && prevEnemyZones < 2)
+                {
+                    hud.ShowAnnounce("위험 — 적이 거점 2개 장악!", new Color(1f, 0.35f, 0.25f), 2.6f);
+                    battleAudio.PlaySfx("S33_ZoneContest", 2f);
+                }
+            }
+            prevMyZones = myZones; prevEnemyZones = enemyZones;
+
             // 거점 점거 원형 게이지 — 점거 중인 팀 색으로 바닥에 차오름
             bool anyCapturing = false;
             for (int i = 0; i < zoneDiscs.Count; i++)
@@ -2184,7 +2242,8 @@ namespace SeoYuGi.BattleView
                 if (view == null) continue;
 
                 bool isEnemy = unit.team != playerTeam;
-                bool visible = unit.alive && (!isEnemy || hackReveal || vision.IsVisibleTo(playerTeam, unit.pos));
+                bool visible = (unit.alive || view.IsDying) && // 쓰러짐 연출 동안은 살려둔다 (타격감 2차)
+                               (!isEnemy || hackReveal || vision.IsVisibleTo(playerTeam, unit.pos));
 
                 if (view.gameObject.activeSelf != visible)
                     view.gameObject.SetActive(visible);

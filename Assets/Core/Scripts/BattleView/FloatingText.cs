@@ -36,7 +36,11 @@ namespace SeoYuGi.BattleView
             float k = elapsed / duration;
             // 팝: 처음 0.12초 1.6배→1배로 탁 박힘 / 상승은 점점 감속 — "찍히고 스르륵"
             float pop = Mathf.SmoothStep(1.6f, 1f, Mathf.Clamp01(elapsed / 0.12f));
-            transform.localScale = Vector3.one * pop;
+            // 카메라 거리 보정 (2026-09-05 "데미지 숫자 안 보임") — 줌아웃해도 화면상 크기 일정
+            float distScale = 1f;
+            if (Camera.main != null)
+                distScale = Mathf.Clamp(Vector3.Distance(Camera.main.transform.position, transform.position) / 13f, 0.8f, 2.6f);
+            transform.localScale = Vector3.one * (pop * distScale);
             transform.position += Vector3.up * (riseSpeed * (1f - 0.65f * k) * Time.deltaTime);
             if (Camera.main != null)
                 transform.rotation = Camera.main.transform.rotation; // 빌보드

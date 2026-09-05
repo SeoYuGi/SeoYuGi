@@ -209,8 +209,62 @@ namespace SeoYuGi.BattleView
         /// <summary>경로를 칸 단위 홉으로 재생. 재생 중 새 경로가 오면 기존 것 중단 후 이어감.</summary>
         public void PlayPath(IReadOnlyList<Coord> path, float hopDuration)
         {
+            if (dying != null) return;
             if (moving != null) StopCoroutine(moving);
             moving = StartCoroutine(PathRoutine(path, hopDuration));
+        }
+
+        // ── 타격감 2차 패스 (2026-09-05) ─────────────────────
+
+        Coroutine dying;
+        /// <summary>사망 연출 중 — SyncPresentation이 이 동안 뷰를 살려둔다.</summary>
+        public bool IsDying => dying != null;
+
+        /// <summary>격파 — 맞은 방향으로 쓰러지며 가라앉는다. '펑' 사라지는 것보다 죽음이 읽힌다.</summary>
+        public void PlayDeath(Vector3 hitDir)
+        {
+            if (dying != null) return;
+            if (moving != null) { StopCoroutine(moving); moving = null; }
+            dying = StartCoroutine(DeathRoutine(hitDir));
+        }
+
+        IEnumerator DeathRoutine(Vector3 hitDir)
+        {
+            var start = transform.position;
+            var rot0 = transform.rotation;
+            if (hitDir.sqrMagnitude < 0.01f) hitDir = transform.forward;
+            var axis = Vector3.Cross(Vector3.up, hitDir.normalized);
+            const float Dur = 0.5f;
+            for (float t = 0f; t < Dur; t += Time.deltaTime)
+            {
+                float k = t / Dur;
+                transform.rotation = Quaternion.AngleAxis(80f * Mathf.SmoothStep(0f, 1f, k), axis) * rot0;
+                transform.position = start + Vector3.down * (0.35f * k * k);
+                yield return null;
+            }
+            dying = null; // 다음 프레임 SyncPresentation이 숨긴다
+            transform.rotation = rot0;
+            transform.position = start;
+        }
+
+        /// <summary>공격 시전 런지 — 타겟 쪽으로 훅 갔다 돌아온다. "누가 때렸는지"가 몸짓으로 읽힌다.</summary>
+        public void PlayLunge(Vector3 towardWorld)
+        {
+            if (dying != null || moving != null) return;
+            moving = StartCoroutine(LungeRoutine(towardWorld)); // moving 슬롯 공유 — 연출 중 스냅 방지
+        }
+
+        IEnumerator LungeRoutine(Vector3 target)
+        {
+            var a = transform.position;
+            var dir = target - a;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.01f) { moving = null; yield break; }
+            var b = a + dir.normalized * 0.25f;
+            for (float t = 0f; t < 0.07f; t += Time.deltaTime) { transform.position = Vector3.Lerp(a, b, t / 0.07f); yield return null; }
+            for (float t = 0f; t < 0.12f; t += Time.deltaTime) { transform.position = Vector3.Lerp(b, a, t / 0.12f); yield return null; }
+            transform.position = a;
+            moving = null;
         }
 
         [SerializeField] float facingYawOffset = 0f; // 모델 정면이 +Z가 아니면 여기서 보정 (예: 180)
@@ -243,6 +297,16 @@ namespace SeoYuGi.BattleView
                 }
                 transform.position = b;
             }
+
+            // 착지 스쿼시 — 마지막 홉이 바닥에 '톡' 닿는 맛 (타격감 2차 패스)
+            var s0 = transform.localScale;
+            var squash = new Vector3(s0.x * 1.08f, s0.y * 0.86f, s0.z * 1.08f);
+            for (float t = 0f; t < 0.09f; t += Time.deltaTime)
+            {
+                transform.localScale = Vector3.Lerp(squash, s0, t / 0.09f);
+                yield return null;
+            }
+            transform.localScale = s0;
             moving = null;
         }
 

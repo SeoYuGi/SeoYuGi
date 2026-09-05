@@ -18,14 +18,17 @@ namespace SeoYuGi.BattleView
         float activeSince;
         bool active;
 
-        public static void Do(float seconds)
+        public static void Do(float seconds) => Do(seconds, StopScale);
+
+        /// <summary>scale 지정판 — 킬 슬로모(0.35 등)는 완전 정지 대신 느린 재생으로 무게를 준다.</summary>
+        public static void Do(float seconds, float scale)
         {
             if (instance == null)
                 instance = new GameObject("@HitStop").AddComponent<HitStop>();
-            instance.Apply(seconds);
+            instance.Apply(seconds, scale);
         }
 
-        void Apply(float seconds)
+        void Apply(float seconds, float scale = StopScale)
         {
             if (GameFreeze.Active) return; // 무전 프리즈 중 — 히트스톱이 정지를 깨면 안 된다
             float end = Time.unscaledTime + seconds;
@@ -33,7 +36,7 @@ namespace SeoYuGi.BattleView
             {
                 active = true;
                 activeSince = Time.unscaledTime;
-                Time.timeScale = StopScale;
+                Time.timeScale = scale;
             }
             // 연쇄 연장은 시작 시점 + 상한까지만 — 무한 정지 방지
             if (end > until) until = Mathf.Min(end, activeSince + MaxContinuous);

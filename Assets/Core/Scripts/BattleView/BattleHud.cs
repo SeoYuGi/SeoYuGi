@@ -572,7 +572,18 @@ namespace SeoYuGi.BattleView
                 }
             }
 
-            GUI.Label(new Rect(W / 2f - 100, 97, 200, 16),
+            // 판세 스코어 (2026-09-05) — "지금 누가 이기고 있나"를 칩 색만으로 못 읽던 문제
+            int myZ = 0, enZ = 0;
+            foreach (var z in round.Zones)
+            {
+                if (z.owner == playerTeam) myZ++;
+                else if (z.owner == 1 - playerTeam) enZ++;
+            }
+            var zsStyle = new GUIStyle(dotStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 15 };
+            ShadowLabel(new Rect(W / 2f - 100, 97, 88, 18), $"거점 {myZ}", zsStyle, allyColor);
+            ShadowLabel(new Rect(W / 2f - 12, 97, 24, 18), ":", zsStyle, new Color(0.6f, 0.65f, 0.72f));
+            ShadowLabel(new Rect(W / 2f + 12, 97, 88, 18), $"{enZ} 적", zsStyle, enemyColor);
+            GUI.Label(new Rect(W / 2f - 100, 114, 200, 14),
                 $"ROUND {match.CurrentRound}/{MatchSystem.MaxRounds}", roundStyle);
         }
 

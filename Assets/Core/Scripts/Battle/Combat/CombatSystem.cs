@@ -51,6 +51,10 @@ namespace SeoYuGi.Battle
         public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
         public event Action<int, float> OnStunned;       // (unitId, seconds)
         public event Action<int, int> OnStunCombo;       // (victimId, attackerId) — 스턴 중 피격 = 연계 보너스 발동
+        public event Action<int, int> OnMissed;          // (victimId, attackerId) — 엄폐/은신으로 회피 성공
+
+        /// <summary>공격 팀 시야 판정 주입 — 러너가 VisionSystem을 연결. null이면 은신 페널티 없음 (테스트 기본).</summary>
+        public Func<int, Coord, bool> TeamVisibleFn;
         public event Action<int> OnWallCrash;            // 밀침으로 벽/맵 경계 충돌
 
         readonly List<TelegraphStrike> strikes = new List<TelegraphStrike>();
@@ -682,6 +686,13 @@ namespace SeoYuGi.Battle
                 if (unit.team == strike.team) continue;   // 팀킬 없음
                 if (IsFlying(unit)) continue;             // 비행 중 무적
 
+                // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다
+                if (attacker != null && RollMiss(strike, attacker, unit))
+                {
+                    OnMissed?.Invoke(unit.id, strike.attackerId);
+                    continue;
+                }
+
                 var hitDir = attacker != null
                     ? new Coord(Math.Sign(unit.pos.x - attacker.pos.x), Math.Sign(unit.pos.y - attacker.pos.y))
                     : Coord.Zero;
@@ -702,6 +713,38 @@ namespace SeoYuGi.Battle
                 OnDamageDealt?.Invoke(attacker.id, dealt);
 
             OnStrikeResolved?.Invoke(strike, hit);
+        }
+
+        const float CoverMissMax = 0.5f; // 정면 엄폐 최대 빗나감 확률
+        const float UnseenMiss = 0.5f;   // 시야 밖 사격 빗나감 확률
+
+        /// <summary>
+        /// 탱고파이브식 회피 판정 — 엄폐: 피격자 기준 공격이 날아오는 방향의 인접 벽이 가린다.
+        /// 정면(공격 방향 = 벽 방향)일수록 최대, 옆으로 돌수록 감소, 등지면 무효.
+        /// 은신: 공격 팀 시야 밖(안개 속)이면 조준이 어긋난다. 주사위는 (예고 id, 피격자) 해시 — 결정적.
+        /// </summary>
+        bool RollMiss(TelegraphStrike strike, UnitState attacker, UnitState victim)
+        {
+            float miss = 0f;
+
+            var d = attacker.pos - victim.pos; // 피격자 → 공격자 방향
+            float len = (float)Math.Sqrt(d.x * d.x + d.y * d.y);
+            if (len > 0.01f)
+                foreach (var w in Coord.Directions4)
+                {
+                    var c = victim.pos + w;
+                    if (State.Grid.InBounds(c) && State.Grid.IsWalkableTerrain(c)) continue; // 벽·경계만 엄폐
+                    float align = (d.x * w.x + d.y * w.y) / len; // cos: 1=정면 엄폐, 0=측면, 음수=벽을 등짐
+                    if (align > 0f) miss = Math.Max(miss, align * CoverMissMax);
+                }
+
+            if (TeamVisibleFn != null && !TeamVisibleFn(strike.team, victim.pos))
+                miss = Math.Max(miss, UnseenMiss);
+
+            if (miss <= 0f) return false;
+            uint h = (uint)(strike.id * 73856093) ^ (uint)(victim.id * 19349663) ^ 0x9E3779B9u;
+            h ^= h >> 16; h *= 2246822519u; h ^= h >> 13;
+            return (h & 0xFFFF) / 65535f < miss;
         }
 
         void Damage(UnitState unit, int amount, Coord hitDir = default, int attackerId = Cell.NoUnit)

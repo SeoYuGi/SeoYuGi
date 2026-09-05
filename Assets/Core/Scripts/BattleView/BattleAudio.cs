@@ -101,6 +101,7 @@ namespace SeoYuGi.BattleView
             src.playOnAwake = false;
             src.clip = clip;
             src.volume = volume * 0.8f; // 합산 여유 — 개별 소리가 아니라 총합이 깨지는 걸 막는다
+            src.pitch = 1f + (UnityEngine.Random.value - 0.5f) * 0.12f; // ±6% 변주 — 연타가 기계음처럼 반복되지 않게 (타격감 2차)
             src.Play();
             float length = Mathf.Min(maxSeconds, clip.length);
             Destroy(src, length + 0.05f);

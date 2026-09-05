@@ -46,9 +46,27 @@ namespace SeoYuGi.BattleView
             rend.enabled = false;
         }
 
+        float shownFraction;   // 화면 표시 비율 — 깎일 땐 천천히 흘러내린다 (자르듯 뚝 떨어지지 않게)
+        float penaltyFlash;    // 점령 저지 빨간 플래시 잔량 0..1
+
+        /// <summary>점령 저지 연출 — 빨간 플래시 한 번. 게이지 하락은 SetProgress가 부드럽게 따라간다.</summary>
+        public void FlashPenalty() => penaltyFlash = 1f;
+
         /// <summary>매 프레임 호출. fraction 0..1, color = 점거 팀 색.</summary>
         public void SetProgress(float fraction, Color color)
         {
+            // 하락은 초당 0.6씩 흘러내리고, 상승은 즉시 — "깎였다"가 눈으로 읽힌다 (2026-09-05 점령 저지)
+            shownFraction = fraction > shownFraction
+                ? fraction
+                : Mathf.MoveTowards(shownFraction, fraction, Time.deltaTime * 0.6f);
+            fraction = shownFraction;
+
+            if (penaltyFlash > 0f)
+            {
+                color = Color.Lerp(color, new Color(1f, 0.25f, 0.15f), penaltyFlash); // 저지 순간 빨갛게 번쩍
+                penaltyFlash = Mathf.Max(0f, penaltyFlash - Time.deltaTime * 2.5f);
+            }
+
             if (fraction <= 0f)
             {
                 if (rend.enabled) rend.enabled = false;
@@ -62,18 +80,34 @@ namespace SeoYuGi.BattleView
             if (Mathf.Approximately(fraction, lastFraction)) return;
             lastFraction = fraction;
 
-            // -Z 모서리 고정, +Z로 fraction만큼 채운다 (XZ 평면, 법선 +Y)
-            float halfW = width * 0.5f;
-            float zBot = -depth * 0.5f;
-            float zTop = zBot + depth * fraction;
-            var verts = new[]
+            // 사각 파이 스윕 (2026-09-05): 12시(+Z)에서 시계 방향으로 fraction×360° 부채꼴을
+            // 그리되, 반지름을 사각형 경계까지 늘려 패치 모양 그대로 채운다 (시계형 캡처 게이지).
+            float halfW = width * 0.5f, halfD = depth * 0.5f;
+            float sweep = fraction * 360f;
+            const float StepDeg = 6f;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(sweep / StepDeg));
+
+            var verts = new Vector3[steps + 2];
+            var tris = new int[steps * 3];
+            verts[0] = Vector3.zero; // 부채꼴 중심
+
+            Vector3 OnRect(float deg)
             {
-                new Vector3(-halfW, 0f, zBot),
-                new Vector3( halfW, 0f, zBot),
-                new Vector3( halfW, 0f, zTop),
-                new Vector3(-halfW, 0f, zTop),
-            };
-            var tris = new[] { 0, 2, 1, 0, 3, 2 };
+                float rad = deg * Mathf.Deg2Rad;
+                float dx = Mathf.Sin(rad), dz = Mathf.Cos(rad); // 0° = +Z(12시), 시계 방향
+                float k = 1f / Mathf.Max(Mathf.Abs(dx) / halfW, Mathf.Abs(dz) / halfD); // 사각 경계로 투영
+                return new Vector3(dx * k, 0f, dz * k);
+            }
+
+            for (int i = 0; i <= steps; i++)
+                verts[i + 1] = OnRect(Mathf.Min(sweep, i * StepDeg));
+            for (int i = 0; i < steps; i++)
+            {
+                tris[i * 3] = 0;
+                tris[i * 3 + 1] = i + 1; // 시계 방향 — 위(+Y)에서 보이는 감김
+                tris[i * 3 + 2] = i + 2;
+            }
+
             mesh.Clear();
             mesh.vertices = verts;
             mesh.triangles = tris;

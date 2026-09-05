@@ -462,7 +462,8 @@ namespace SeoYuGi.BattleView
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();
-            DrawSubtitle(); // 오버레이 위에도 보이게 마지막에
+            DrawSubtitle();
+            DrawHeroCard(); // 오버레이 위에도 보이게 마지막에
 
             GUI.matrix = Matrix4x4.identity;
         }
@@ -997,6 +998,55 @@ namespace SeoYuGi.BattleView
             ShadowLabel(new Rect(box.x + 30f, box.y + (boxH - textH) / 2f, box.width - 60f, textH),
                 announceText, announceStyle,
                 new Color(announceColor.r, announceColor.g, announceColor.b, a));
+        }
+
+        // ── 히어로 카드 — 라운드 결정타 주인공 (2026-09-05 "자막 간지나게") ──
+        string heroName, heroReason;
+        float heroStart = -99f, heroUntil = -99f;
+
+        public void ShowHeroCard(string name, string reason, float seconds)
+        {
+            heroName = name;
+            heroReason = reason;
+            heroStart = Time.unscaledTime;
+            heroUntil = Time.unscaledTime + seconds;
+        }
+
+        void DrawHeroCard()
+        {
+            if (Time.unscaledTime >= heroUntil || string.IsNullOrEmpty(heroName)) return;
+            float age = Time.unscaledTime - heroStart;
+            float slide = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(age / 0.28f));       // 왼쪽에서 미끄러져 들어옴
+            float a = Mathf.Min(slide, Mathf.Clamp01((heroUntil - Time.unscaledTime) / 0.3f)); // 끝에서 페이드
+
+            var gold = new Color(1f, 0.85f, 0.3f);
+            float bw = 560f, bh = 84f;
+            float bx = W / 2f - bw / 2f - (1f - slide) * 140f;
+            float by = H - 196f; // 포커싱된 캐릭터 아래·하단 조작 바 위 사이 (2026-09-05)
+
+            var mtx = GUI.matrix;
+            GUIUtility.RotateAroundPivot(-1.6f, new Vector2(W / 2f, by + bh / 2f)); // 살짝 기울여 — 정적인 자막 탈피
+
+            // 방사 광원 + 다크 밴드 + 금 라인 + 좌측 금 블록
+            GUI.color = new Color(gold.r, gold.g, gold.b, 0.2f * a);
+            GUI.DrawTexture(new Rect(bx - 70f, by - 46f, bw + 140f, bh + 92f), RadialTex());
+            GUI.color = Color.white;
+            Fill(new Rect(bx, by, bw, bh), new Color(0.02f, 0.04f, 0.08f, 0.88f * a));
+            Fill(new Rect(bx, by, bw * a, 2f), new Color(gold.r, gold.g, gold.b, 0.9f * a));
+            Fill(new Rect(bx + bw * (1f - a), by + bh - 2f, bw * a, 2f), new Color(gold.r, gold.g, gold.b, 0.9f * a));
+            Fill(new Rect(bx, by, 6f, bh), new Color(gold.r, gold.g, gold.b, 0.85f * a));
+
+            var nameStyle = new GUIStyle(bannerStyle) { fontSize = 27, alignment = TextAnchor.MiddleLeft };
+            GUI.color = new Color(gold.r, gold.g, gold.b, 0.3f * a); // 타이트 글로우 한 겹
+            GUI.Label(new Rect(bx + 26f, by + 9f, bw - 40f, 36f), $"★  {heroName}의 결정타", nameStyle);
+            GUI.color = Color.white;
+            ShadowLabel(new Rect(bx + 24f, by + 8f, bw - 40f, 36f), $"★  {heroName}의 결정타", nameStyle,
+                new Color(1f, 0.95f, 0.75f, a));
+            ShadowLabel(new Rect(bx + 26f, by + 48f, bw - 40f, 24f), heroReason,
+                new GUIStyle(subStyle) { fontSize = 17, alignment = TextAnchor.MiddleLeft },
+                new Color(0.85f, 0.9f, 0.98f, a));
+
+            GUI.matrix = mtx;
         }
 
         void DrawSubtitle()

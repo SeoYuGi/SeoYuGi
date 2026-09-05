@@ -145,6 +145,23 @@ namespace SeoYuGi.Art
             Locked = true;
         }
 
+        float cineSavedDistance = -1f; // 시네마틱 줌 이전 거리 — 종료 시 복원
+
+        /// <summary>킬캠 클로즈업 — 줌 거리만 확 줄인다. SmoothDamp가 돌리 인처럼 밀어 넣는다 (2026-09-05).</summary>
+        public void CinematicZoom(float dist)
+        {
+            if (cineSavedDistance < 0f) cineSavedDistance = distance;
+            distance = dist;
+        }
+
+        /// <summary>시네마틱 종료 — 원래 줌으로 복원.</summary>
+        public void EndCinematic()
+        {
+            if (cineSavedDistance < 0f) return;
+            distance = cineSavedDistance;
+            cineSavedDistance = -1f;
+        }
+
         bool TryFindTarget()
         {
             if (runner == null || runner.Battle == null) return false;

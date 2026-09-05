@@ -452,6 +452,8 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<int, int> matchDamage = new Dictionary<int, int>();     // 가한 피해 — 화력 부문 (2026-09-05)
         readonly Dictionary<int, float> matchCapture = new Dictionary<int, float>(); // 점령 기여 초 — 점령 부문
         int spectateUnitId = -1; // 관전 중 따라가는 아군 — 죽으면 다음 아군으로
+        int lastKillerId = -1;   // 라운드 종료 포커싱 — 마지막 처치자 (2026-09-05 "맛있게")
+        int lastCapturerId = -1; // 마지막 거점 점령자
         readonly Dictionary<int, int> roundDeaths = new Dictionary<int, int>();
 
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
@@ -1286,7 +1288,7 @@ namespace SeoYuGi.BattleView
                 ResetReadyGate(); // R 동의 게이트 (2026-09-05)
                 bool myWin = winner == playerTeam;
                 hud.SetMatchEndReason(reasonText);
-                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, EndFocusUnit((RoundSystem.EndReason)endReasonInt), () =>
                 {
                     // 호스트 확정 스탯 우선 — 클라 로컬 집계엔 피해·점령초가 없다 (2026-09-05)
                     if (hostStats != null && hostStats.Length > 0)
@@ -1310,7 +1312,7 @@ namespace SeoYuGi.BattleView
             {
                 phase = Phase.Briefing;
                 ResetReadyGate(); // 클라도 SPACE 동의 상태 초기화
-                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, EndFocusUnit((RoundSystem.EndReason)endReasonInt), () =>
                 {
                     hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
                     hud.SetBriefingReason(reasonText);
@@ -1364,6 +1366,7 @@ namespace SeoYuGi.BattleView
             if (!IsNetClient || Round == null || zoneIdx >= Round.Zones.Count) return;
             if (Round.Rule != null) { Round.Rule.OnZoneCaptured(zoneIdx); Round.SyncZoneActive(); } // 봉쇄 해제 — 호스트와 같은 규칙 진행 (zone.active는 스냅샷에 없다)
             var zone = Round.Zones[zoneIdx];
+            lastCapturerId = FindUnitOnZone(zone.cells, owner); // 종료 포커싱 후보 (미러 기준)
             bool ours = owner == playerTeam;
             battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
 
@@ -1769,6 +1772,7 @@ namespace SeoYuGi.BattleView
 
             Round.OnZoneCaptured += zone =>
             {
+                lastCapturerId = FindUnitOnZone(zone.cells, zone.owner); // 종료 포커싱 후보 (2026-09-05)
                 Debug.Log($"거점 {zone.Center} → 팀 {zone.owner} 탈환"); // 소유 색은 네온 테두리가 (틴트 폐지)
 
                 bool ours = zone.owner == playerTeam;
@@ -2345,6 +2349,7 @@ namespace SeoYuGi.BattleView
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             killStreaks.Clear(); // 멀티킬 스트릭 리셋
             roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋
+            lastKillerId = -1; lastCapturerId = -1;
             if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); matchDamage.Clear(); matchCapture.Clear(); } // 새 매치 — 누적도 백지
             spectateUnitId = -1;
             countdownUntil = Time.time + (Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로)
@@ -2542,6 +2547,7 @@ namespace SeoYuGi.BattleView
             {
                 roundKills[killerId] = roundKills.TryGetValue(killerId, out var kcnt) ? kcnt + 1 : 1;
                 matchKills[killerId] = matchKills.TryGetValue(killerId, out var mkc) ? mkc + 1 : 1;
+                lastKillerId = killerId; // 종료 포커싱 후보
             }
 
             // 관전 시점 전환 (2026-09-05): 내가 죽거나, 따라가던 아군이 죽으면 다음 산 아군에게
@@ -2686,14 +2692,59 @@ namespace SeoYuGi.BattleView
             }
         }
 
-        /// <summary>종료 순간 연출 — 1.8초 슬로우모션 + 사유 대문짝, 그 다음 브리핑 (2026-09-05 "너무 빠르게 지나감").</summary>
-        System.Collections.IEnumerator RoundEndBeat(string reasonText, bool myWin, System.Action then)
+        /// <summary>거점 패치 위에 서 있는 해당 팀 유닛 하나 — 점령자 추정.</summary>
+        int FindUnitOnZone(IReadOnlyCollection<Coord> cells, int team)
         {
+            foreach (var c in cells)
+            {
+                int uid = Battle.Grid.GetUnitAt(c);
+                if (uid != SeoYuGi.Battle.Cell.NoUnit && Battle.GetUnit(uid)?.team == team) return uid;
+            }
+            return -1;
+        }
+
+        /// <summary>종료 사유별 주인공 — 킬 마감이면 마지막 처치자, 거점 마감이면 마지막 점령자.</summary>
+        int EndFocusUnit(RoundSystem.EndReason reason)
+        {
+            switch (reason)
+            {
+                case RoundSystem.EndReason.AllZones:
+                case RoundSystem.EndReason.OvertimeCapture:
+                case RoundSystem.EndReason.TimeoutZones:
+                    return lastCapturerId >= 0 ? lastCapturerId : lastKillerId;
+                default:
+                    return lastKillerId >= 0 ? lastKillerId : lastCapturerId;
+            }
+        }
+
+        /// <summary>종료 순간 연출 — 주인공 포커싱 + 1.8초 슬로우모션 + 사유 대문짝, 그 다음 결과 (2026-09-05).</summary>
+        System.Collections.IEnumerator RoundEndBeat(string reasonText, bool myWin, int focusUnitId, System.Action then)
+        {
+            // 라운드를 끝낸 주인공에게 카메라 — 킬캠 한 컷 (2026-09-05 "마지막 킬/점령자 포커싱")
+            SeoYuGi.Art.TacticalCamera cineCam = null;
+            if (focusUnitId >= 0)
+            {
+                var cam = Camera.main != null ? Camera.main.GetComponent<SeoYuGi.Art.TacticalCamera>() : null;
+                var fv = viewRegistry.Get(focusUnitId);
+                if (cam != null && fv != null && fv.gameObject.activeInHierarchy)
+                {
+                    cam.Spectate(fv.transform);
+                    cam.CinematicZoom(7.5f); // 클로즈업 돌리 인 — 막타/점령 장면을 가까이서 (2026-09-05)
+                    cineCam = cam;
+                    var fu = Battle.GetUnit(focusUnitId);
+                    if (fu != null)
+                        FloatingText.Spawn(gridView.CoordToWorld(fu.pos) + Vector3.up * 0.8f,
+                            $"★ {FindSlot(focusUnitId).callsign}", new Color(1f, 0.85f, 0.3f), 1.3f, 1.7f);
+                    if (!string.IsNullOrEmpty(reasonText))
+                        hud.ShowHeroCard(FindSlot(focusUnitId).callsign, reasonText, 2.1f); // 전용 히어로 카드 (2026-09-05)
+                }
+            }
             if (!string.IsNullOrEmpty(reasonText))
                 hud.ShowAnnounce(reasonText, myWin ? new Color(0.45f, 1f, 0.7f) : new Color(1f, 0.5f, 0.4f), 1.9f);
             Time.timeScale = 0.25f; // 마지막 장면을 천천히 — 무슨 일이 있었는지 눈에 담긴다
-            yield return new WaitForSecondsRealtime(1.8f);
+            yield return new WaitForSecondsRealtime(2.1f); // 클로즈업 감상 시간 (줌 글라이드 포함)
             Time.timeScale = 1f;
+            if (cineCam != null) cineCam.EndCinematic(); // 줌 복원 — 다음 라운드는 평소 거리
             then();
         }
 
@@ -2731,7 +2782,7 @@ namespace SeoYuGi.BattleView
                 ResetReadyGate(); // R 동의 게이트 (2026-09-05)
                 bool myWin = Match.MatchWinner == playerTeam;
                 hud.SetMatchEndReason(reasonText); // 최종 종료도 왜인지 (2026-09-05)
-                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, EndFocusUnit(endReason), () =>
                 {
                     hud.SetMatchStats(BuildMatchStats());
                     hud.ShowMatchEnd();
@@ -2744,7 +2795,7 @@ namespace SeoYuGi.BattleView
             {
                 phase = Phase.Briefing;
                 ResetReadyGate(); // SPACE 동의 집계 초기화
-                StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
+                StartCoroutine(RoundEndBeat(reasonText, myWinR, EndFocusUnit(endReason), () =>
                 {
                     // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
                     hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));

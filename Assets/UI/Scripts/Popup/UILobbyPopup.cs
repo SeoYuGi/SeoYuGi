@@ -326,17 +326,42 @@ public class UILobbyPopup : UIPopup
 
     Text commanderLabel;
 
-    /// <summary>분대 슬롯 선택 표시 — 밝은 테두리(Outline) + 1.08배. 라벨 색만으론 어느 칸을 고르는 중인지 안 읽혔다
-    /// (2026-09-06 "선택된 게 더 잘 보이게"). 캐릭터 선택 팝업도 같은 함수를 쓴다.</summary>
+    /// <summary>분대 슬롯 선택 표시 — 슬롯 뒤에 틸 판을 6px 크게 깔아 밝은 테두리 + 1.08배.
+    /// Outline은 프레임 그림을 복제하는 거라 검은 여백만 복제돼 안 보였다 (2026-09-06 "밝은 테두리 안 생기는데").
+    /// 판은 슬롯의 형제(앞 순서)라 프레임 뒤에 깔린다 — 자식이면 프레임 위를 덮는다. 캐릭터 선택 팝업도 같은 함수.</summary>
     public static void SetSlotSelected(RectTransform root, bool on)
     {
         root.localScale = on ? Vector3.one * 1.08f : Vector3.one;
-        var ol = root.GetComponent<Outline>();
-        if (ol == null) ol = root.gameObject.AddComponent<Outline>();
-        ol.enabled = on;
-        ol.effectColor = new Color(0.45f, 1f, 0.95f, 0.95f); // 조준 슬롯·편집 라벨과 같은 틸
-        ol.effectDistance = new Vector2(4f, -4f);
-        ol.useGraphicAlpha = false;
+        string haloName = "SelHalo_" + root.name;
+        var halo = root.parent.Find(haloName) as RectTransform;
+        if (!on)
+        {
+            if (halo != null) halo.gameObject.SetActive(false);
+            return;
+        }
+        if (halo == null)
+        {
+            var go = new GameObject(haloName, typeof(RectTransform), typeof(Image));
+            halo = (RectTransform)go.transform;
+            halo.SetParent(root.parent, false);
+            var img = go.GetComponent<Image>();
+            img.color = new Color(0.45f, 1f, 0.95f, 0.95f); // 조준 슬롯·편집 라벨과 같은 틸
+            img.raycastTarget = false;
+            var glow = new Color(0.45f, 1f, 0.95f, 0.45f);
+            foreach (var d in new[] { new Vector2(5f, 5f), new Vector2(-5f, -5f), new Vector2(5f, -5f), new Vector2(-5f, 5f) })
+            {
+                var sh = go.AddComponent<Shadow>();
+                sh.effectColor = glow; sh.effectDistance = d; sh.useGraphicAlpha = false;
+            }
+        }
+        // 슬롯 바로 앞 순서 = 슬롯 뒤에 그려진다. SetSiblingIndex는 뺀 뒤 끼우는 거라 뒤에서 앞으로 올 땐 한 번 더 (2026-09-06)
+        halo.SetSiblingIndex(root.GetSiblingIndex());
+        if (halo.GetSiblingIndex() > root.GetSiblingIndex()) halo.SetSiblingIndex(root.GetSiblingIndex());
+        halo.anchorMin = root.anchorMin; halo.anchorMax = root.anchorMax; halo.pivot = root.pivot;
+        halo.anchoredPosition = root.anchoredPosition;
+        halo.sizeDelta = root.sizeDelta + new Vector2(12f, 12f);
+        halo.localScale = root.localScale;
+        halo.gameObject.SetActive(true);
     }
 
     /// <summary>하단 버튼 줄 공통 치수 — 캐릭터 선택 팝업(UIClassSelectPopup)의 출격 버튼도 같은 값 (2026-09-06).</summary>

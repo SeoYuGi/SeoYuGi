@@ -449,6 +449,8 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<int, int> roundKills = new Dictionary<int, int>();  // 라운드 전적 (2026-09-05)
         readonly Dictionary<int, int> matchKills = new Dictionary<int, int>();  // 매치 누적 — 매치엔드 통계·MVP
         readonly Dictionary<int, int> matchDeaths = new Dictionary<int, int>();
+        readonly Dictionary<int, int> matchDamage = new Dictionary<int, int>();     // 가한 피해 — 화력 부문 (2026-09-05)
+        readonly Dictionary<int, float> matchCapture = new Dictionary<int, float>(); // 점령 기여 초 — 점령 부문
         int spectateUnitId = -1; // 관전 중 따라가는 아군 — 죽으면 다음 아군으로
         readonly Dictionary<int, int> roundDeaths = new Dictionary<int, int>();
 
@@ -1171,7 +1173,8 @@ namespace SeoYuGi.BattleView
 
         /// <summary>클라 — 라운드 종료 수신. 호스트와 같은 화면 전환.</summary>
         void OnNetRoundEnd(int winner, int w0, int w1, bool matchOver, string[] briefing,
-            int[] hostZoneOwners, int hostAlive0, int hostAlive1, int endReasonInt)
+            int[] hostZoneOwners, int hostAlive0, int hostAlive1, int endReasonInt,
+            (int unitId, int k, int d, int dmg, float cap)[] hostStats)
         {
             if (!IsNetClient) return;
             input.enabled = false;
@@ -1190,7 +1193,20 @@ namespace SeoYuGi.BattleView
                 hud.SetMatchEndReason(reasonText);
                 StartCoroutine(RoundEndBeat(reasonText, myWinR, () =>
                 {
-                    hud.SetMatchStats(BuildMatchStats());
+                    // 호스트 확정 스탯 우선 — 클라 로컬 집계엔 피해·점령초가 없다 (2026-09-05)
+                    if (hostStats != null && hostStats.Length > 0)
+                    {
+                        var list = new List<BattleHud.MatchStatEntry>();
+                        foreach (var st in hostStats)
+                        {
+                            var slot = FindSlot(st.unitId);
+                            list.Add(new BattleHud.MatchStatEntry
+                            { name = slot.callsign, cls = (int)slot.cls, team = slot.team,
+                              kills = st.k, deaths = st.d, damage = st.dmg, captureSec = st.cap });
+                        }
+                        hud.SetMatchStats(list.ToArray());
+                    }
+                    else hud.SetMatchStats(BuildMatchStats());
                     hud.ShowMatchEnd();
                     battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
                 }));
@@ -1529,6 +1545,7 @@ namespace SeoYuGi.BattleView
             Combat.OnDamageDealt += hackSystem.NotifyDamage;
             Combat.OnDamageDealt += (attackerId, dealt) =>
             {
+                matchDamage[attackerId] = matchDamage.TryGetValue(attackerId, out var mdd) ? mdd + dealt : dealt; // 화력 부문 (2026-09-05)
                 // 내 공격 "적중" 타격감 — 가독성 다이어트의 예외. 내가 한 일의 결과는 몸으로 느껴야 한다 (2026-09-05 유저 요청).
                 // 돌리 펀치(살짝 클로즈업) + 짧은 셰이크 + 아주 짧은 히트스톱 + 비네트 펀치 + 묵직한 썸프.
                 if (attackerId != playerUnitId || IsNetClient) return;
@@ -2196,7 +2213,7 @@ namespace SeoYuGi.BattleView
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             killStreaks.Clear(); // 멀티킬 스트릭 리셋
             roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋
-            if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); } // 새 매치 — 누적도 백지
+            if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); matchDamage.Clear(); matchCapture.Clear(); } // 새 매치 — 누적도 백지
             spectateUnitId = -1;
             countdownUntil = Time.time + (Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로)
             countdownRunning = true;
@@ -2325,8 +2342,10 @@ namespace SeoYuGi.BattleView
                 {
                     matchKills.TryGetValue(slot.unitId, out int k);
                     matchDeaths.TryGetValue(slot.unitId, out int d);
+                    matchDamage.TryGetValue(slot.unitId, out int dmg);
+                    matchCapture.TryGetValue(slot.unitId, out float cap);
                     list.Add(new BattleHud.MatchStatEntry
-                    { name = slot.callsign, cls = (int)slot.cls, team = slot.team, kills = k, deaths = d });
+                    { name = slot.callsign, cls = (int)slot.cls, team = slot.team, kills = k, deaths = d, damage = dmg, captureSec = cap });
                 }
             return list.ToArray();
         }
@@ -2354,6 +2373,22 @@ namespace SeoYuGi.BattleView
             spectateUnitId = alive[idx].unitId;
             cam.Spectate(viewRegistry.Get(spectateUnitId).transform);
             hud.ShowAnnounce($"{alive[idx].name} 시점 관전  ( ← / → 전환 )", new Color(0.7f, 0.8f, 0.9f), 1.6f);
+        }
+
+        /// <summary>매치 확정 스탯 와이어 — (unitId, 킬, 데스, 피해, 점령초). 매치오버 릴레이용 (2026-09-05).</summary>
+        (int, int, int, int, float)[] BuildStatWire()
+        {
+            var list = new List<(int, int, int, int, float)>();
+            if (matchSetup != null)
+                foreach (var slot in matchSetup.slots)
+                {
+                    matchKills.TryGetValue(slot.unitId, out int k);
+                    matchDeaths.TryGetValue(slot.unitId, out int d);
+                    matchDamage.TryGetValue(slot.unitId, out int dmg);
+                    matchCapture.TryGetValue(slot.unitId, out float cap);
+                    list.Add((slot.unitId, k, d, dmg, cap));
+                }
+            return list.ToArray();
         }
 
         void ShowKill(int deadId, int killerId)
@@ -2554,7 +2589,8 @@ namespace SeoYuGi.BattleView
                     if (s.owner == SlotOwner.RemoteHuman)
                         NetSync.HostSendRoundEnd(s.clientId, winnerTeam, Match.GetWins(0), Match.GetWins(1),
                             matchOver, null, // AI 학습 브리핑 폐기 (2026-09-05) — 프로토콜은 유지, 내용만 비운다
-                            ZoneOwners(), AliveCount(0), AliveCount(1), (int)endReason); // 결과 화면용 호스트 확정치
+                            ZoneOwners(), AliveCount(0), AliveCount(1), (int)endReason,
+                            matchOver ? BuildStatWire() : null); // 매치오버 — MVP 다부문 확정 스탯
 
             if (matchOver)
             {
@@ -2823,6 +2859,19 @@ namespace SeoYuGi.BattleView
             Move.Tick(Time.deltaTime);
             Combat.Tick(Time.deltaTime); // State.time 전진 — Pickup 리스폰 타이머가 이 시계를 쓴다
             Round.Tick(Time.deltaTime);
+
+            // 점령 기여 시간 — 점거 진행 중인 거점 위에 서 있는 그 팀 유닛에게 적립 (MVP 점령 부문, 2026-09-05)
+            foreach (var cz in Round.Zones)
+            {
+                if (cz.capturingTeam < 0) continue;
+                foreach (var cc in cz.cells)
+                {
+                    int cu = Battle.Grid.GetUnitAt(cc);
+                    if (cu == SeoYuGi.Battle.Cell.NoUnit) continue;
+                    if (Battle.GetUnit(cu).team != cz.capturingTeam) continue;
+                    matchCapture[cu] = matchCapture.TryGetValue(cu, out var mcv) ? mcv + Time.deltaTime : Time.deltaTime;
+                }
+            }
             vision.Tick();
             Pickup.Tick();
             hackSystem.Tick(Time.deltaTime); // 궁게이지 기본 충전 (초당 1%)

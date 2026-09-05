@@ -1121,7 +1121,13 @@ namespace SeoYuGi.BattleView
         public void SetRoundRule(string title) => roundRuleChip = title;
 
         /// <summary>매치엔드 통계 한 줄 — 초상+닉네임+K/D. 러너가 매치 종료 직전 채운다.</summary>
-        public struct MatchStatEntry { public string name; public int cls; public int team; public int kills, deaths; }
+        public struct MatchStatEntry
+        {
+            public string name; public int cls; public int team;
+            public int kills, deaths;
+            public int damage;      // 가한 피해 합 — 화력 부문 (2026-09-05)
+            public float captureSec; // 점령 기여 초 — 점령 부문
+        }
         MatchStatEntry[] matchStats;
         public void SetMatchStats(MatchStatEntry[] entries) => matchStats = entries;
 
@@ -1132,6 +1138,14 @@ namespace SeoYuGi.BattleView
             if (cls < 0 || cls >= 5) return null;
             if (cardArts[cls] == null) cardArts[cls] = Resources.Load<Texture2D>("UI/" + CardArtNames[cls]);
             return cardArts[cls];
+        }
+
+        static int ArgBest(MatchStatEntry[] arr, System.Func<MatchStatEntry, float> key)
+        {
+            int best = -1; float bv = float.MinValue;
+            for (int i = 0; i < arr.Length; i++)
+                if (key(arr[i]) > bv) { bv = key(arr[i]); best = i; }
+            return best;
         }
 
         static float Frac01(float x) { x = Mathf.Sin(x) * 43758.5453f; return x - Mathf.Floor(x); }
@@ -1267,11 +1281,11 @@ namespace SeoYuGi.BattleView
             if (matchStats != null && matchStats.Length > 0 && mvpT > 0f)
             {
                 // ── 2페이지: MVP 시네마틱 (2026-09-05 "간지나게") — 스포트라이트 + 대각 빔 + 브래킷 + 광택 스윕
+                // 가중 MVP (2026-09-05 다부문): 킬·피해·점령 기여를 합산 — 킬 없는 점령왕도 MVP가 될 수 있다
+                float Score(MatchStatEntry e2) => e2.kills * 100f + e2.damage * 10f + e2.captureSec * 9f - e2.deaths * 25f;
                 int mvp = 0;
                 for (int i = 1; i < matchStats.Length; i++)
-                    if (matchStats[i].kills > matchStats[mvp].kills ||
-                        (matchStats[i].kills == matchStats[mvp].kills && matchStats[i].deaths < matchStats[mvp].deaths))
-                        mvp = i;
+                    if (Score(matchStats[i]) > Score(matchStats[mvp])) mvp = i;
                 var m = matchStats[mvp];
                 var gold = new Color(1f, 0.85f, 0.3f);
                 float rise = (1f - mvpT) * 46f; // 등장 — 아래에서 떠오르며 정착
@@ -1350,15 +1364,37 @@ namespace SeoYuGi.BattleView
                     new GUIStyle(roundStyle) { fontSize = 13, alignment = TextAnchor.MiddleCenter },
                     new Color(gold.r, gold.g, gold.b, 0.75f * mvpT));
 
-                string why = m.kills > 0
-                    ? $"매치 최다 처치 — {m.kills}킬 {m.deaths}데스"
-                    : $"팀의 중심 — {m.deaths}데스로 버텨냈다";
+                // 사유 = MVP의 대표 부문 (부문별 1등 여부로 판단, 2026-09-05 다부문)
+                int topK = 0, topD = 0; float topC = 0f;
+                foreach (var e3 in matchStats)
+                { topK = Mathf.Max(topK, e3.kills); topD = Mathf.Max(topD, e3.damage); topC = Mathf.Max(topC, e3.captureSec); }
+                string why;
+                if (m.kills > 0 && m.kills >= topK) why = $"매치 최다 처치 — {m.kills}킬 {m.deaths}데스";
+                else if (m.captureSec > 0f && m.captureSec >= topC) why = $"점령의 주역 — 거점 기여 {Mathf.RoundToInt(m.captureSec)}초";
+                else if (m.damage > 0 && m.damage >= topD) why = $"화력의 중심 — 총 피해 {m.damage}";
+                else why = $"팀의 기둥 — {m.kills}킬 · 피해 {m.damage}";
                 ShadowLabel(new Rect(0, big.yMax + 86f + rise * 0.3f, W, 20f), why,
                     new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
                     new Color(0.88f, 0.9f, 0.96f, mvpT));
 
+                // 부문 수상 3종 — 학살 / 점령 / 화력 각 1등 (수치 0이면 생략)
+                var awardStyle = new GUIStyle(roundStyle) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
+                string[] awardTexts = new string[3];
+                int ak = ArgBest(matchStats, e4 => e4.kills); if (ak >= 0 && matchStats[ak].kills > 0) awardTexts[0] = $"학살  {matchStats[ak].name} · {matchStats[ak].kills}킬";
+                int ac = ArgBest(matchStats, e4 => e4.captureSec); if (ac >= 0 && matchStats[ac].captureSec > 1f) awardTexts[1] = $"점령  {matchStats[ac].name} · {Mathf.RoundToInt(matchStats[ac].captureSec)}초";
+                int ad = ArgBest(matchStats, e4 => e4.damage); if (ad >= 0 && matchStats[ad].damage > 0) awardTexts[2] = $"화력  {matchStats[ad].name} · 피해 {matchStats[ad].damage}";
+                float ax = W / 2f - 277f;
+                for (int bi = 0; bi < 3; bi++)
+                {
+                    if (string.IsNullOrEmpty(awardTexts[bi])) continue;
+                    var ar = new Rect(ax + bi * 190f, big.yMax + 112f + rise * 0.3f, 174f, 22f);
+                    Fill(ar, new Color(0.04f, 0.06f, 0.1f, 0.85f * mvpT));
+                    Edge(ar, new Color(gold.r, gold.g, gold.b, 0.35f * mvpT));
+                    ShadowLabel(ar, awardTexts[bi], awardStyle, new Color(0.9f, 0.92f, 0.98f, mvpT));
+                }
+
                 string rHint = readyTotal > 1 ? $"R — 새 매치 동의  ({readyCount}/{readyTotal})" : "R — 새 매치";
-                ShadowLabel(new Rect(0, big.yMax + 116f + rise * 0.3f, W, 20f), rHint,
+                ShadowLabel(new Rect(0, big.yMax + 142f + rise * 0.3f, W, 20f), rHint,
                     new GUIStyle(roundStyle) { fontSize = 14, alignment = TextAnchor.MiddleCenter },
                     new Color(0.6f, 0.68f, 0.78f, (0.6f + 0.4f * Mathf.Sin(age * 3f)) * mvpT));
             }

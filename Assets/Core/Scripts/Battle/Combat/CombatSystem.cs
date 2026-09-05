@@ -787,6 +787,18 @@ namespace SeoYuGi.Battle
             bool intercepted = false;
             int dealt = 0;
 
+            // 돌진 스킬(방패 밀어붙이기·던지기) — 경로 전체가 히트박스 (2026-09-05 "경로의 모든 애들 쳐져야").
+            // 지나가며 전부 밀치고/던지고, 몸통 박치기라 회피 판정도 없다 (고라니 돌파와 같은 규칙).
+            if (attacker != null && strike.cells.Count == 1 &&
+                (strike.kind == SkillKind.ShieldPush || strike.kind == SkillKind.Smash))
+            {
+                var aim = strike.cells[0];
+                strike.cells.Clear();
+                foreach (var pc in LineBetween(attacker.pos, aim)) strike.cells.Add(pc);
+                strike.cells.Add(aim);
+                intercepted = true; // 돌진엔 회피 없음 — "회피 떠서 안 맞음" 해소
+            }
+
             // 탄도 요격 (2026-09-05 "공격 경로에 겹치면 피격"): 직선 탄(평타·넉백샷·저격)은
             // 공격선 중간 칸에 적이 서 있으면 목표 칸 전에 그 몸에 맞는다 — 몸으로 막기가 성립한다.
             // 근접 평타는 중간 칸이 없어 그대로, 포물선(폭탄·낚아채기)·자기중심(비명)은 해당 없음.
@@ -868,9 +880,9 @@ namespace SeoYuGi.Battle
             // 방패 밀어붙이기·던지기 — 시전자가 목표 칸까지 실제 돌진 (2026-09-05 "고라니처럼").
             // 대상을 밀어내거나 던져서 비운 그 칸에 들어선다. 허공 시전이면 그냥 돌진.
             if ((strike.kind == SkillKind.ShieldPush || strike.kind == SkillKind.Smash) &&
-                attacker != null && attacker.alive && strike.cells.Count == 1)
+                attacker != null && attacker.alive)
             {
-                var dest = strike.cells[0];
+                var dest = strike.aimCell; // cells는 경로 전체로 확장됨 — 목표는 aimCell이 쥔다 (2026-09-05)
                 if (dest != attacker.pos && State.Grid.IsWalkableTerrain(dest) &&
                     State.Grid.GetUnitAt(dest) == Cell.NoUnit)
                 {

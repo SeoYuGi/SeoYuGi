@@ -38,7 +38,7 @@ namespace SeoYuGi.Net
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
         public static event Action<int> OnBeginRound;                    // matchRound
-        public static event Action<int, int, int, bool, string[], int[], int, int, int> OnRoundEnd; // winner, w0, w1, matchOver, briefing, zoneOwners, alive0, alive1, reason (호스트 확정치 — 2026-09-05)
+        public static event Action<int, int, int, bool, string[], int[], int, int, int, (int unitId, int k, int d, int dmg, float cap)[]> OnRoundEnd; // + 매치오버 확정 스탯 (2026-09-05)
         public static event Action OnRestart; // 매치 재시작 — R 전원 동의
         public static event Action<int, Coord, bool> OnClientPushed; // unitId, to, wallCrash — 강제 이동 연출
         public static event Action<int, int> OnClientDamage;             // unitId, dmg — 스냅샷 차분
@@ -559,7 +559,8 @@ namespace SeoYuGi.Net
 
         /// <summary>호스트 — 라운드 종료. 브리핑은 클라별 유닛 기준이라 targeted 전송.</summary>
         public static void HostSendRoundEnd(ulong clientId, int winner, int w0, int w1, bool matchOver, string[] briefing,
-            int[] zoneOwners = null, int alive0 = 0, int alive1 = 0, int reason = 0)
+            int[] zoneOwners = null, int alive0 = 0, int alive1 = 0, int reason = 0,
+            (int unitId, int k, int d, int dmg, float cap)[] stats = null)
         {
             using var w = new FastBufferWriter(2048, Allocator.Temp);
             w.WriteValueSafe(winner);
@@ -578,6 +579,16 @@ namespace SeoYuGi.Net
             w.WriteValueSafe(alive0);
             w.WriteValueSafe(alive1);
             w.WriteValueSafe(reason); // 종료 사유 — 왜 이겼/졌는지 (2026-09-05)
+            w.WriteValueSafe(stats?.Length ?? 0); // 매치오버 — MVP 다부문 확정 스탯
+            if (stats != null)
+                foreach (var st in stats)
+                {
+                    w.WriteValueSafe(st.unitId);
+                    w.WriteValueSafe(st.k);
+                    w.WriteValueSafe(st.d);
+                    w.WriteValueSafe(st.dmg);
+                    w.WriteValueSafe(st.cap);
+                }
             NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgEnd, clientId, w);
         }
 
@@ -644,8 +655,19 @@ namespace SeoYuGi.Net
             r.ReadValueSafe(out int alive0);
             r.ReadValueSafe(out int alive1);
             r.ReadValueSafe(out int endReason);
+            r.ReadValueSafe(out int statCount);
+            var stats = statCount > 0 ? new (int unitId, int k, int d, int dmg, float cap)[statCount] : null;
+            for (int i = 0; i < statCount; i++)
+            {
+                r.ReadValueSafe(out int suid);
+                r.ReadValueSafe(out int sk);
+                r.ReadValueSafe(out int sd);
+                r.ReadValueSafe(out int sdmg);
+                r.ReadValueSafe(out float scap);
+                stats[i] = (suid, sk, sd, sdmg, scap);
+            }
             boundRound = -1; // 라운드 종료 — 잔여 스냅샷 드롭
-            OnRoundEnd?.Invoke(winner, w0, w1, matchOver, lines, zoneOwners, alive0, alive1, endReason);
+            OnRoundEnd?.Invoke(winner, w0, w1, matchOver, lines, zoneOwners, alive0, alive1, endReason, stats);
         }
 
         static void OnSnapMsg(ulong sender, FastBufferReader r)

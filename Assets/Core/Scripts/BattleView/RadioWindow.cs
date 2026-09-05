@@ -21,6 +21,7 @@ namespace SeoYuGi.BattleView
         /// 온라인의 "고민 시간"은 무전 타임(호스트가 전원 동시 정지)이 대신한다.</summary>
         public bool FreezeOnOpen = true;
         bool frozeOnOpen;
+        bool guided; // 첫 판 가이드로 열림 — 상단 안내 + 입력줄에 예시 문장 회전
 
         /// <summary>텍스트 입력 중 — 게임 핫키(해킹·퀵챗·핑·카메라·이동)가 이걸 보고 잠긴다.
         /// 한글 타이핑의 물리키가 게임키와 겹치기 때문 (ㅂ/ㅈ=카메라 회전, ㅗ=해킹).</summary>
@@ -56,6 +57,13 @@ namespace SeoYuGi.BattleView
                 Close();
         }
 
+        /// <summary>첫 판 가이드 — 무전 타임에 자동으로 열리며 예시 문장을 보여준다.</summary>
+        public void OpenGuided()
+        {
+            guided = true;
+            Open();
+        }
+
         void Open()
         {
             if (IsOpen) return;
@@ -71,6 +79,7 @@ namespace SeoYuGi.BattleView
         {
             if (!IsOpen) return;
             IsOpen = false;
+            guided = false;
             if (frozeOnOpen) GameFreeze.Pop();
             Input.imeCompositionMode = IMECompositionMode.Auto;
             TextInputActive = false;
@@ -137,6 +146,7 @@ namespace SeoYuGi.BattleView
 
             string ack = ackProvider != null ? ackProvider() : "";
             string topLine = waiting ? "…교신 중"
+                : guided ? "이렇게 말하면 알아듣습니다 — 입력하거나 V를 누른 채 말하세요"
                 : !string.IsNullOrEmpty(ack) ? "> " + ack
                 : "무전 · Enter 발신 · ESC 취소";
             GUI.Label(new Rect(x, yField - 28f * s, w, 26f * s), topLine,
@@ -165,6 +175,13 @@ namespace SeoYuGi.BattleView
             GUI.SetNextControlName("RadioFreeText");
             draft = GUI.TextField(new Rect(x, yField, w, fieldH), draft, inputStyle);
             GUI.enabled = true;
+
+            // 가이드 — 비어 있는 입력줄에 예시 문장이 3초마다 바뀐다 (회색). 라벨은 클릭을 안 먹어 포커스는 그대로.
+            if (guided && string.IsNullOrEmpty(draft))
+            {
+                var ex = Guide.RadioExamples[(int)(Time.unscaledTime / 3f) % Guide.RadioExamples.Length];
+                GUI.Label(new Rect(x + 8f * s, yField, w - 16f * s, fieldH), "예: " + ex, hintStyle);
+            }
 
             if (wantFocus)
             {

@@ -509,6 +509,8 @@ namespace SeoYuGi.BattleView
         int radioSpeakerRotation;     // 프리셋 응답 발화자 돌려쓰기 — 매번 같은 놈만 말하지 않게
         bool radioOpenPrev;           // 무전창 열림 엣지 — 싱글 지휘관 브리핑 트리거
         bool spectatingPrev;          // 전사 엣지 — "지휘는 계속" 안내 1회
+        bool radioTimeGuided;         // 이번 무전 타임이 첫 판 가이드용(싱글) — 끝나면 가이드 종료
+        float nextGuideHintAt;        // ② 조작 힌트 플로팅 텍스트 주기
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
         void Awake()
@@ -746,15 +748,49 @@ namespace SeoYuGi.BattleView
             if (radioTimeActive)
             {
                 float remain = radioTimeEndsAt - Time.unscaledTime;
-                if (remain <= 0f || !online) { EndRadioTime(); return; } // 호스트 종료 통보가 보통 먼저 오고, 이건 상한 (통보가 늦어도 영영 안 얼게)
-                hud.ShowAnnounce($"무전 타임 {Mathf.CeilToInt(remain)} — Enter 무전 · 숫자키/패널 프리셋",
+                bool guidedClosed = radioTimeGuided && radio != null && !radio.IsOpen; // 가이드 무전은 발신/ESC 하면 바로 재개
+                if (remain <= 0f || (!online && !radioTimeGuided) || guidedClosed) { EndRadioTime(); return; } // 호스트 종료 통보가 보통 먼저 오고, 이건 상한
+                hud.ShowAnnounce(radioTimeGuided
+                        ? $"첫 무전 {Mathf.CeilToInt(remain)} — 분대에 말로 지시해 보세요"
+                        : $"무전 타임 {Mathf.CeilToInt(remain)} — Enter 무전 · 숫자키/패널 프리셋",
                     StrikeVfx.MineNeon, 0.6f);
+                return;
+            }
+            // ③ 첫 판 가이드 (싱글 지휘관) — 20초에 한 번 얼리고 무전창을 열어 예시를 보여준다
+            if (Guide.Active && !Guide.RadioDone && !NetBoot.IsOnline && phase == Phase.Playing &&
+                Battle != null && Battle.time >= Guide.RadioAt && !Spectating)
+            {
+                Guide.MarkRadio();
+                radioTimeGuided = true;
+                BeginRadioTime(Guide.RadioLength);
+                if (radio != null && radio.enabled) radio.OpenGuided();
                 return;
             }
             if (!online || !NetBoot.IsHost || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
             nextRadioTimeAt = Battle.time + RadioTimeEvery;
             BeginRadioTime(RadioTimeLen);
             NetSync.HostSendRadioTime(true, RadioTimeLen);
+        }
+
+        /// <summary>② 조작 힌트 — 내 유닛 위 플로팅 텍스트 1.5초마다. 움직이면 이동 힌트 끝, 적이 보이면 공격 힌트, 쏘면 끝.</summary>
+        void TickGuideHints()
+        {
+            if (!Guide.Active || phase != Phase.Playing || countdownRunning || GameFreeze.Active) return;
+            if (Time.unscaledTime < nextGuideHintAt) return;
+            var me = Battle?.GetUnit(playerUnitId);
+            var view = me != null && me.alive ? viewRegistry.Get(playerUnitId) : null;
+            if (view == null) return;
+
+            string hint = null;
+            if (!Guide.MoveDone) hint = "▼ 파란 칸 클릭 = 이동";
+            else if (!Guide.AttackDone)
+            {
+                foreach (var u in Battle.Units)
+                    if (u.alive && u.team != playerTeam && playerVisibleFn(u.pos)) { hint = "A 누르고 적 칸 클릭 = 공격"; break; }
+            }
+            if (hint == null) return;
+            nextGuideHintAt = Time.unscaledTime + 1.5f;
+            FloatingText.Spawn(view.transform.position + Vector3.up * 0.4f, hint, new Color(1f, 0.95f, 0.6f), 1.15f, 1.4f);
         }
 
         void BeginRadioTime(float seconds)
@@ -766,6 +802,12 @@ namespace SeoYuGi.BattleView
             battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             hud.PushEvent("[무전 타임] 분대에 지시하라", StrikeVfx.MineNeon);
             RequestSquadBriefing(); // 분대가 먼저 상황을 보고한다 — 지시만 받는 부하가 아니라 대화 상대
+            // 온라인 첫 판 — 첫 무전 타임에도 예시 문장으로 안내 (그 뒤론 가이드 종료)
+            if (!Guide.Done && NetBoot.IsOnline && radio != null && radio.enabled && !Spectating)
+            {
+                radio.OpenGuided();
+                Guide.Finish();
+            }
         }
 
         /// <summary>분대 브리핑 — 분대원 한 명이 한 문장 보고. 키 없음·실패는 침묵. 12초 쿨.</summary>
@@ -795,6 +837,12 @@ namespace SeoYuGi.BattleView
             GameFreeze.Pop();
             if (NetBoot.IsOnline && NetBoot.IsHost) NetSync.HostSendRadioTime(false, 0f);
             hud.ShowAnnounce("교신 종료 — 전투 재개", StrikeVfx.MineNeon, 1.2f);
+            if (radioTimeGuided)
+            {
+                radioTimeGuided = false;
+                if (radio != null && radio.IsOpen) radio.Close();
+                Guide.Finish(); // 가이드 마지막 단계 — 다시 안 뜬다
+            }
         }
 
         bool IsBotOfTeam(int unitId, int team)
@@ -1477,6 +1525,9 @@ namespace SeoYuGi.BattleView
             Combat.TeamVisibleFn = (team, c) => vision.IsVisibleTo(team, c);
             Pickup = new PickupSystem(Battle, pickupConfig, map.HealPacks);
             Move.OnUnitMoved += (id, path, _) => Pickup.OnUnitPath(id, path); // 경로 통과 픽업 — 멈추지 않아도 먹는다
+            Move.OnUnitMoved += (id, _, __) => { if (id == playerUnitId) Guide.MarkMove(); };      // 가이드 ② — 한 번 움직이면 힌트 끝
+            Combat.OnTelegraph += strike => { if (strike.attackerId == playerUnitId) Guide.MarkAttack(); };
+            Combat.OnSkillCast += (id, _) => { if (id == playerUnitId) Guide.MarkAttack(); };
 
             foreach (var pack in Pickup.Packs)
             {
@@ -2110,13 +2161,21 @@ namespace SeoYuGi.BattleView
             input.enabled = false; // 카운트다운 종료 시 해제 — 클라도 조작(인텐트는 NetIntentSink가 호스트로 전송)
             phase = Phase.Playing;
             Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
-            hud.ShowAnnounce("목표 — 거점을 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
+            if (!Guide.Done)
+            {
+                // ① 첫 판 가이드 — 거점부터. 목표 문구 대신 규칙 한 줄 + 거점 링 (싱글은 정지를 5.5초로 늘려 읽을 시간)
+                hud.ShowAnnounce("거점을 밟으면 게이지가 찬다 — 더 많이 가진 팀이 이긴다", Color.white, 5.5f);
+                foreach (var z in Round.Zones)
+                    RingWave.Spawn(gridView.CoordToWorld(z.Center), new Color(1f, 1f, 1f, 0.9f), 2.6f, 1.6f);
+                if (GameModeState.IsCommander && !NetBoot.IsOnline && Match.CurrentRound <= 1) Guide.Begin(); // ②③은 싱글 지휘관만
+            }
+            else hud.ShowAnnounce("목표 — 거점을 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             killStreaks.Clear(); // 멀티킬 스트릭 리셋
             roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋
             if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); } // 새 매치 — 누적도 백지
             spectateUnitId = -1;
-            countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
+            countdownUntil = Time.time + (!Guide.Done && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로)
             countdownRunning = true;
             if (radioTimeActive) EndRadioTime(); // 라운드 재조립 — 정지 잔재 제거
             nextRadioTimeAt = RadioTimeFirst;
@@ -2725,6 +2784,7 @@ namespace SeoYuGi.BattleView
             if (!typing) UpdatePingInput();
 
             TickRadioTime(); // 지휘관 대전 — 호스트가 주기 판단, 클라는 남은 시간 표시·상한 (양쪽 공통)
+            TickGuideHints(); // 첫 판 가이드 ② — 내 유닛 위에 조작 힌트
 
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
             if (IsNetClient)

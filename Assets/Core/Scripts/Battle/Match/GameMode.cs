@@ -23,5 +23,9 @@ namespace SeoYuGi.Battle
         public static GameMode Current = GameMode.Multi;
 
         public static bool IsCommander => Current == GameMode.Commander;
+
+        /// <summary>훈련장 (2026-09-05) — 가장 작은 맵, 내 유닛 + 죽지 않는 허수아비 하나. 승패·시간 없음, F1~F5로 캐릭터 교체.
+        /// 모드 enum이 아니라 플래그 — 매치 구성·라운드 판정만 갈리고 전투 로직은 그대로.</summary>
+        public static bool Training;
     }
 }

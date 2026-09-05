@@ -513,6 +513,11 @@ namespace SeoYuGi.BattleView
         bool spectatingPrev;          // 전사 엣지 — "지휘는 계속" 안내 1회
         bool radioTimeGuided;         // 이번 무전 타임이 첫 판 가이드용(싱글) — 끝나면 가이드 종료
         bool guideStep2Announced;     // "2/3 조작" 배너 1회
+
+        // 훈련장 — 허수아비 (팀1, 죽지 않음). 밀려나면 3초 안 맞았을 때 제자리 복귀
+        const int TrainingDummyId = 4;
+        Coord trainingDummyHome;
+        float trainingLastHitAt;
         float nextGuideHintAt;        // ② 조작 힌트 플로팅 텍스트 주기
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
@@ -534,7 +539,8 @@ namespace SeoYuGi.BattleView
             // 해킹 시야 강탈 중엔 전부 보임 — 이 함수가 안개·적 예고 필터·타격 VFX 필터의 공통 기준이라 여기서 걷는다
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c)
                 || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time))
-                || Spectating; // 관전 중엔 안개를 걷는다 — 죽고 나서까지 가려두면 남은 판을 볼 수가 없다
+                || Spectating // 관전 중엔 안개를 걷는다 — 죽고 나서까지 가려두면 남은 판을 볼 수가 없다
+                || GameModeState.Training; // 훈련장 — 안개 없음
 
             // 플레이어 행동 거부 버저 — input은 라운드 넘어 유지되므로 1회만 구독
             input.OnActionDenied += () => battleAudio.PlaySfx("S24_ApBuzz", 0.5f);
@@ -774,6 +780,32 @@ namespace SeoYuGi.BattleView
             nextRadioTimeAt = Battle.time + RadioTimeEvery;
             BeginRadioTime(RadioTimeLen);
             NetSync.HostSendRadioTime(true, RadioTimeLen);
+        }
+
+        /// <summary>훈련장 — 허수아비 제자리 복귀(밀려난 뒤 3초 안 맞으면) + F1~F5 캐릭터 교체.</summary>
+        void TickTraining()
+        {
+            var dummy = Battle.GetUnit(TrainingDummyId);
+            if (dummy != null && dummy.alive && !dummy.pos.Equals(trainingDummyHome) &&
+                Time.time - trainingLastHitAt > 3f && Battle.Grid.IsWalkable(trainingDummyHome))
+            {
+                Battle.Grid.MoveOccupant(dummy.pos, trainingDummyHome);
+                dummy.pos = trainingDummyHome;
+                blinkSnapIds.Add(TrainingDummyId); // 슬라이드 대신 스냅 — SyncPresentation이 뷰를 맞춘다
+                var v = viewRegistry.Get(TrainingDummyId);
+                if (v != null) FloatingText.Spawn(v.transform.position, "제자리 복귀", new Color(0.8f, 0.85f, 0.9f), 1f, 1f);
+            }
+
+            if (RadioWindow.TextInputActive || Keyboard.current == null) return;
+            int pick = Keyboard.current.f1Key.wasPressedThisFrame ? 0 : Keyboard.current.f2Key.wasPressedThisFrame ? 1
+                     : Keyboard.current.f3Key.wasPressedThisFrame ? 2 : Keyboard.current.f4Key.wasPressedThisFrame ? 3
+                     : Keyboard.current.f5Key.wasPressedThisFrame ? 4 : -1;
+            if (pick < 0) return;
+            for (int i = 0; i < roster.Length; i++)
+                if (roster[i].id == playerUnitId) roster[i].cls = (UnitClass)pick;
+            BuildMatchSetup();
+            BuildRound(); // 라운드 재조립 — 쿨·위치 리셋, 허수아비도 제자리
+            SetupCamera();
         }
 
         /// <summary>② 조작 힌트 — 내 유닛 위 플로팅 텍스트 1.5초마다. 움직이면 이동 힌트 끝, 적이 보이면 공격 힌트, 쏘면 끝.</summary>
@@ -1044,6 +1076,15 @@ namespace SeoYuGi.BattleView
                 PickRandomMap();
             };
             Guide.EndTutorial(); // 타이틀로 돌아오면 튜토리얼 세션 종료 (버튼으로 다시 시작 가능)
+            GameModeState.Training = false;
+            popup.OnTraining = () =>
+            {
+                // 훈련장 — 가장 작은 맵, 나 + 허수아비. 기술 감 잡기·캐릭터 비교용 (2026-09-05)
+                GameModeState.Training = true;
+                GameModeState.Current = GameMode.Multi; // 지휘 없음
+                UIManager.Instance.ClosePopupUI(popup);
+                PickRandomMap();
+            };
         }
 
         /// <summary>매칭 — 매치메이커로 실사람을 찾고, 못 채우면 봇전으로 폴백.
@@ -1287,6 +1328,15 @@ namespace SeoYuGi.BattleView
         void PickRandomMap()
         {
             mapIndex = UnityEngine.Random.Range(0, BattleMaps.Count);
+            if (GameModeState.Training) // 훈련장 — 제일 작은 맵
+            {
+                int bestArea = int.MaxValue;
+                for (int i = 0; i < BattleMaps.Count; i++)
+                {
+                    var m = BattleMaps.Get(i);
+                    if (m.Width * m.Height < bestArea) { bestArea = m.Width * m.Height; mapIndex = i; }
+                }
+            }
             map = BattleMaps.Get(mapIndex);
             gridConfig = new GridConfig { width = map.Width, height = map.Height };
             predictor = NewPredictor();
@@ -1312,6 +1362,7 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < roster.Length; i++)
                 if (roster[i].id == playerUnitId) mineIdx.Insert(0, i); // 0번 = 나
                 else if (roster[i].team == playerTeam) mineIdx.Add(i);
+            if (GameModeState.Training) mineIdx.RemoveAll(i => roster[i].id != playerUnitId); // 훈련장 — 팀원 없음, 내 캐릭터만
             var names = new string[mineIdx.Count];
             var initial = new UnitClass[mineIdx.Count];
             for (int i = 0; i < mineIdx.Count; i++)
@@ -1365,6 +1416,21 @@ namespace SeoYuGi.BattleView
         /// </summary>
         void BuildMatchSetup()
         {
+            if (GameModeState.Training)
+            {
+                var me = FindRoster(playerUnitId);
+                matchSetup = new MatchSetup
+                {
+                    mapIndex = mapIndex, enemyRollSeed = enemyRollSeed,
+                    slots = new[]
+                    {
+                        new SlotConfig { unitId = me.id, team = me.team, cls = me.cls, callsign = ClassNames.For(me.team, me.cls), owner = SlotOwner.LocalHuman },
+                        new SlotConfig { unitId = TrainingDummyId, team = 1, cls = UnitClass.Tank, callsign = "허수아비", owner = SlotOwner.Bot },
+                    }
+                };
+                humanUnitIds = matchSetup.HumanUnitIds();
+                return;
+            }
             var slots = new SlotConfig[roster.Length];
             for (int i = 0; i < roster.Length; i++)
                 slots[i] = new SlotConfig
@@ -1516,7 +1582,7 @@ namespace SeoYuGi.BattleView
 
             // 라운드 규칙 — 매 라운드 추첨. 시드는 매치 롤 시드 + 라운드라 호스트·클라가 같은 규칙을 뽑는다.
             // 제한시간은 규칙이 깎을 수 있으므로 사본을 만들어 쓴다(원본 설정은 그대로 둔다).
-            Rule = Guide.TutorialMode ? null // 튜토리얼 — 규칙 변형은 소음. 기본 규칙만 익힌다
+            Rule = Guide.TutorialMode || GameModeState.Training ? null // 튜토리얼·훈련장 — 규칙 변형은 소음
                 : RoundRules.Roll(Match.CurrentRound, map.Zones.Count, enemyRollSeed + Match.CurrentRound * 7919);
             var roundCfg = new RoundConfig
             {
@@ -1697,7 +1763,7 @@ namespace SeoYuGi.BattleView
             foreach (var s in matchSetup.slots)
                 if (s.IsHuman) { if (s.team == 0) humanOnTeam0 = true; else humanOnTeam1 = true; }
             foreach (var s in matchSetup.slots)
-                if (s.owner == SlotOwner.Bot && !IsNetClient) // 클라는 AI 안 돌림 — 호스트 권위
+                if (s.owner == SlotOwner.Bot && !IsNetClient && !GameModeState.Training) // 클라는 AI 안 돌림 — 호스트 권위. 허수아비는 뇌 없음
                 {
                     // 예측 뇌는 전 봇 공통 (2026-09-05 연계 패스) — 아군 봇도 적을 예측 사격해
                     // "읽고 쏘는" 플레이가 화면에 등장한다. 인간 학습 데이터는 여전히 적팀만 유효하게 쌓인다.
@@ -2021,6 +2087,12 @@ namespace SeoYuGi.BattleView
             Combat.OnUnitDamaged += (unitId, dmg, hitDir) =>
             {
                 var victim = Battle.GetUnit(unitId);
+                if (GameModeState.Training && unitId == TrainingDummyId)
+                {
+                    victim.hp = victim.maxHp; // 죽지 않는다 — 이 핸들러는 사망 판정보다 먼저 불린다
+                    trainingLastHitAt = Time.time;
+                    hud.PushEvent($"허수아비 피격 -{dmg}", teamColors[playerTeam]);
+                }
                 var victimView = viewRegistry.Get(unitId);
                 victimView?.PlayHit(new Vector3(hitDir.x, 0f, hitDir.y)); // 리코일 틸트 + 플래시
                 if (victimView != null && victimView.gameObject.activeInHierarchy)
@@ -2196,7 +2268,13 @@ namespace SeoYuGi.BattleView
             input.enabled = false; // 카운트다운 종료 시 해제 — 클라도 조작(인텐트는 NetIntentSink가 호스트로 전송)
             phase = Phase.Playing;
             Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
-            if (Guide.Wanted)
+            if (GameModeState.Training)
+            {
+                trainingDummyHome = map.Spawns[TrainingDummyId];
+                trainingLastHitAt = Time.time;
+                hud.ShowAnnounce("훈련장 — F1~F5 캐릭터 교체 · 허수아비는 죽지 않음 · ESC 메뉴로 나가기", Color.white, 6f);
+            }
+            else if (Guide.Wanted)
             {
                 // ① 가이드 — 거점부터. 목표 문구 대신 규칙 한 줄 + 거점 링 (싱글은 정지를 5.5초로 늘려 읽을 시간)
                 hud.ShowAnnounce("거점을 밟으면 게이지가 찬다 — 더 많이 가진 팀이 이긴다", Color.white, 5.5f);
@@ -2858,7 +2936,8 @@ namespace SeoYuGi.BattleView
 
             Move.Tick(Time.deltaTime);
             Combat.Tick(Time.deltaTime); // State.time 전진 — Pickup 리스폰 타이머가 이 시계를 쓴다
-            Round.Tick(Time.deltaTime);
+            if (!GameModeState.Training) Round.Tick(Time.deltaTime); // 훈련장 — 승패·시간 없음
+            else TickTraining();
 
             // 점령 기여 시간 — 점거 진행 중인 거점 위에 서 있는 그 팀 유닛에게 적립 (MVP 점령 부문, 2026-09-05)
             foreach (var cz in Round.Zones)

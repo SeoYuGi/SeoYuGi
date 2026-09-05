@@ -12,22 +12,24 @@ namespace SeoYuGi.Chat
     /// </summary>
     public class QuickChat
     {
-        /// <summary>숫자키 1~8에 대응. 지시 4 / 경고 1 / 사교 2 + 집결 1 배분.</summary>
+        /// <summary>숫자키 1~9,0에 대응. 전략 콜 2 + 거점 핑 A/B/C + 지시·사교 (2026-09-05 유저 구성).</summary>
         public static readonly string[] Lines =
         {
-            "적 발견!",     // 1
-            "지원 요청!",   // 2
-            "거점으로!",    // 3
-            "후퇴!",        // 4
-            "뭉쳐!",        // 5
-            "예고 조심!",   // 6 — 이 게임 고유(설치 공격 경고)
-            "나이스!",      // 7
-            "미안!"         // 8
+            "킬 먼저!",           // 1 — 교전 우선 전략
+            "거점부터!",          // 2 — 점령 우선 전략
+            "A 거점으로!",        // 3
+            "B 거점으로!",        // 4
+            "C 거점으로!",        // 5
+            "지원 요청!",         // 6
+            "후퇴!",              // 7
+            "시야해킹 준비됐어!", // 8
+            "나이스!",            // 9
+            "미안!"               // 0
         };
 
         /// <summary>해킹 발동 시 자동 전송. 매치 1회뿐인 필살기라 수동 슬롯을 낭비하지 않는다.</summary>
         public const int HackLine = -1;
-        const string HackText = "해킹 간다!";
+        const string HackText = "시야해킹 간다!";
 
         public const float CooldownSeconds = 2f;
 

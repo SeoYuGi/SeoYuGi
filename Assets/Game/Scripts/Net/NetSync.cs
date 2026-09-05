@@ -28,6 +28,8 @@ namespace SeoYuGi.Net
         const string MsgTeleEnd = "sy_te";
         const string MsgSkill = "sy_sk";
         const string MsgKill = "sy_kl";
+        const string MsgPingReq = "sy_pq";  // 클라 → 호스트: 휠클릭 핑 요청
+        const string MsgPingShow = "sy_ps"; // 호스트 → 같은 팀 클라: 핑 표시
         const float SnapInterval = 1f / 12f;
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
@@ -44,10 +46,12 @@ namespace SeoYuGi.Net
         public static event Action<int, bool> OnTelegraphEnd;            // strikeId, hit — 판정 통보
         public static event Action<int, int> OnSkillCast;                // unitId, (int)SkillKind — 시전 연출
         public static event Action<int, int> OnKilled;                   // deadId, killerId(-1=환경사) — 킬피드 릴레이
+        public static event Action<int, int, int, int> OnPingShow;       // unitId, x, y, type — 팀 핑 표시
 
         // ── 호스트 수신 이벤트 ─────────────────
         public static event Action<ulong, BattleIntent> OnIntentRequest; // sender, intent — 소유권 검증은 러너
         public static event Action<ulong, int, int> OnChatRequest;       // sender, unitId, lineId
+        public static event Action<ulong, int, int, int, int> OnPingRequest; // sender, unitId, x, y, type
         public static event Action<ulong> OnReadyRequest;                // 호스트: sender 클라가 SPACE 동의
         public static event Action<int, int> OnReadyState;               // 클라: (준비 인원, 전체 인원)
 
@@ -87,6 +91,8 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgTeleEnd, OnTeleEndMsg);
             mm.RegisterNamedMessageHandler(MsgSkill, OnSkillMsg);
             mm.RegisterNamedMessageHandler(MsgKill, OnKillMsg);
+            mm.RegisterNamedMessageHandler(MsgPingReq, OnPingReqMsg);
+            mm.RegisterNamedMessageHandler(MsgPingShow, OnPingShowMsg);
         }
 
         /// <summary>호스트 — 스킬 시전 릴레이 (targeted). 즉발기는 예고가 없어 이게 유일한 통보.</summary>
@@ -267,6 +273,29 @@ namespace SeoYuGi.Net
                 .SendNamedMessage(MsgChatReq, NetworkManager.ServerClientId, w);
         }
 
+        /// <summary>클라 — 휠클릭 핑 요청. 소유권 검증·팀 배달은 호스트.</summary>
+        public static void ClientSendPing(int unitId, Coord cell, int type)
+        {
+            using var w = new FastBufferWriter(20, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(cell.x);
+            w.WriteValueSafe(cell.y);
+            w.WriteValueSafe(type);
+            NetworkManager.Singleton.CustomMessagingManager
+                .SendNamedMessage(MsgPingReq, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>호스트 — 검증 통과한 핑을 같은 팀 클라에게 표시 지시.</summary>
+        public static void HostSendPingShow(ulong clientId, int unitId, Coord cell, int type)
+        {
+            using var w = new FastBufferWriter(20, Allocator.Temp);
+            w.WriteValueSafe(unitId);
+            w.WriteValueSafe(cell.x);
+            w.WriteValueSafe(cell.y);
+            w.WriteValueSafe(type);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessage(MsgPingShow, clientId, w);
+        }
+
         /// <summary>클라 — 다음 라운드 동의(SPACE). 집계·진행은 호스트 권위.</summary>
         public static void ClientSendReady()
         {
@@ -325,6 +354,26 @@ namespace SeoYuGi.Net
             r.ReadValueSafe(out int unitId);
             r.ReadValueSafe(out int lineId);
             OnChatShow?.Invoke(unitId, lineId);
+        }
+
+        static void OnPingReqMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int x);
+            r.ReadValueSafe(out int y);
+            r.ReadValueSafe(out int type);
+            OnPingRequest?.Invoke(sender, unitId, x, y, type);
+        }
+
+        static void OnPingShowMsg(ulong sender, FastBufferReader r)
+        {
+            if (sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out int unitId);
+            r.ReadValueSafe(out int x);
+            r.ReadValueSafe(out int y);
+            r.ReadValueSafe(out int type);
+            OnPingShow?.Invoke(unitId, x, y, type);
         }
 
         static void OnReadyReqMsg(ulong sender, FastBufferReader r)

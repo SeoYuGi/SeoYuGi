@@ -84,8 +84,8 @@ namespace SeoYuGi.BattleView
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
         static readonly Key[] ChatKeys =
         {
-            Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4,
-            Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8
+            Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5,
+            Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9, Key.Digit0
         };
 
         Phase phase = Phase.Playing;
@@ -185,6 +185,8 @@ namespace SeoYuGi.BattleView
             NetSync.OnIntentRequest += HostOnRemoteIntent;
             NetSync.OnChatRequest += HostOnRemoteChat;
             NetSync.OnChatShow += ShowChatVisual;
+            NetSync.OnPingRequest += HostOnRemotePing;
+            NetSync.OnPingShow += ShowPingFromNet;
             NetSync.OnReadyRequest += HostOnReadyRequest;                  // 클라 SPACE 동의 집계
             NetSync.OnReadyState += (ready, total) => hud.SetReadyCount(ready, total);
             NetSync.OnMoved += OnNetMoved;
@@ -261,7 +263,7 @@ namespace SeoYuGi.BattleView
             HackVfx.Play(this, origin, HackSystem.Duration);
             battleAudio.PlaySfx("S18_Blink", 1.3f);
             hud.ShowSubtitle(u != null && u.team == playerTeam
-                ? "해킹 — 적 예측 마비" : "해킹 감지 — 예측 교란", 2.4f);
+                ? "시야해킹 — 적 예측 마비" : "시야해킹 감지 — 예측 교란", 2.4f);
         }
 
         void OnDestroy()
@@ -275,6 +277,8 @@ namespace SeoYuGi.BattleView
             NetSync.OnIntentRequest -= HostOnRemoteIntent;
             NetSync.OnChatRequest -= HostOnRemoteChat;
             NetSync.OnChatShow -= ShowChatVisual;
+            NetSync.OnPingRequest -= HostOnRemotePing;
+            NetSync.OnPingShow -= ShowPingFromNet;
             NetSync.OnMoved -= OnNetMoved;
             NetSync.OnHacked -= OnNetHacked;
             NetSync.OnClientHackCharge -= OnNetHackCharge;
@@ -312,6 +316,75 @@ namespace SeoYuGi.BattleView
             if (!NetBoot.IsHost || phase != Phase.Playing) return;
             if (!OwnsUnit(sender, unitId)) return;
             quickChat.TrySend(unitId, lineId, Time.time);
+        }
+
+        // ── 휠클릭 핑 — 채팅과 같은 팀 전용 배달 경로 ─────────────
+
+        /// <summary>핑 표시 + (호스트면) 같은 팀 원격 인간에게 배달. 적 팀 핑은 로컬에 안 보인다.</summary>
+        void ShowPing(int unitId, Coord cell, int type)
+        {
+            var u = Battle?.GetUnit(unitId);
+            if (u == null) return;
+            if (u.team == playerTeam)
+            {
+                PingMarker.Spawn(gridView.CoordToWorld(cell), teamColors[u.team], type);
+                battleAudio.PlaySfx("S22_DetectPing", 0.9f);
+            }
+            if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
+                foreach (var s in NetLobby.Slots)
+                    if (s.owner == SlotOwner.RemoteHuman && s.team == u.team)
+                        NetSync.HostSendPingShow(s.clientId, unitId, cell, type);
+        }
+
+        void ShowPingFromNet(int unitId, int x, int y, int type)
+        {
+            var u = Battle?.GetUnit(unitId);
+            if (u == null || u.team != playerTeam) return; // 클라 — 내 팀 핑만
+            PingMarker.Spawn(gridView.CoordToWorld(new Coord(x, y)), teamColors[u.team], type);
+            battleAudio.PlaySfx("S22_DetectPing", 0.9f);
+        }
+
+        void HostOnRemotePing(ulong sender, int unitId, int x, int y, int type)
+        {
+            if (!NetBoot.IsHost || phase != Phase.Playing) return;
+            if (!OwnsUnit(sender, unitId)) return;
+            ShowPing(unitId, new Coord(x, y), type); // 호스트 화면 표시 + 팀 배달 (발신 클라 포함)
+        }
+
+        // 휠 홀드 상태 — 누른 순간의 칸·스크린 좌표 고정, 끌기 방향으로 종류 선택
+        bool pingHolding;
+        Coord pingHoldCell;
+        Vector2 pingHoldScreen;
+
+        void UpdatePingInput()
+        {
+            if (Mouse.current == null) return;
+
+            if (Mouse.current.middleButton.wasPressedThisFrame &&
+                input != null && input.TryGetHoverCell(out pingHoldCell))
+            {
+                pingHolding = true;
+                pingHoldScreen = Mouse.current.position.ReadValue();
+            }
+            if (!pingHolding) return;
+
+            // 끌기 방향 → 종류. 데드존 안 = ▼ 디폴트. 오른쪽 ▼ / 위 ! / 왼쪽 ? (HUD 휠 배치와 1:1)
+            var delta = Mouse.current.position.ReadValue() - pingHoldScreen;
+            int sel = PingMarker.TypeArrow;
+            if (delta.magnitude > 28f)
+            {
+                if (Mathf.Abs(delta.y) > Mathf.Abs(delta.x)) sel = delta.y > 0f ? PingMarker.TypeAlert : PingMarker.TypeArrow;
+                else sel = delta.x < 0f ? PingMarker.TypeQuestion : PingMarker.TypeArrow;
+            }
+            hud.SetPingWheel(true, pingHoldScreen, sel);
+
+            if (Mouse.current.middleButton.wasReleasedThisFrame)
+            {
+                pingHolding = false;
+                hud.SetPingWheel(false, Vector2.zero, 0);
+                if (IsNetClient) NetSync.ClientSendPing(playerUnitId, pingHoldCell, sel);
+                else ShowPing(playerUnitId, pingHoldCell, sel); // 싱글·호스트 — 즉시 표시 + 팀 배달
+            }
         }
 
         static bool OwnsUnit(ulong clientId, int unitId)
@@ -660,7 +733,7 @@ namespace SeoYuGi.BattleView
                         }
                 battleAudio.PlaySfx("S18_Blink", 1.3f); // 전용 SFX 나오기 전까지 점멸음 재사용
                 hud.ShowSubtitle(u != null && u.team == playerTeam
-                    ? "해킹 — 적 예측 마비" : "해킹 감지 — 예측 교란", 2.4f);
+                    ? "시야해킹 — 적 예측 마비" : "시야해킹 감지 — 예측 교란", 2.4f);
                 // 팀 자동 통보 — 성공 지점에서 쏴야 원격 클라·봇 해킹도 커버 (쿨다운 무시 규칙은 QuickChat이)
                 quickChat.TrySend(unitId, QuickChat.HackLine, Time.time);
                 if (NetBoot.IsOnline && NetBoot.IsHost)
@@ -1622,7 +1695,7 @@ namespace SeoYuGi.BattleView
             bool hackReadyNow = hackSystem.IsReady(playerUnitId);
             if (hackReadyNow && !hackReadyAnnounced)
             {
-                hud.ShowAnnounce("해킹 준비 완료 — H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
+                hud.ShowAnnounce("시야해킹 준비 완료 — H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
                 battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             }
             hackReadyAnnounced = hackReadyNow;
@@ -1641,6 +1714,10 @@ namespace SeoYuGi.BattleView
                         break;
                     }
             }
+
+            // 휠클릭 핑 — 탭 = ▼(디폴트), 꾹 누르고 끌면 ▼/!/? 선택 휠 (롤식).
+            // 칸은 누른 순간 기준 — 휠 조작으로 마우스가 옮겨가도 핑 위치는 안 흔들린다.
+            UpdatePingInput();
 
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
             if (IsNetClient)

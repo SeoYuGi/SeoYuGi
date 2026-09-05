@@ -160,11 +160,104 @@ namespace SeoYuGi.BattleView
             return result;
         }
 
-        /// <summary>프레임 텍스처가 있으면 이미지, 없으면 GUI.Box 폴백.</summary>
+        /// <summary>프레임 텍스처가 있으면 이미지, 없으면 네온 패널 폴백.</summary>
         void DrawFrame(Rect r, Texture2D tex)
         {
             if (tex != null) GUI.DrawTexture(r, tex, ScaleMode.StretchToFill);
-            else GUI.Box(r, "");
+            else NeonPanel(r, HudCyan);
+        }
+
+        // ── 네온 킷 — 유니티 기본 회색 박스(IO게임 감성) 대체용 절차 드로잉 ──
+
+        static readonly Color HudCyan = new Color(0.45f, 1f, 0.95f);
+
+        static readonly Dictionary<uint, Texture2D> solidCache = new Dictionary<uint, Texture2D>();
+
+        /// <summary>단색 1×1 텍스처 — GUIStyle 배경용 (스타일은 GUI.color 틴트를 못 받는다).</summary>
+        static Texture2D Solid(Color c)
+        {
+            uint key = ((uint)(c.r * 255) << 24) | ((uint)(c.g * 255) << 16) | ((uint)(c.b * 255) << 8) | (uint)(c.a * 255);
+            if (solidCache.TryGetValue(key, out var t) && t != null) return t;
+            t = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            t.SetPixel(0, 0, c);
+            t.Apply();
+            solidCache[key] = t;
+            return t;
+        }
+
+        static void Fill(Rect r, Color c)
+        {
+            GUI.color = c;
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+        }
+
+        /// <summary>1px 외곽선.</summary>
+        static void Edge(Rect r, Color c)
+        {
+            Fill(new Rect(r.x, r.y, r.width, 1f), c);
+            Fill(new Rect(r.x, r.yMax - 1f, r.width, 1f), c);
+            Fill(new Rect(r.x, r.y, 1f, r.height), c);
+            Fill(new Rect(r.xMax - 1f, r.y, 1f, r.height), c);
+        }
+
+        /// <summary>어두운 판 + 액센트 외곽선 + 네 모서리 틱 — 민짜 검정 사각형 대체.</summary>
+        static void NeonPanel(Rect r, Color accent, float alpha = 1f)
+        {
+            Fill(r, new Color(0.02f, 0.04f, 0.09f, 0.8f * alpha));
+            Edge(r, new Color(accent.r, accent.g, accent.b, 0.4f * alpha));
+            var tick = new Color(accent.r, accent.g, accent.b, 0.9f * alpha);
+            const float T = 2f, L = 9f;
+            Fill(new Rect(r.x, r.y, L, T), tick); Fill(new Rect(r.x, r.y, T, L), tick);
+            Fill(new Rect(r.xMax - L, r.y, L, T), tick); Fill(new Rect(r.xMax - T, r.y, T, L), tick);
+            Fill(new Rect(r.x, r.yMax - T, L, T), tick); Fill(new Rect(r.x, r.yMax - L, T, L), tick);
+            Fill(new Rect(r.xMax - L, r.yMax - T, L, T), tick); Fill(new Rect(r.xMax - T, r.yMax - L, T, L), tick);
+        }
+
+        // ── 핑 휠 (휠 꾹) — 러너가 상태 주입, 그리기만 담당 ────────
+
+        bool pingWheelOn;
+        Vector2 pingWheelScreen; // 실제 스크린 px (GUI 상단 원점)
+        int pingWheelSel;
+
+        /// <summary>screenPos = 마우스 스크린 px(하단 원점). sel = 0 ▼ / 1 ! / 2 ?.</summary>
+        public void SetPingWheel(bool on, Vector2 screenPos, int sel)
+        {
+            pingWheelOn = on;
+            pingWheelScreen = new Vector2(screenPos.x, Screen.height - screenPos.y);
+            pingWheelSel = sel;
+        }
+
+        void DrawPingWheel()
+        {
+            if (!pingWheelOn) return;
+            var p = pingWheelScreen / UiScale;
+            // 배치: 오른쪽 ▼(디폴트) / 위 ! / 왼쪽 ? — 러너의 방향 판정과 1:1
+            (string glyph, Vector2 off)[] opts =
+            {
+                ("▼", new Vector2(64f, 0f)),
+                ("!", new Vector2(0f, -64f)),
+                ("?", new Vector2(-64f, 0f)),
+            };
+            for (int i = 0; i < opts.Length; i++)
+            {
+                var c = p + opts[i].off;
+                var r = new Rect(c.x - 24f, c.y - 24f, 48f, 48f);
+                bool sel = i == pingWheelSel;
+                Fill(r, sel ? new Color(0.08f, 0.16f, 0.26f, 0.95f) : new Color(0.02f, 0.04f, 0.09f, 0.85f));
+                Edge(r, sel ? HudCyan : new Color(HudCyan.r, HudCyan.g, HudCyan.b, 0.35f));
+                ShadowLabel(r, opts[i].glyph, subtitleStyle, sel ? Color.white : new Color(0.7f, 0.78f, 0.88f));
+            }
+        }
+
+        /// <summary>그림자 딸린 라벨 — 밝은 맵 위에서도 글자가 뜬다.</summary>
+        static void ShadowLabel(Rect r, string text, GUIStyle style, Color color)
+        {
+            GUI.color = new Color(0f, 0f, 0f, 0.8f * color.a);
+            GUI.Label(new Rect(r.x + 1.5f, r.y + 1.5f, r.width, r.height), text, style);
+            GUI.color = color;
+            GUI.Label(r, text, style);
+            GUI.color = Color.white;
         }
 
         static string SkillIconName(UnitClass cls)
@@ -211,9 +304,7 @@ namespace SeoYuGi.BattleView
         void DrawCountdown()
         {
             if (countdownNum <= 0) return;
-            GUI.color = new Color(1f, 0.85f, 0.25f);
-            GUI.Label(new Rect(0, H / 2f - 90, W, 100), countdownNum.ToString(), bannerStyle);
-            GUI.color = Color.white;
+            ShadowLabel(new Rect(0, H / 2f - 90, W, 100), countdownNum.ToString(), bannerStyle, new Color(1f, 0.85f, 0.25f));
         }
 
         float threatRemain = -1f, threatUntil; // 내 칸 피격 예고 — 러너가 매 프레임 갱신, 0.15초 안 오면 꺼짐
@@ -231,10 +322,12 @@ namespace SeoYuGi.BattleView
             float urgency = 1f - Mathf.Clamp01(threatRemain / 0.8f);
             float beat = 0.5f + 0.5f * Mathf.Sin(Time.time * (6f + 14f * urgency));
             var box = new Rect(W / 2f - 190, 96, 380, 48);
-            GUI.color = new Color(0.85f, 0.1f, 0.05f, 0.55f + 0.35f * beat);
-            GUI.DrawTexture(box, Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            GUI.Label(new Rect(box.x, box.y + 6, box.width, 36), $"⚠ 피격 예고  {Mathf.Max(0f, threatRemain):0.0}s — 피해!", subtitleStyle);
+            var red = new Color(1f, 0.25f, 0.18f);
+            NeonPanel(box, red, 0.6f + 0.4f * beat);
+            Fill(new Rect(box.x + 1, box.y + 1, box.width - 2, box.height - 2), new Color(0.6f, 0.05f, 0.02f, 0.25f + 0.2f * beat));
+            ShadowLabel(new Rect(box.x, box.y + 6, box.width, 36),
+                $"⚠ 피격 예고  {Mathf.Max(0f, threatRemain):0.0}s — 피해!", subtitleStyle,
+                Color.Lerp(Color.white, red, 0.25f * beat));
         }
 
         /// <summary>보이스 재생 동안 하단에 한글 자막 표시.</summary>
@@ -285,6 +378,7 @@ namespace SeoYuGi.BattleView
                 DrawAnnounce();
                 DrawCountdown();
                 DrawThreat();
+                DrawPingWheel();
             }
             if (overlay == Overlay.Briefing) DrawBriefing();
             else if (overlay == Overlay.MatchEnd) DrawMatchEnd();
@@ -300,7 +394,14 @@ namespace SeoYuGi.BattleView
             timerStyle = new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             timerLabelStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
             dotStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            // 유니티 기본 회색 박스 대신 어두운 판 + 흰 글자 — 호버 시 살짝 밝게
             chipStyle = new GUIStyle(GUI.skin.box) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            chipStyle.normal.background = Solid(new Color(0.04f, 0.07f, 0.13f, 0.92f));
+            chipStyle.normal.textColor = new Color(0.85f, 0.92f, 1f);
+            chipStyle.hover.background = Solid(new Color(0.08f, 0.14f, 0.24f, 0.95f));
+            chipStyle.hover.textColor = Color.white;
+            chipStyle.active.background = Solid(new Color(0.1f, 0.2f, 0.3f, 0.95f));
+            chipStyle.active.textColor = HudCyan;
             roundStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
             bannerTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
@@ -310,6 +411,8 @@ namespace SeoYuGi.BattleView
             briefTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             briefLineStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleLeft, wordWrap = true };
             keyStyle = new GUIStyle(GUI.skin.box) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            keyStyle.normal.background = Solid(new Color(0.06f, 0.1f, 0.18f, 0.95f)); // 키캡 — 회색 박스 대체
+            keyStyle.normal.textColor = HudCyan;
             slotNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Overflow };
             slotCostStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, alignment = TextAnchor.MiddleCenter };
             slotCoolStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
@@ -362,8 +465,12 @@ namespace SeoYuGi.BattleView
             {
                 float remain = Mathf.Max(0f, round.Config.roundSeconds - battle.time);
                 GUI.Label(new Rect(timerBox.x, timerBox.y + 9, timerBox.width, 14), "남은시간", timerLabelStyle);
-                GUI.Label(new Rect(timerBox.x, timerBox.y + 23, timerBox.width, 30),
-                    $"{(int)remain / 60}:{(int)remain % 60:00}", timerStyle);
+                // 긴급도 색 — 30초 이하 호박색, 10초 이하 빨강 맥동
+                var timerColor = Color.white;
+                if (remain <= 10f) timerColor = Color.Lerp(new Color(1f, 0.35f, 0.3f), Color.white, 0.5f + 0.5f * Mathf.Sin(Time.time * 8f));
+                else if (remain <= 30f) timerColor = new Color(1f, 0.78f, 0.25f);
+                ShadowLabel(new Rect(timerBox.x, timerBox.y + 23, timerBox.width, 30),
+                    $"{(int)remain / 60}:{(int)remain % 60:00}", timerStyle, timerColor);
             }
 
             // 좌 = 아군 생존 ● + 매치 승수, 우 = 적군 (탱고파이브 해골 카운터 자리)
@@ -408,13 +515,28 @@ namespace SeoYuGi.BattleView
                     if (u.alive) alive++;
                 }
 
-            string dots = "";
-            for (int i = 0; i < total; i++) dots += i < alive ? "●" : "○";
-
+            // 생존 핍 — 텍스트 ●○ 대신 드로잉 (산 유닛 = 팀색 채움 + 밝은 윗변, 죽은 유닛 = 어두운 슬롯)
             var style = new GUIStyle(dotStyle) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft };
-            GUI.color = color;
-            GUI.Label(new Rect(r.x, r.y, r.width, 20), rightAlign ? $"{dots}  {(team == playerTeam ? "아군" : "적군")}" : $"{(team == playerTeam ? "아군" : "적군")}  {dots}", style);
-            GUI.color = Color.white;
+            const float pipW = 16f, pipH = 8f, pipGap = 4f;
+            float pipsW = total * pipW + (total - 1) * pipGap;
+            float labelW = 46f;
+            float pipX = rightAlign ? r.xMax - labelW - 8f - pipsW : r.x + labelW + 8f;
+            ShadowLabel(new Rect(rightAlign ? r.xMax - labelW : r.x, r.y, labelW, 20),
+                team == playerTeam ? "아군" : "적군", new GUIStyle(style) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft }, color);
+            for (int i = 0; i < total; i++)
+            {
+                var pip = new Rect(pipX + i * (pipW + pipGap), r.y + 6f, pipW, pipH);
+                if (i < alive)
+                {
+                    Fill(pip, color);
+                    Fill(new Rect(pip.x, pip.y, pip.width, 2f), Color.Lerp(color, Color.white, 0.55f)); // 윗변 하이라이트
+                }
+                else
+                {
+                    Fill(pip, new Color(0.05f, 0.07f, 0.12f, 0.85f));
+                    Edge(pip, new Color(color.r, color.g, color.b, 0.35f));
+                }
+            }
 
             string winsText = $"승리 {match.GetWins(team)}/{MatchSystem.WinsNeeded}"; // 3판 2선승
             GUI.Label(new Rect(r.x, r.y + 20, r.width, 16),
@@ -489,19 +611,20 @@ namespace SeoYuGi.BattleView
             var u = battle.GetUnit(playerUnitId);
             if (u == null || !u.alive) return;
 
-            const float slotW = 108f, slotH = 64f, gap = 8f, segW = 150f; // 88은 "방패 밀어붙이기"(8자)가 잘렸다
+            const float slotW = 108f, slotH = 64f, gap = 8f, segW = 190f; // 새 프레임 테두리가 두꺼워 150은 HP 칸이 좁았다
             float totalW = segW + gap + 4 * slotW + 3 * gap + gap + segW;
             float x0 = W / 2f - totalW / 2f;
-            float y = H - slotH - 14f;
+            float y = H - slotH - 18f;
 
-            DrawFrame(new Rect(x0 - 10, y - 8, totalW + 20, slotH + 18), texPanel); // 바 배경
+            DrawFrame(new Rect(x0 - 34, y - 14, totalW + 68, slotH + 30), texPanel); // 바 배경 — 장식 테두리가 내용 밖에 오도록 여유
 
             // HP 세그먼트 (탱고파이브 좌측 캐릭터 정보 자리)
             var hpSeg = new Rect(x0, y, segW, slotH);
             GUI.color = Color.Lerp(allyColor, Color.white, 0.4f);
             GUI.Label(new Rect(hpSeg.x, hpSeg.y + 2, hpSeg.width, 18), $"{DisplayName()} — {u.unitClass}", slotNameStyle);
             GUI.color = Color.white;
-            Bar(new Rect(hpSeg.x + 14, hpSeg.y + 26, hpSeg.width - 28, 12), u.hp / (float)u.maxHp, new Color(0.3f, 0.9f, 0.4f));
+            Bar(new Rect(hpSeg.x + 14, hpSeg.y + 26, hpSeg.width - 28, 12), u.hp / (float)u.maxHp,
+                new Color(0.3f, 0.9f, 0.4f), segments: u.maxHp); // HP 칸 눈금 — 이산 수치가 읽힌다
             GUI.Label(new Rect(hpSeg.x, hpSeg.y + 40, hpSeg.width, 18), $"HP {u.hp}/{u.maxHp}", slotCostStyle);
 
             // 슬롯 4개
@@ -544,8 +667,8 @@ namespace SeoYuGi.BattleView
             GUI.Label(new Rect(hackSeg.x, hackSeg.y + 2, hackSeg.width, 30), $"{charge * 100f:0}%", bigNumStyle);
             GUI.color = Color.white;
             GUI.Label(new Rect(hackSeg.x, hackSeg.y + 30, hackSeg.width, 14),
-                hackReady ? "해킹 준비 완료 — H" : "해킹 게이지", subStyle);
-            Bar(new Rect(hackSeg.x + 14, hackSeg.y + 48, hackSeg.width - 28, 8), charge, hackColor);
+                hackReady ? "시야해킹 준비 완료 — H" : "시야해킹 게이지", subStyle);
+            Bar(new Rect(hackSeg.x + 14, hackSeg.y + 48, hackSeg.width - 28, 8), charge, hackColor, segments: 4);
         }
 
         void DrawSlot(Rect r, string key, string name, string cost, bool enabled, float coolRemain, float coolFrac,
@@ -604,7 +727,7 @@ namespace SeoYuGi.BattleView
             int lineCount = briefingLines != null ? briefingLines.Length : 0;
             float boxH = Mathf.Max(320f, 106f + lineCount * 40f + 74f);
             var box = new Rect(W / 2f - 270, H / 2f - boxH / 2f, 540, boxH);
-            GUI.Box(box, "");
+            NeonPanel(box, myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));
             if (panelBriefing != null)
                 GUI.DrawTexture(box, panelBriefing, ScaleMode.StretchToFill); // 관제 터미널 배경
 
@@ -664,8 +787,9 @@ namespace SeoYuGi.BattleView
             GUI.color = new Color(announceColor.r, announceColor.g, announceColor.b, a);
             GUI.DrawTexture(new Rect(box.x, box.y, box.width, 3f), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(box.x, box.y + box.height - 3f, box.width, 3f), Texture2D.whiteTexture);
-            GUI.Label(new Rect(box.x, box.y + 12, box.width, 42), announceText, announceStyle);
             GUI.color = Color.white;
+            ShadowLabel(new Rect(box.x, box.y + 12, box.width, 42), announceText, announceStyle,
+                new Color(announceColor.r, announceColor.g, announceColor.b, a));
         }
 
         void DrawSubtitle()
@@ -673,8 +797,7 @@ namespace SeoYuGi.BattleView
             if (string.IsNullOrEmpty(subtitleText) || Time.time >= subtitleUntil) return;
 
             var box = new Rect(W / 2f - 200, H - 140, 400, 40);
-            GUI.color = new Color(0f, 0f, 0f, 0.65f);
-            GUI.DrawTexture(box, Texture2D.whiteTexture);
+            NeonPanel(box, new Color(0.55f, 0.95f, 1f));
             GUI.color = new Color(0.55f, 0.95f, 1f); // 관제 AI 시안 톤
             GUI.Label(new Rect(box.x, box.y - 2, box.width, 16), "도시관리 AI",
                 new GUIStyle(subStyle) { fontStyle = FontStyle.Bold });
@@ -692,8 +815,9 @@ namespace SeoYuGi.BattleView
             const float lineH = 22f, boxW = 250f;
             float y = H - 108f - chatLog.Count * lineH;
 
-            GUI.color = new Color(0f, 0f, 0f, 0.5f);
-            GUI.DrawTexture(new Rect(12, y - 4, boxW, chatLog.Count * lineH + 8), Texture2D.whiteTexture);
+            var logBox = new Rect(12, y - 4, boxW, chatLog.Count * lineH + 8);
+            Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));
+            Fill(new Rect(logBox.x, logBox.y, 2f, logBox.height), new Color(allyColor.r, allyColor.g, allyColor.b, 0.8f)); // 좌측 팀색 액센트
 
             for (int i = 0; i < chatLog.Count; i++)
             {
@@ -764,7 +888,7 @@ namespace SeoYuGi.BattleView
             for (int i = 0; i < lines.Length; i++)
             {
                 var r = new Rect(x0 + 8f, y0 + 26f + i * rowH, panelW - 16f, rowH - 4f);
-                if (GUI.Button(r, $"[{i + 1}] {lines[i]}", chipStyle))
+                if (GUI.Button(r, $"[{(i + 1) % 10}] {lines[i]}", chipStyle)) // 10번째 = 0키
                     OnChatClicked?.Invoke(i);
             }
         }
@@ -772,22 +896,32 @@ namespace SeoYuGi.BattleView
         void DrawMatchEnd()
         {
             bool myWin = match.MatchWinner == playerTeam;
-            GUI.color = myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f);
-            GUI.Label(new Rect(0, H / 2f - 60, W, 80),
-                myWin ? "매치 승리!" : "매치 패배...", bannerStyle);
-            GUI.color = Color.white;
-
-            GUI.Label(new Rect(0, H / 2f + 20, W, 26),
-                $"{match.GetWins(playerTeam)} : {match.GetWins(1 - playerTeam)}   ·   R — 새 매치", timerStyle);
+            ShadowLabel(new Rect(0, H / 2f - 60, W, 80),
+                myWin ? "매치 승리!" : "매치 패배...", bannerStyle,
+                myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));
+            ShadowLabel(new Rect(0, H / 2f + 20, W, 26),
+                $"{match.GetWins(playerTeam)} : {match.GetWins(1 - playerTeam)}   ·   R — 새 매치", timerStyle, Color.white);
         }
 
-        static void Bar(Rect rect, float fraction, Color color)
+        /// <summary>게이지 바 — 어두운 트랙 + 채움(윗변 하이라이트) + 끝단 캡 + 구간 눈금.
+        /// segments &gt; 0이면 그 개수로 칸 나눔 (HP처럼 이산 수치 읽기용).</summary>
+        static void Bar(Rect rect, float fraction, Color color, int segments = 0)
         {
-            GUI.color = new Color(0.1f, 0.1f, 0.12f, 0.9f);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture);
-            GUI.color = color;
-            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(fraction), rect.height), Texture2D.whiteTexture);
-            GUI.color = Color.white;
+            float f = Mathf.Clamp01(fraction);
+            Fill(rect, new Color(0.03f, 0.05f, 0.09f, 0.92f));                       // 트랙
+            Edge(rect, new Color(color.r, color.g, color.b, 0.3f));
+            if (f > 0f)
+            {
+                var fill = new Rect(rect.x + 1f, rect.y + 1f, (rect.width - 2f) * f, rect.height - 2f);
+                Fill(fill, color);
+                Fill(new Rect(fill.x, fill.y, fill.width, Mathf.Max(1f, fill.height * 0.35f)),
+                    Color.Lerp(color, Color.white, 0.35f));                          // 윗면 광
+                Fill(new Rect(fill.xMax - 1f, rect.y, 2f, rect.height),
+                    Color.Lerp(color, Color.white, 0.7f));                           // 끝단 캡 — 잔량이 또렷이 읽힌다
+            }
+            for (int i = 1; i < segments; i++)                                        // 구간 눈금
+                Fill(new Rect(rect.x + rect.width * i / segments, rect.y + 1f, 1f, rect.height - 2f),
+                    new Color(0f, 0f, 0f, 0.55f));
         }
     }
 }

@@ -142,6 +142,9 @@ namespace SeoYuGi.BattleView
             OnActionDenied?.Invoke();
         }
 
+        /// <summary>마우스 아래 칸 — 휠클릭 핑 등 외부 조회용.</summary>
+        public bool TryGetHoverCell(out Coord cell) => TryHoverCell(out cell);
+
         bool TryHoverCell(out Coord cell)
         {
             cell = default;

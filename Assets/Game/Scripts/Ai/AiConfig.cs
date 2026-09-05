@@ -83,7 +83,7 @@
                 case ClassId.Tank:      // 둔중 — 잘 못 피하는 대신 몸으로 받는다. HP 6, 힐팩 잘 안 챙김. 거점 앵커 — 아군 옆에 선다
                     return new AiConfig { MinDecisionInterval = 0.25f, DodgeChance = 0.25f, DodgeCooldown = 4f, AttackInterval = 0.7f,
                         HealSeekMissingHp = 3, HealSeekRadius = 4, CohesionBonus = 3f };
-                case ClassId.Balance:   // 표준 — 서포터라 뭉치기 성향 최대
+                case ClassId.Balance:   // 표준 — 밸런스형(돌격), 팀과 붙어 다니는 성향 최대
                     return new AiConfig { DodgeChance = 0.45f, DodgeCooldown = 3f, AttackInterval = 0.6f,
                         HealSeekMissingHp = 2, HealSeekRadius = 6, CohesionBonus = 3.5f };
                 case ClassId.Assassin:  // 기민 — 회피 특기지만 무한은 아님. HP 3 유리몸, 힐팩 적극.

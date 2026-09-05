@@ -233,7 +233,7 @@ namespace SeoYuGi.Net
         /// </summary>
         static void AssignBotClasses()
         {
-            // 역할: 탱 = 너구리 / 서폿(힐 느낌) = 고라니 / 딜 = 나머지
+            // 역할: 탱 = 너구리 / 돌격 = 고라니 / 딜 = 나머지 (고라니는 서포터가 아니다 — 밸런스·돌격형)
             var dealerOrder = new[] { UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
 
             for (int team = 0; team < 2; team++)

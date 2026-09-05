@@ -36,7 +36,7 @@ public class UILobbyPopup : UIPopup
     static readonly string[] QuickLines =
     {
         "내가 탱커 할게요! (너구리)",
-        "내가 서포터 할게요! (고라니)",
+        "내가 돌격 할게요! (고라니)",
         "내가 암살자 할게요! (검은 고양이)",
         "내가 폭격수 할게요! (비둘기)",
         "내가 저격수 할게요! (까치)",
@@ -398,19 +398,19 @@ public class UILobbyPopup : UIPopup
         if (balanceText == null) return;
         if (myTeam < 0) { balanceText.text = ""; return; }
 
-        bool hasTank = false, hasSupport = false;
+        bool hasTank = false, hasRusher = false; // 고라니 = 돌격형 (서포터 아님)
         var counts = new int[5];
         foreach (var s in slots)
         {
             if (s.team != myTeam) continue;
             counts[(int)s.cls]++;
             if (s.cls == UnitClass.Tank) hasTank = true;
-            if (s.cls == UnitClass.Balance) hasSupport = true;
+            if (s.cls == UnitClass.Balance) hasRusher = true;
         }
 
         var warns = new System.Collections.Generic.List<string>();
         if (!hasTank) warns.Add("탱커가 없습니다");
-        if (!hasSupport) warns.Add("서포터가 없습니다");
+        if (!hasRusher) warns.Add("돌격형이 없습니다");
         for (int c = 0; c < counts.Length; c++)
             if (counts[c] > 1) warns.Add($"{ClassName((UnitClass)c)} 중복 픽");
 

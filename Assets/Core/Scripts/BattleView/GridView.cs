@@ -129,7 +129,7 @@ namespace SeoYuGi.BattleView
                 // 칸에는 얇은 상판만 (하이라이트·안개 표시 + 클릭 콜라이더)
                 if (HillProp() != null)
                 {
-                    var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    var plate = Prims.Create(PrimitiveType.Cube);
                     plate.transform.SetParent(transform);
                     plate.transform.localScale = new Vector3(tileSize * tileFill, 0.06f, tileSize * tileFill);
                     plate.transform.position = pos + Vector3.up * (highlandHeight - 0.08f); // 상판 윗면 = 기존 단상과 동일
@@ -139,7 +139,7 @@ namespace SeoYuGi.BattleView
                 var prop = HighlandProp();
                 if (prop != null) return CreateHighlandProp(prop, pos);
             }
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var go = Prims.Create(PrimitiveType.Cube);
             go.transform.SetParent(transform);
             float side = tileSize * tileFill;
 
@@ -482,7 +482,7 @@ namespace SeoYuGi.BattleView
 
         Transform CreateSeg()
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             go.name = "RangeOutline";
             Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
             go.transform.SetParent(transform);
@@ -506,7 +506,7 @@ namespace SeoYuGi.BattleView
         {
             if (footstep == null)
             {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                var go = Prims.Create(PrimitiveType.Quad);
                 go.name = "CursorIcon";
                 Destroy(go.GetComponent<Collider>());
                 go.transform.SetParent(transform);
@@ -546,7 +546,7 @@ namespace SeoYuGi.BattleView
             }
             while (aimIcons.Count < cells.Count)
             {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                var go = Prims.Create(PrimitiveType.Quad);
                 go.name = "AimIcon";
                 Destroy(go.GetComponent<Collider>());
                 go.transform.SetParent(transform);
@@ -636,7 +636,7 @@ namespace SeoYuGi.BattleView
             };
             fogPixels = new Color32[w * h];
 
-            fogSheet = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            fogSheet = Prims.Create(PrimitiveType.Quad);
             fogSheet.name = "FogSheet";
             fogSheet.transform.SetParent(transform, false);
             Destroy(fogSheet.GetComponent<Collider>());

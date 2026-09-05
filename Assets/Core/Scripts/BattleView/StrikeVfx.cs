@@ -76,7 +76,7 @@ namespace SeoYuGi.BattleView
         /// <summary>바닥에 눕힌 사각 쿼드 한 장 — 아이콘 판 3겹의 공용 부품.</summary>
         static void Plate(Transform parent, Texture2D tex, Vector3 world, float lift, float size, Color color)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             UnityEngine.Object.Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
             go.name = "SkillIconPlate";
             go.transform.SetParent(parent, false);
@@ -313,7 +313,7 @@ namespace SeoYuGi.BattleView
         {
             var mat = VfxTextures.Crosshair;
             if (mat == null) return;
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             UnityEngine.Object.Destroy(go.GetComponent<Collider>());
             go.name = "ScopeMarker";
             go.transform.SetParent(parent);
@@ -422,7 +422,7 @@ namespace SeoYuGi.BattleView
 
         public static void Spawn(Transform parent, Vector3 from, Vector3 toCell, float flightSeconds)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            var go = Prims.Create(PrimitiveType.Sphere);
             UnityEngine.Object.Destroy(go.GetComponent<Collider>());
             go.name = "BombProjectile";
             go.transform.SetParent(parent);
@@ -537,7 +537,7 @@ namespace SeoYuGi.BattleView
             tr.receiveShadows = false;
 
             // 아크 머리 점광
-            var dot = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var dot = Prims.Create(PrimitiveType.Quad);
             UnityEngine.Object.Destroy(dot.GetComponent<Collider>());
             dot.name = "Head";
             dot.transform.SetParent(go.transform, false);

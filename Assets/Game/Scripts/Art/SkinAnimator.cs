@@ -117,12 +117,12 @@ namespace SeoYuGi.Art
             var root = new GameObject("HandRifle");
             root.transform.SetParent(hand, false);
 
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var body = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Cube);
             Object.Destroy(body.GetComponent<Collider>());
             body.transform.SetParent(root.transform, false);
             body.transform.localScale = new Vector3(0.16f, 0.22f, 1f);
 
-            var barrel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            var barrel = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Cylinder);
             Object.Destroy(barrel.GetComponent<Collider>());
             barrel.transform.SetParent(root.transform, false);
             barrel.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);

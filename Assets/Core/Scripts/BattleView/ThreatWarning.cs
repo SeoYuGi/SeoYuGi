@@ -32,7 +32,7 @@ namespace SeoYuGi.BattleView
         void Build()
         {
             // 바닥 링 — 생성 홀로 링 텍스처가 있으면 그걸로, 없으면 절차 고리 텍스처
-            var ringGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var ringGo = Prims.Create(PrimitiveType.Quad);
             Destroy(ringGo.GetComponent<Collider>());
             ringGo.name = "Ring";
             ringGo.transform.SetParent(transform, false);

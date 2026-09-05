@@ -63,18 +63,18 @@ namespace SeoYuGi.BattleView
             var root = new GameObject("Fallback");
             root.transform.SetParent(transform, false);
 
-            var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var box = Prims.Create(PrimitiveType.Cube);
             box.transform.SetParent(root.transform, false);
             box.transform.localScale = new Vector3(0.3f, 0.18f, 0.3f);
             Tint(box, Color.white);
 
-            var crossA = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var crossA = Prims.Create(PrimitiveType.Cube);
             crossA.transform.SetParent(root.transform, false);
             crossA.transform.localPosition = Vector3.up * 0.095f;
             crossA.transform.localScale = new Vector3(0.2f, 0.02f, 0.07f);
             Tint(crossA, new Color(0.15f, 0.85f, 0.35f));
 
-            var crossB = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var crossB = Prims.Create(PrimitiveType.Cube);
             crossB.transform.SetParent(root.transform, false);
             crossB.transform.localPosition = Vector3.up * 0.095f;
             crossB.transform.localScale = new Vector3(0.07f, 0.02f, 0.2f);

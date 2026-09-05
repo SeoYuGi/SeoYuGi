@@ -51,7 +51,7 @@ namespace SeoYuGi.BattleView
         {
             var mat = VfxTextures.Glow;
             if (mat == null) return;
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
             go.name = "FootDisc";
             go.transform.SetParent(transform, false);

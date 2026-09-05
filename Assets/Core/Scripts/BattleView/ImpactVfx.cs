@@ -67,7 +67,7 @@ namespace SeoYuGi.BattleView
 
         public static void Pillar(Vector3 pos, Color color)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             Object.Destroy(go.GetComponent<Collider>());
             go.name = "ImpactPillar";
             go.transform.position = pos + Vector3.up * 0.1f;

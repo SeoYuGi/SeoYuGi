@@ -160,7 +160,7 @@ namespace SeoYuGi.BattleView
             }
             if (f == null)
             {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                var go = Prims.Create(PrimitiveType.Quad);
                 Object.Destroy(go.GetComponent<Collider>());
                 go.name = "FxQuad";
                 f = go.AddComponent<FxQuad>();

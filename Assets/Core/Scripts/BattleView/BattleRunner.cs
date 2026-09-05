@@ -3118,7 +3118,7 @@ namespace SeoYuGi.BattleView
             if (unitPrefab != null) return Instantiate(unitPrefab, transform);
 
             // 프리팹 없으면 큐브 유닛 자동 생성 (타일과 동일한 폴백 정책)
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var go = Prims.Create(PrimitiveType.Cube);
             go.transform.SetParent(transform);
             go.transform.localScale = new Vector3(0.7f, 0.7f, 0.7f);
             return go.AddComponent<UnitView>();

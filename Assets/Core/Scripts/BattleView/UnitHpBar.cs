@@ -80,7 +80,7 @@ namespace SeoYuGi.BattleView
 
         Renderer MakeQuad(string name, float z)
         {
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var quad = Prims.Create(PrimitiveType.Quad);
             Destroy(quad.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
             quad.name = name;
             quad.transform.SetParent(transform);

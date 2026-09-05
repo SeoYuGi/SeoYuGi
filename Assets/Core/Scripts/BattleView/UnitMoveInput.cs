@@ -457,7 +457,7 @@ namespace SeoYuGi.BattleView
 
         Transform CreateMarker()
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             go.name = "AimMarker";
             Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
             go.transform.SetParent(transform);

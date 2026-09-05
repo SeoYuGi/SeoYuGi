@@ -131,7 +131,7 @@ namespace SeoYuGi.Art
             var center = (gridView.CoordToWorld(new Coord(0, 0)) +
                           gridView.CoordToWorld(new Coord(map.Width - 1, map.Height - 1))) * 0.5f;
 
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var quad = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Quad);
             quad.name = "AlleyGround";
             quad.transform.SetParent(transform, false);
             quad.transform.position = new Vector3(center.x, -0.06f, center.z); // 타일 바닥(-0.05)보다 아래
@@ -198,11 +198,11 @@ namespace SeoYuGi.Art
             {
                 case "prop_street_lamp":
                     go = new GameObject("lamp");
-                    var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    var pole = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Cylinder);
                     pole.transform.SetParent(go.transform, false);
                     pole.transform.localScale = new Vector3(0.08f, 0.8f, 0.08f);
                     pole.transform.localPosition = Vector3.up * 0.8f;
-                    var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    var head = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Sphere);
                     head.transform.SetParent(go.transform, false);
                     head.transform.localScale = Vector3.one * 0.25f;
                     head.transform.localPosition = Vector3.up * 1.65f;
@@ -210,19 +210,19 @@ namespace SeoYuGi.Art
                     head.GetComponent<Renderer>().SetPropertyBlock(mpb);
                     return go;
                 case "prop_bush":
-                    go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    go = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Sphere);
                     go.transform.localScale = new Vector3(0.5f, 0.35f, 0.5f);
                     mpb.SetColor(baseColorId, new Color(0.25f, 0.5f, 0.25f));
                     go.GetComponent<Renderer>().SetPropertyBlock(mpb);
                     return go;
                 case "prop_barricade":
-                    go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    go = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Cube);
                     go.transform.localScale = new Vector3(0.55f, 0.45f, 0.5f);
                     mpb.SetColor(baseColorId, new Color(0.55f, 0.4f, 0.25f));
                     go.GetComponent<Renderer>().SetPropertyBlock(mpb);
                     return go;
                 default: // prop_trash_can
-                    go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    go = SeoYuGi.BattleView.Prims.Create(PrimitiveType.Cylinder);
                     go.transform.localScale = new Vector3(0.3f, 0.25f, 0.3f);
                     mpb.SetColor(baseColorId, new Color(0.3f, 0.45f, 0.32f));
                     go.GetComponent<Renderer>().SetPropertyBlock(mpb);

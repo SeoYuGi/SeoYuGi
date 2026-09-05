@@ -13,7 +13,7 @@ namespace SeoYuGi.BattleView
 
         public static void Spawn(Vector3 worldPos, Color color, float duration = 0.35f, float size = 0.85f)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = Prims.Create(PrimitiveType.Quad);
             go.name = "CellFlash";
             Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
             go.transform.position = worldPos + Vector3.up * 0.12f;

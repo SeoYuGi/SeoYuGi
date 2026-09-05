@@ -301,6 +301,9 @@ namespace SeoYuGi.BattleView
         }
         readonly List<bool> zoneContestedPrev = new List<bool>(); // 거점 경합 상승 엣지 — S33 1회 재생용
         int prevMyZones = -1, prevEnemyZones = -1; // 거점 우세 경보 엣지 (판세 피드백)
+        readonly Dictionary<int, (int streak, float until)> killStreaks = new Dictionary<int, (int, float)>(); // 멀티킬 콜아웃 (7초 창)
+        readonly Dictionary<int, int> roundKills = new Dictionary<int, int>();  // 라운드 전적 (2026-09-05)
+        readonly Dictionary<int, int> roundDeaths = new Dictionary<int, int>();
 
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
         static readonly Key[] ChatKeys =
@@ -813,6 +816,7 @@ namespace SeoYuGi.BattleView
             }
             else
             {
+                hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
                 hud.ShowBriefing(endedRound, winner, briefing, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                 phase = Phase.Briefing;
                 ResetReadyGate(); // 클라도 SPACE 동의 상태 초기화
@@ -859,9 +863,6 @@ namespace SeoYuGi.BattleView
         {
             if (!IsNetClient || Round == null || zoneIdx >= Round.Zones.Count) return;
             var zone = Round.Zones[zoneIdx];
-            var tint = Color.Lerp(teamColors[owner], Color.white, 0.35f);
-            foreach (var c in zone.cells)
-                gridView.SetBaseTint(c, tint);
             bool ours = owner == playerTeam;
             battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
 
@@ -1159,12 +1160,8 @@ namespace SeoYuGi.BattleView
             }
             gridView.ClearBaseTints(); // 이전 라운드 거점 소유 틴트 제거
 
-            // 거점 기본(미소유) = 흰색 — 탈환되면 OnZoneCaptured가 팀 색으로 덮는다.
-            // 텍스처 위 곱연산이라 1.7배 부스트로 하얗게 띄움.
-            var neutralZoneTint = Color.white * 1.7f;
-            foreach (var zone in map.Zones)
-                foreach (var c in zone)
-                    gridView.SetBaseTint(c, neutralZoneTint);
+            // 거점 바닥 틴트 폐지 (2026-09-05) — 파랑/노랑 이동 채널과 헷갈렸다.
+            // 소유는 패치 외곽 네온 테두리(ZoneBorder)가 말한다. 생성은 아래 게이지 루프에서.
 
             foreach (var z in Round.Zones)
             {
@@ -1218,10 +1215,7 @@ namespace SeoYuGi.BattleView
 
             Round.OnZoneCaptured += zone =>
             {
-                var tint = Color.Lerp(teamColors[zone.owner], Color.white, 0.35f);
-                foreach (var c in zone.cells)
-                    gridView.SetBaseTint(c, tint);
-                Debug.Log($"거점 {zone.Center} → 팀 {zone.owner} 탈환");
+                Debug.Log($"거점 {zone.Center} → 팀 {zone.owner} 탈환"); // 소유 색은 네온 테두리가 (틴트 폐지)
 
                 bool ours = zone.owner == playerTeam;
                 battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
@@ -1679,6 +1673,11 @@ namespace SeoYuGi.BattleView
             // 킬피드(우상단) + 음성 콜아웃 — 호스트/싱글에서 발생, 온라인이면 전 클라에 브로드캐스트
             Combat.OnUnitKilled += (deadId, killerId) =>
             {
+                // 처치 보너스 — 해킹 게이지 +12% (피해 1 상당). 킬이 궁극기로 이어지는 모멘텀
+                var killerUnit = Battle.GetUnit(killerId);
+                if (killerUnit != null && killerUnit.alive && hackSystem != null)
+                    hackSystem.NotifyDamage(killerId, 1);
+
                 ShowKill(deadId, killerId);
                 if (NetBoot.IsOnline && NetBoot.IsHost)
                     NetSync.HostSendKill(deadId, killerId); // 클라 킬피드도 뜨게
@@ -1708,6 +1707,8 @@ namespace SeoYuGi.BattleView
             Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
             hud.ShowAnnounce("목표 — 거점 3개를 모두 점령하거나, 적을 전멸시켜라", Color.white, 4f); // 판세 피드백: 승리 조건 명시
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
+            killStreaks.Clear(); // 멀티킬 스트릭 리셋
+            roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋
             countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
             countdownRunning = true;
 
@@ -1796,6 +1797,21 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>킬피드 한 줄 + 음성 콜아웃. 호스트·싱글·클라 공용 (클라는 NetSync.OnKilled 경유).</summary>
+        /// <summary>라운드 전적 줄 — 팀별 "콜사인  Kn / Dn". 브리핑 패널 주입용 (2026-09-05).</summary>
+        string[] BuildRoundStats(int team)
+        {
+            var lines = new List<string>();
+            if (matchSetup != null)
+                foreach (var slot in matchSetup.slots)
+                    if (slot.team == team)
+                    {
+                        roundKills.TryGetValue(slot.unitId, out int k);
+                        roundDeaths.TryGetValue(slot.unitId, out int d);
+                        lines.Add($"{slot.callsign}  {k}킬 / {d}데스");
+                    }
+            return lines.ToArray();
+        }
+
         void ShowKill(int deadId, int killerId)
         {
             var dead = Battle?.GetUnit(deadId);
@@ -1809,10 +1825,27 @@ namespace SeoYuGi.BattleView
                 killerName = FindSlot(killerId).callsign;
                 feedColor = Color.Lerp(teamColors[killer.team], Color.white, 0.35f);
             }
+            roundDeaths[deadId] = roundDeaths.TryGetValue(deadId, out var dcnt) ? dcnt + 1 : 1;
+            if (killer != null)
+                roundKills[killerId] = roundKills.TryGetValue(killerId, out var kcnt) ? kcnt + 1 : 1;
+
             hud.AddKill(killerName, victimName, feedColor);
             hud.PushEvent(killerName != null ? $"{killerName}이(가) {victimName} 처치!" : $"{victimName} 처치됨",
                 feedColor); // 상단 배너 전황 로그
             hud.PingEdge(gridView.CoordToWorld(dead.pos), feedColor); // 프레임 밖 킬 — 가장자리 방향 화살표 (가시성 패스 D)
+
+            // 멀티킬 콜아웃 (2026-09-05 모멘텀) — 잘 싸운 순간을 게임이 크게 불러준다
+            if (killer != null)
+            {
+                int st = killStreaks.TryGetValue(killerId, out var ks) && Time.time < ks.until ? ks.streak + 1 : 1;
+                killStreaks[killerId] = (st, Time.time + 7f);
+                if (st >= 2)
+                {
+                    hud.ShowAnnounce($"{killerName} — {(st == 2 ? "더블 킬!" : "트리플 킬!")}", feedColor, 2.2f);
+                    battleAudio.PlayThump(big: true);
+                    CameraShaker.Shake(0.25f);
+                }
+            }
             if (!IsNetClient) // 보이스 파일 미보유 — 격파 SFX로 대체 (클라는 OnNetDeath가 이미 재생)
                 battleAudio.PlaySfx(dead.team == playerTeam ? "S10a_DeathAlly" : "S10b_DeathEnemy", 1.5f);
         }
@@ -1950,6 +1983,7 @@ namespace SeoYuGi.BattleView
             else
             {
                 // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
+                hud.SetBriefingStats(BuildRoundStats(playerTeam), BuildRoundStats(1 - playerTeam));
                 hud.ShowBriefing(endedRound, winnerTeam, null, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                 phase = Phase.Briefing;
                 ResetReadyGate(); // SPACE 동의 집계 초기화
@@ -2216,7 +2250,7 @@ namespace SeoYuGi.BattleView
                 var z = Round.Zones[i];
                 float frac = z.capturingTeam >= 0 ? z.progress / roundConfig.captureSeconds : 0f;
                 zoneDiscs[i].SetProgress(frac, z.capturingTeam >= 0 ? teamColors[z.capturingTeam] : Color.clear);
-                if (i < zoneBorders.Count) zoneBorders[i].SetOwnerColor(z.owner, teamColors); // 테두리 = 소유 상태
+                if (i < zoneBorders.Count) zoneBorders[i].SetOwnerColor(z.owner, teamColors); // 테두리 = 소유 상태 (팀원 ZoneBorderRing 채택)
                 if (z.capturingTeam >= 0 && z.progress > 0f) anyCapturing = true;
 
                 // 경합 감지 — 양 팀이 같은 거점을 밟는 순간 1회 긴장음 (게이지 동결의 청각 신호)

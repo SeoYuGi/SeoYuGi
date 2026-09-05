@@ -33,6 +33,14 @@ namespace SeoYuGi.BattleView
         string[] briefingLines;
         int[] briefingZones;          // 거점별 소유 팀 (-1 = 중립)
         int briefingAliveMine, briefingAliveEnemy;
+        string[] briefingStatsMine, briefingStatsFoe; // 개인 전적 줄 "콜사인  K n / D n" (2026-09-05)
+
+        /// <summary>라운드 전적 주입 — ShowBriefing 직전에 러너가 채운다.</summary>
+        public void SetBriefingStats(string[] mineLines, string[] foeLines)
+        {
+            briefingStatsMine = mineLines;
+            briefingStatsFoe = foeLines;
+        }
 
         // 관제 AI 보이스 자막 (영어 보이스 + 한글 자막)
         string subtitleText;
@@ -845,17 +853,43 @@ namespace SeoYuGi.BattleView
             GUI.color = Color.white;
             y += 26f;
 
-            // 우리 파랑 · 적 빨강 동그라미 — 숫자보다 개수가 한눈에 읽힌다
-            const float Dot = 18f, DotGap = 8f, SideGap = 34f;
-            float mineW = briefingAliveMine * (Dot + DotGap);
-            float foeW = briefingAliveEnemy * (Dot + DotGap);
-            float startX = box.x + box.width / 2f - (mineW + SideGap + foeW) / 2f;
+            // 좌우 고정 배치 (2026-09-05 "파란팀 왼쪽·빨간팀 오른쪽"): 팀당 3칸을 항상 같은 자리에.
+            // 한쪽이 전멸해도 자리가 흐린 원으로 남아 "누가 몇 명 잃었나"가 즉독된다.
+            const float Dot = 18f, DotGap = 8f, SideGap = 44f;
+            const int SlotsPerTeam = 3;
+            float sideW = SlotsPerTeam * (Dot + DotGap) - DotGap;
+            float cx = box.x + box.width / 2f;
+            float leftX = cx - SideGap / 2f - sideW;
+            float rightX = cx + SideGap / 2f;
 
-            for (int i = 0; i < briefingAliveMine; i++)
-                Dish(new Rect(startX + i * (Dot + DotGap), y, Dot, Dot), mine);
-            float fx = startX + mineW + SideGap;
-            for (int i = 0; i < briefingAliveEnemy; i++)
-                Dish(new Rect(fx + i * (Dot + DotGap), y, Dot, Dot), foe);
+            for (int i = 0; i < SlotsPerTeam; i++)
+            {
+                var lr = new Rect(leftX + i * (Dot + DotGap), y, Dot, Dot);
+                Dish(lr, i < briefingAliveMine ? mine : new Color(mine.r, mine.g, mine.b, 0.18f));
+                var rr = new Rect(rightX + i * (Dot + DotGap), y, Dot, Dot);
+                Dish(rr, i < briefingAliveEnemy ? foe : new Color(foe.r, foe.g, foe.b, 0.18f));
+            }
+            y += Dot + 22f;
+
+            // 전적 (2026-09-05) — 개인 킬/데스. 왼쪽 우리 파랑, 오른쪽 적 빨강 (좌우 규칙 동일)
+            GUI.color = new Color(0.6f, 0.68f, 0.78f);
+            GUI.Label(new Rect(box.x, y, box.width, 20f), "전적",
+                new GUIStyle(subStyle) { alignment = TextAnchor.MiddleCenter });
+            GUI.color = Color.white;
+            y += 24f;
+
+            var statStyle = new GUIStyle(labelStyle) { fontSize = 14, alignment = TextAnchor.MiddleLeft };
+            var statStyleR = new GUIStyle(labelStyle) { fontSize = 14, alignment = TextAnchor.MiddleRight };
+            int rows = Mathf.Max(briefingStatsMine?.Length ?? 0, briefingStatsFoe?.Length ?? 0);
+            for (int i = 0; i < rows; i++)
+            {
+                if (briefingStatsMine != null && i < briefingStatsMine.Length)
+                    ShadowLabel(new Rect(box.x + 70f, y + i * 22f, box.width / 2f - 90f, 20f),
+                        briefingStatsMine[i], statStyle, mine);
+                if (briefingStatsFoe != null && i < briefingStatsFoe.Length)
+                    ShadowLabel(new Rect(box.x + box.width / 2f + 20f, y + i * 22f, box.width / 2f - 90f, 20f),
+                        briefingStatsFoe[i], statStyleR, foe);
+            }
         }
 
         /// <summary>동그라미 하나 — 원형 텍스처가 없어 사각형을 겹쳐 둥글게 낸다.</summary>
@@ -871,8 +905,8 @@ namespace SeoYuGi.BattleView
         void DrawBriefing()
         {
             bool myWin = briefingWinner == playerTeam;
-            // 전황 두 줄(거점·생존)이라 높이가 고정이다 — 문구 브리핑을 걷어낸 뒤(2026-09-05) 실측이 필요 없어졌다
-            const float boxH = 360f;
+            // 전황 세 줄(거점·생존·전적) 고정 높이 — 문구 브리핑을 걷어낸 뒤(2026-09-05) 실측이 필요 없어졌다
+            const float boxH = 470f;
             var box = new Rect(W / 2f - 270, H / 2f - boxH / 2f, 540, boxH);
             briefingBottomY = box.yMax; // 자막 겹침 방지용 — DrawSubtitle이 참조
             NeonPanel(box, myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));

@@ -1231,6 +1231,7 @@ namespace SeoYuGi.BattleView
                 // 클래스별 덩치 차이 — 모델 들어오기 전 임시 구분 (Bind 전에 적용해야 기준 스케일로 잡힘)
                 view.transform.localScale *= ViewScale(s.cls);
                 view.Bind(s.unitId, teamColors[s.team], gridView, map.Spawns[s.unitId]);
+                view.AttachClassAccent(ClassHue(s.cls)); // 발밑 클래스 링 — 캐릭터 구분 (스킬 팔레트와 동기)
                 viewRegistry.Register(view);
                 roundObjects.Add(view.gameObject);
 
@@ -1449,10 +1450,17 @@ namespace SeoYuGi.BattleView
                         var flier = viewRegistry.Get(strike.attackerId);
                         if (flier != null && flier.gameObject.activeInHierarchy)
                         {
-                            // 날아가는 시간 = 예고 시간. 낚아채기는 도착이 곧 판정이라
-                            // 왕복 중 '가는 구간'만 예고에 맞추고, 돌아오는 구간은 판정 뒤의 연출이다.
-                            float outT = Mathf.Max(0.2f, strike.impactTime - Battle.time);
-                            flier.PlayBombFlight(gridView.CoordToWorld(strike.cells[0]), outT, 0.5f);
+                            // 날아가는 시간 = 예고 시간. 도착이 곧 판정 — 돌아오는 구간(0.5s)은 판정 뒤의 연출.
+                            float outDur = Mathf.Max(0.2f, strike.impactTime - Battle.time);
+                            if (strike.kind == SkillKind.Snatch) // 낚아채기 — 대상을 발톱에 걸고 돌아온다 (폭탄 로프트 아님)
+                            {
+                                int vId = Battle.Grid.GetUnitAt(strike.cells[0]);
+                                var victimView = vId != SeoYuGi.Battle.Cell.NoUnit ? viewRegistry.Get(vId) : null;
+                                flier.PlaySnatchFlight(gridView.CoordToWorld(strike.cells[0]),
+                                    victimView != null ? victimView.transform : null, outDur, 0.5f);
+                            }
+                            else
+                                flier.PlayBombFlight(gridView.CoordToWorld(strike.cells[0]), outDur, 0.5f);
                         }
                     }
                 }
@@ -2106,6 +2114,15 @@ namespace SeoYuGi.BattleView
                 case UnitClass.Sniper: return 0.8f;    // 까치 — 작음
                 default: return 1f;
             }
+        }
+
+        /// <summary>클래스 시그니처색 — 로비 클래스 카드와 같은 색 (ClassCard.Meta가 단일 출처).
+        /// 카드에서 학습한 "주황=너구리, 시안=검은냥…"이 전장 발밑 링으로 그대로 이어진다.</summary>
+        static Color ClassHue(UnitClass cls)
+        {
+            int i = (int)cls;
+            var meta = SeoYuGi.UI.ClassCard.Meta;
+            return i >= 0 && i < meta.Length ? meta[i].color : Color.white;
         }
 
         UnitView CreateUnitView()

@@ -363,6 +363,7 @@ namespace SeoYuGi.BattleView
         public void ShowMatchEnd()
         {
             overlay = Overlay.MatchEnd;
+            matchEndAt = -1f; // 등장 애니메이션 리셋
         }
 
         /// <summary>픽 단계(맵/클래스 선택) — 인게임 HUD 전부 숨김. 다음 Init까지 유지.</summary>
@@ -1088,15 +1089,69 @@ namespace SeoYuGi.BattleView
             }
         }
 
+        float matchEndAt = -1f; // 오버레이 진입 시각 — 등장 애니메이션 기준
+
         void DrawMatchEnd()
         {
+            if (matchEndAt < 0f) matchEndAt = Time.unscaledTime;
+            float age = Time.unscaledTime - matchEndAt;
             bool myWin = match.MatchWinner == playerTeam;
-            ShadowLabel(new Rect(0, H / 2f - 60, W, 80),
-                myWin ? "매치 승리!" : "매치 패배...", bannerStyle,
-                myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f));
-            ShadowLabel(new Rect(0, H / 2f + 20, W, 26),
-                $"{match.GetWins(playerTeam)} : {match.GetWins(1 - playerTeam)}   ·   R — 새 매치", timerStyle, Color.white);
+            var accent = myWin ? new Color(0.35f, 1f, 0.65f) : new Color(1f, 0.4f, 0.32f);
+
+            // 전체 딤 — 승패 색조로
+            Fill(new Rect(0, 0, W, H), new Color(accent.r * 0.12f, accent.g * 0.12f, accent.b * 0.12f, 0.55f));
+
+            // 상·하 팀색 밴드가 중앙에서 바깥으로 열린다 (0.4초)
+            float open = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(age / 0.4f));
+            float bandH = 96f;
+            float cy = H / 2f;
+            Fill(new Rect(0, cy - bandH, W * open, 3f), accent);
+            Fill(new Rect(W - W * open, cy + bandH - 3f, W * open, 3f), accent);
+            GUI.color = new Color(0f, 0f, 0f, 0.5f);
+            GUI.DrawTexture(new Rect(0, cy - bandH + 3f, W, bandH * 2f - 6f), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            // 타이틀 — 등장 시 크게 떨어졌다가(1.6→1.0) 안착 + 승리는 은은한 맥동
+            float pop = Mathf.SmoothStep(1.7f, 1f, Mathf.Clamp01(age / 0.35f));
+            float pulse = myWin ? 1f + 0.03f * Mathf.Sin(age * 4f) : 1f;
+            var titleStyle = new GUIStyle(bannerStyle) { fontSize = Mathf.RoundToInt(64 * pop * pulse) };
+            string title = myWin ? "★  승  리  ★" : "패      배";
+            // 3중 글로우 — 뒤로 갈수록 크고 투명
+            for (int i = 3; i >= 1; i--)
+            {
+                float off = i * 2.5f;
+                GUI.color = new Color(accent.r, accent.g, accent.b, 0.18f);
+                GUI.Label(new Rect(-off, cy - 55f - off, W, 90f), title, titleStyle);
+                GUI.Label(new Rect(off, cy - 55f + off, W, 90f), title, titleStyle);
+            }
+            GUI.color = Color.white;
+            ShadowLabel(new Rect(0, cy - 55f, W, 90f), title, titleStyle, Color.Lerp(Color.white, accent, 0.35f));
+
+            // 스코어 (조금 늦게 페이드인)
+            float scoreA = Mathf.Clamp01((age - 0.4f) / 0.4f);
+            ShadowLabel(new Rect(0, cy + 44f, W, 30f),
+                $"{match.GetWins(playerTeam)}  :  {match.GetWins(1 - playerTeam)}",
+                new GUIStyle(timerStyle) { fontSize = 30 }, new Color(1f, 1f, 1f, scoreA));
+            ShadowLabel(new Rect(0, cy + 82f, W, 24f), "R — 새 매치",
+                new GUIStyle(roundStyle) { fontSize = 16, alignment = TextAnchor.MiddleCenter },
+                new Color(0.75f, 0.8f, 0.88f, scoreA));
+
+            // 승리 순간 색종이 — 위에서 떨어지는 팀색 조각 (결정적 난수로 매 프레임 같은 자리)
+            if (myWin)
+            {
+                for (int i = 0; i < 60; i++)
+                {
+                    float seed = i * 12.9898f;
+                    float fx = Frac01(seed) * W;
+                    float speed = 120f + Frac01(seed * 1.7f) * 180f;
+                    float fy = ((age * speed + Frac01(seed * 3.3f) * H) % (H + 40f)) - 20f;
+                    var cc = i % 2 == 0 ? accent : new Color(1f, 0.9f, 0.4f);
+                    Fill(new Rect(fx, fy, 5f, 9f), new Color(cc.r, cc.g, cc.b, 0.85f));
+                }
+            }
         }
+
+        static float Frac01(float x) { x = Mathf.Sin(x) * 43758.5453f; return x - Mathf.Floor(x); }
 
         /// <summary>게이지 바 — 어두운 트랙 + 채움(윗변 하이라이트) + 끝단 캡 + 구간 눈금.
         /// segments &gt; 0이면 그 개수로 칸 나눔 (HP처럼 이산 수치 읽기용).</summary>

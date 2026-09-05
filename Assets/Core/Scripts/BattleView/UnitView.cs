@@ -146,6 +146,48 @@ namespace SeoYuGi.BattleView
             moving = StartCoroutine(BombFlightRoutine(targetWorld + Vector3.up * yOffset, outDuration, backDuration));
         }
 
+        /// <summary>낚아채기 왕복 — 대상까지 날아가 발톱으로 낚아채고, 돌아올 땐 대상을 발밑에 매달고 온다.
+        /// victimView는 시뮬이 impact에 위치를 바꾸지만, 그 전까지 시각적으로 함께 끌려오게 해 "낚아챔"이 읽힌다.</summary>
+        public void PlaySnatchFlight(Vector3 targetWorld, Transform victimView, float outDuration, float backDuration)
+        {
+            if (moving != null) StopCoroutine(moving);
+            moving = StartCoroutine(SnatchFlightRoutine(targetWorld + Vector3.up * yOffset, victimView, outDuration, backDuration));
+        }
+
+        IEnumerator SnatchFlightRoutine(Vector3 target, Transform victim, float outDuration, float backDuration)
+        {
+            Vector3 home = transform.position;
+            const float height = 1.7f;
+
+            // 접근 — 대상 위로 급강하 궤적
+            for (float t = 0f; t < outDuration; t += Time.deltaTime)
+            {
+                float k = t / outDuration;
+                var p = Vector3.Lerp(home, target, Mathf.SmoothStep(0f, 1f, k));
+                p.y += height * Mathf.Sin(k * Mathf.PI) + 0.2f; // 위로 솟았다 대상으로 내려꽂음
+                transform.position = p;
+                if (Camera.main != null && (target - home).sqrMagnitude > 0.01f)
+                    transform.rotation = Quaternion.LookRotation((target - home).normalized, Vector3.up);
+                yield return null;
+            }
+            // 낚아채는 순간 발톱 번쩍
+            var claw = VfxTextures.Claw;
+            if (claw != null) FxQuad.One(claw, target + Vector3.up * 0.4f, new Color(1f, 0.85f, 0.55f), 1.6f, 0.4f, 0.25f);
+
+            // 복귀 — 대상을 발밑(-0.6)에 매달고 함께 끌고 온다
+            for (float t = 0f; t < backDuration; t += Time.deltaTime)
+            {
+                float k = t / backDuration;
+                var p = Vector3.Lerp(target, home, Mathf.SmoothStep(0f, 1f, k));
+                p.y += height * 0.6f * Mathf.Sin((1f - k) * Mathf.PI * 0.6f);
+                transform.position = p;
+                if (victim != null) victim.position = p + Vector3.down * 0.6f; // 발톱에 걸린 대상
+                yield return null;
+            }
+            transform.position = home;
+            moving = null;
+        }
+
         IEnumerator BombFlightRoutine(Vector3 target, float outDuration, float backDuration)
         {
             Vector3 home = transform.position;
@@ -212,6 +254,44 @@ namespace SeoYuGi.BattleView
             if (dying != null) return;
             if (moving != null) StopCoroutine(moving);
             moving = StartCoroutine(PathRoutine(path, hopDuration));
+        }
+
+        /// <summary>발밑 클래스 링 — 클래스 시그니처색 얇은 띠 (2026-09-05 "캐릭터들끼리 구분이 안 가").
+        /// 스킬 VFX와 같은 팔레트라 "저 보라 링 = 점멸 쓰는 애"로 이어진다.</summary>
+        public void AttachClassAccent(Color c)
+        {
+            var go = new GameObject("ClassRing", typeof(MeshFilter), typeof(MeshRenderer));
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, 0.03f - yOffset, 0f);
+
+            const int Seg = 32; const float ROut = 0.46f, RIn = 0.34f;
+            var v = new Vector3[Seg * 2]; var tr = new int[Seg * 6];
+            for (int i = 0; i < Seg; i++)
+            {
+                float a = i / (float)Seg * Mathf.PI * 2f;
+                float ca = Mathf.Cos(a), sa = Mathf.Sin(a);
+                v[i * 2] = new Vector3(ca * RIn, 0f, sa * RIn);
+                v[i * 2 + 1] = new Vector3(ca * ROut, 0f, sa * ROut);
+                int n = (i + 1) % Seg;
+                tr[i * 6] = i * 2; tr[i * 6 + 1] = i * 2 + 1; tr[i * 6 + 2] = n * 2 + 1;
+                tr[i * 6 + 3] = i * 2; tr[i * 6 + 4] = n * 2 + 1; tr[i * 6 + 5] = n * 2;
+            }
+            var m = new Mesh { name = "ClassRing", vertices = v, triangles = tr };
+            go.GetComponent<MeshFilter>().sharedMesh = m;
+
+            var shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+            var mat = new Material(shader);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+            mat.SetInt("_ZWrite", 0);
+            mat.renderQueue = 2999;
+            var cc = c * 0.55f; cc.a = 1f; // 가산 — 은은하게
+            mat.SetColor("_BaseColor", cc); mat.SetColor("_Color", cc);
+            var r = go.GetComponent<MeshRenderer>();
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
         }
 
         // ── 타격감 2차 패스 (2026-09-05) ─────────────────────

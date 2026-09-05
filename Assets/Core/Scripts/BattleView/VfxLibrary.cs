@@ -39,6 +39,8 @@ namespace SeoYuGi.BattleView
 
         // ── WarFX (JMO, 전쟁 톤 — Assets/JMO Assets/WarFX/Resources/WarFX). 5m급이라 반드시 0.1~0.2배 ──
         public const string WarExplosionSmall = "WarFX/WFX_Explosion Small";          // 격파·파열탄
+        public const string WarExplosion = "WarFX/WFX_Explosion";                      // 대형 — 폭탄 착탄 ("터지지도 않아" 2026-09-05)
+        public const string WarSmokeGroundBig = "WarFX/WFX_ExplosiveSmokeGround";      // 대형 지면 연기
         public const string WarSmokeGround = "WarFX/WFX_ExplosiveSmokeGround Small";  // 격파 뒤 바닥 연기
         public const string WarImpactMetal = "WarFX/WFX_BImpact Metal";               // 저격 명중 — 기계
         public const string WarImpactDirt = "WarFX/WFX_BImpact Dirt";                 // 저격 명중 — 동물

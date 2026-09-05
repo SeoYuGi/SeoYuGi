@@ -150,7 +150,7 @@ namespace SeoYuGi.BattleView
                     case UnitClass.Balance:
                     case UnitClass.Assassin:
                         // 기계 근접 — 광선검 베기 (팀색 슬래시) + 금속 불꽃 (HCFX 파스텔은 톤 불일치로 제거)
-                        SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-40f, 40f), scale: 1.25f);
+                        SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-40f, 40f), scale: 2f);
                         WarImpact(center, victimMachine: false); // 기계가 때림 → 동물 피격(흙) — War FX 단일 톤 (2026-09-05)
                         break;
                     default:
@@ -173,13 +173,14 @@ namespace SeoYuGi.BattleView
                     else if (strike.damage >= 2)
                     {
                         // 강타 — 무거운 한 방: War FX 소형 폭발 + 팀색 광기둥
-                        VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.2f, 0.14f, hierarchyScale: true);
+                        VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.2f, 0.24f, hierarchyScale: true);
                         ImpactVfx.Pillar(center, teamHi);
+                        RingWave.Spawn(center, new Color(teamHi.r, teamHi.g, teamHi.b, 0.85f), 4.5f, 0.45f);
                     }
                     else
                     {
                         // 기본공격 — 칼 베기 호 (팀색 날)
-                        SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-30f, 30f), scale: 1.15f);
+                        SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-30f, 30f), scale: 1.9f);
                         if (hit) WarImpact(center, victimMachine: true); // 동물이 때림 → 기계 피격(금속)
                     }
                     break;
@@ -187,7 +188,7 @@ namespace SeoYuGi.BattleView
                 case UnitClass.Balance:
                     if (strike.stunSeconds > 0f) break; // 비명 — 시전 링이 주인공, 판정은 스턴 텍스트
                     // 기본공격 — 몸통 박치기 베기 호 + 금속 탄착
-                    SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-25f, 25f), scale: 1.1f);
+                    SlashQuad(center, teamHi, spin: UnityEngine.Random.Range(-25f, 25f), scale: 1.8f);
                     if (hit) WarImpact(center, victimMachine: true);
                     break;
 
@@ -205,10 +206,14 @@ namespace SeoYuGi.BattleView
                     break;
 
                 case UnitClass.Grenadier:
-                    // 폭탄 터짐 — War FX 소형 폭발, 주변 십자는 흙 탄착
-                    VfxLibrary.Spawn(VfxLibrary.WarExplosionSmall, center + Vector3.up * 0.05f, 2.5f, 0.18f, hierarchyScale: true);
+                    // 폭탄 터짐 — 대형 폭발 + 지면 연기 + 충격파 링. "날아가기만 하고 안 터짐" 해소 (2026-09-05)
+                    VfxLibrary.Spawn(VfxLibrary.WarExplosion, center + Vector3.up * 0.05f, 3f, 0.34f, hierarchyScale: true);
+                    VfxLibrary.Spawn(VfxLibrary.WarSmokeGroundBig, center + Vector3.up * 0.05f, 3.5f, 0.3f, hierarchyScale: true);
+                    RingWave.Spawn(center, new Color(1f, 0.7f, 0.35f, 0.9f), 5.5f, 0.5f);
+                    FxQuad.One(VfxTextures.Glow, center + Vector3.up * 0.5f, new Color(1f, 0.8f, 0.5f), 4f, 0.8f, 0.3f);
+                    CameraShaker.Shake(0.3f); // 폭발은 어디서 터지든 몸으로
                     for (int i = 1; i < cells.Count && i <= 4; i++)
-                        VfxLibrary.Spawn(VfxLibrary.WarImpactDirt, cells[i] + Vector3.up * 0.08f, 1.6f, 0.2f, hierarchyScale: true);
+                        VfxLibrary.Spawn(VfxLibrary.WarImpactDirt, cells[i] + Vector3.up * 0.08f, 1.6f, 0.26f, hierarchyScale: true);
                     break;
 
                 case UnitClass.Sniper:
@@ -261,7 +266,7 @@ namespace SeoYuGi.BattleView
         {
             var mat = VfxTextures.Claw;
             if (mat == null) return;
-            FxQuad.One(mat, pos + Vector3.up * 0.5f, color, 1.35f, 0.35f, 0.26f, spinDeg: spin);
+            FxQuad.One(mat, pos + Vector3.up * 0.5f, color, 2.4f, 0.4f, 0.26f, spinDeg: spin);
         }
 
         static void WindStreaks(Vector3 pos, Vector3 dir)

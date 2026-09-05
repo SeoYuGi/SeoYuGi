@@ -180,11 +180,8 @@ namespace SeoYuGi.Art
         static readonly Color SteelTint = new Color(0.76f, 0.8f, 0.88f);
 
         /// <summary>
-        /// 기계 동물 — 팀1은 같은 동물 모델을 쓰되 표면만 금속으로 바꾼다.
-        ///
-        /// 텍스처를 지우지 않는 것이 요령이다. 지우면 밋밋한 회색 덩어리가 되지만,
-        /// 남기면 털·깃 무늬가 금속 표면의 패널 라인처럼 읽혀 "기계 너구리"가 된다.
-        /// 금속감은 색이 아니라 metallic·smoothness가 만든다 — 주변을 반사해야 쇠로 보인다.
+        /// 기계 동물 — 팀1은 같은 동물 모델을 쓰되 표면을 은색 금속으로 통째 교체한다.
+        /// (같은 실루엣 + 재질로 팀 구분. 사용자 지시 2026-09-05: 은색~회색 메탈릭 로봇.)
         ///
         /// 원본 머티리얼당 금속 사본을 한 번만 만들어 캐시하고 sharedMaterials로 붙인다.
         /// r.materials를 쓰면 렌더러마다 인스턴스가 새로 생기는데, 유닛은 라운드마다
@@ -205,35 +202,26 @@ namespace SeoYuGi.Art
             }
         }
 
+        /// <summary>
+        /// 원본 머티리얼 프로퍼티를 만지는 구 방식은 GLB 셰이더에 따라 안 먹었다 (2026-09-05 —
+        /// "적팀이 그냥 동물"). URP Lit 은색 머티리얼로 통째 교체가 확실하다.
+        /// 텍스처는 버린다 — 어두운 털 알베도가 곱해지면 다시 회갈색이 되기 때문.
+        /// 밤 씬이라 반사 환경이 어두우므로 metallic은 중간, smoothness로 하이라이트를 쨍하게,
+        /// 은은한 자발광으로 그늘에서도 은색이 죽지 않게 한다.
+        /// </summary>
         static Material MetalVersionOf(Material src)
         {
             if (src == null) return null;
             if (metalCache.TryGetValue(src, out var cached) && cached != null) return cached;
 
-            var m = new Material(src); // 텍스처·셰이더는 그대로 이어받는다
-            if (m.HasProperty(BaseColorId)) m.SetColor(BaseColorId, Tint(m.GetColor(BaseColorId)));
-            else if (m.HasProperty(GltfBaseColorId)) m.SetColor(GltfBaseColorId, Tint(m.GetColor(GltfBaseColorId)));
-
-            if (m.HasProperty(MetallicId)) m.SetFloat(MetallicId, 0.95f);
-            if (m.HasProperty(GltfMetallicId)) m.SetFloat(GltfMetallicId, 0.95f);
-
-            if (m.HasProperty(SmoothnessId)) m.SetFloat(SmoothnessId, 0.78f); // 하이라이트가 쨍해야 밤 씬에서도 쇠로 읽힌다
-            if (m.HasProperty(GltfRoughnessId)) m.SetFloat(GltfRoughnessId, 0.22f); // roughness = 1 - smoothness
-
+            var m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            m.SetColor("_BaseColor", SteelTint);
+            m.SetFloat("_Metallic", 0.65f);
+            m.SetFloat("_Smoothness", 0.85f);
+            m.EnableKeyword("_EMISSION");
+            m.SetColor("_EmissionColor", new Color(0.10f, 0.11f, 0.14f)); // 그늘 보정 — 은은한 냉광
             metalCache[src] = m;
             return m;
-        }
-
-        /// <summary>
-        /// 원래 색의 명암은 살리되 바닥을 들어올려 강철 색조를 입힌다.
-        /// 순수 곱(× lum)은 어두운 털 텍스처에서 원래 회갈색과 구분이 안 됐다 —
-        /// 최소 0.55를 보장해 어두운 무늬도 은색 위 패널 라인 정도로만 남긴다.
-        /// </summary>
-        static Color Tint(Color c)
-        {
-            float lum = c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
-            float lift = 0.55f + 0.6f * lum;
-            return new Color(SteelTint.r * lift, SteelTint.g * lift, SteelTint.b * lift, c.a);
         }
 
         /// <summary>모델 변형(<이름>_anim/_atk) 로드 + 배치 + 클립 재생. 없으면 null.</summary>

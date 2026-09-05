@@ -690,17 +690,9 @@ namespace SeoYuGi.BattleView
 
         // 상단 배너 = 전황 로그 (2026-09-05 유저: 조작 안내는 의미를 모르겠다 → 킬·거점 이벤트만).
         // 최근 이벤트 하나를 6초간. 내가 죽었을 땐 빨리감기 안내가 우선.
-        string eventText;
-        Color eventColor;
-        float eventUntil;
 
-        /// <summary>전황 이벤트 한 줄 — "알파가 델타 처치!", "아군이 B 거점 점령!" 등. 팀 색으로.</summary>
-        public void PushEvent(string text, Color color)
-        {
-            eventText = text;
-            eventColor = color;
-            eventUntil = Time.time + 6f;
-        }
+        /// <summary>안내 한 줄 — 튜토리얼 힌트, 이탈, 명령 거부. 이벤트 배너는 은퇴(2026-09-06 "중앙 공지와 둘 다 있어 불편")하고 자막 레인으로 보낸다. 색은 자막이 정한다.</summary>
+        public void PushEvent(string text, Color color) => ShowSubtitle(text, 3.5f);
 
         void DrawBanner()
         {
@@ -714,12 +706,7 @@ namespace SeoYuGi.BattleView
                     : "격파됨. SPACE: 라운드 결과까지 빨리감기";
                 if (skipActive) bannerColor = new Color(1f, 0.78f, 0.25f, 0.9f); // 호박색 — 비정상 속도 표시
             }
-            else if (!string.IsNullOrEmpty(eventText) && Time.time < eventUntil)
-            {
-                msg = eventText;
-                bannerColor = new Color(eventColor.r, eventColor.g, eventColor.b, 0.9f);
-            }
-            else return;
+            else return; // 배너는 전사 후 빨리감기 안내 전용 — 전황 이벤트 로그는 은퇴 (2026-09-06)
 
             // 프레임 사선 컷 여백만큼 텍스트를 안쪽에 — 텍스트가 프레임을 뚫지 않게
             var box = new Rect(W / 2f - 240, 158, 480, 34); // 118 → 158: ROUND 라벨·규칙 칩(131)과 겹침 (2026-09-05)
@@ -1126,11 +1113,22 @@ namespace SeoYuGi.BattleView
                 hs[i] = Mathf.Max(26f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
                 total += hs[i];
             }
-            // 무전창이 열려 있으면 그 위로 — 좌하단 입력줄·응답줄과 겹치던 것 (2026-09-05 지휘관 대전 테스트)
-            float radioLift = RadioWindow.TextInputActive ? 96f : 0f;
-            float y = H - 108f - radioLift - total;
+            // 무전창이 열려 있으면 채팅 로그가 입력줄 바로 위에 붙는다 — 롤 채팅처럼 한 덩어리 (2026-09-06 "따로 노는 느낌")
+            // RadioWindow와 같은 스케일·x·폭으로 맞춘다 (그쪽은 Screen 픽셀, 여기는 HUD 단위 → UiScale로 환산)
+            float logX = 12f, logW = boxW;
+            float y;
+            if (RadioWindow.TextInputActive)
+            {
+                float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
+                float radioW = Mathf.Min(560f * rs, Screen.width * 0.5f), pad = 10f * rs;
+                float radioTopPx = Screen.height - (RadioWindow.FieldBottom + 30f) * rs - pad; // 입력줄 + 상단 안내줄(30) + 패드
+                logX = (24f * rs - pad) / UiScale;
+                logW = (radioW + pad * 2f) / UiScale;
+                y = radioTopPx / UiScale - 6f - total;
+            }
+            else y = H - 108f - total;
 
-            var logBox = new Rect(12, y - 4, boxW, total + 8);
+            var logBox = new Rect(logX, y - 4, logW, total + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));
             Fill(new Rect(logBox.x, logBox.y, 2f, logBox.height), new Color(allyColor.r, allyColor.g, allyColor.b, 0.8f)); // 좌측 팀색 액센트
 
@@ -1142,7 +1140,7 @@ namespace SeoYuGi.BattleView
                 var c = chatLog[i].color;
                 c.a = Mathf.Clamp01(remain);
                 GUI.color = c;
-                GUI.Label(new Rect(20, yy, boxW - 16, hs[i]), chatLog[i].text, chatStyle);
+                GUI.Label(new Rect(logX + 8f, yy, logW - 16, hs[i]), chatLog[i].text, chatStyle);
                 yy += hs[i];
             }
             GUI.color = Color.white;

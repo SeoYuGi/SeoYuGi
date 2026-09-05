@@ -17,6 +17,9 @@ namespace SeoYuGi.BattleView
     {
         public bool IsOpen { get; private set; }
 
+        /// <summary>입력줄 아랫변이 화면 아래서 이만큼(×스케일) 위. 러너의 가이드 스포트라이트가 같은 값을 쓴다.</summary>
+        public const float FieldBottom = 420f;
+
         /// <summary>열 때 전장을 정지시킬지. 싱글 지휘관 = true. 온라인은 호스트 시계라 정지 불가 — 러너가 false로 둔다.
         /// 온라인의 "고민 시간"은 무전 타임(호스트가 전원 동시 정지)이 대신한다.</summary>
         public bool FreezeOnOpen = true;
@@ -126,7 +129,7 @@ namespace SeoYuGi.BattleView
             float w = Mathf.Min(560f * s, Screen.width * 0.5f);
             float fieldH = 42f * s, pad = 10f * s;
             float x = 24f * s;
-            float yField = Screen.height - 205f * s;
+            float yField = Screen.height - FieldBottom * s;
 
             if (!LlmRadio.HasKey)
             {

@@ -823,7 +823,7 @@ namespace SeoYuGi.BattleView
                 if (remain <= 0f || (!online && !radioTimeGuided) || guidedClosed) { EndRadioTime(); return; } // 호스트 종료 통보가 보통 먼저 오고, 이건 상한
                 hud.ShowAnnounce(radioTimeGuided
                         ? $"첫 무전 {Mathf.CeilToInt(remain)}. 분대에 말로 지시해 보세요"
-                        : $"무전 타임 {Mathf.CeilToInt(remain)}. Enter 무전 / 숫자키/패널 프리셋",
+                        : $"[무전 타임] 분대에 지시하라  {Mathf.CeilToInt(remain)}",
                     StrikeVfx.MineNeon, 0.6f);
                 return;
             }
@@ -958,7 +958,6 @@ namespace SeoYuGi.BattleView
             radioTimeEndsAt = Time.unscaledTime + seconds + 0.5f; // 클라 상한 — 호스트 종료 통보가 보통 먼저 온다
             GameFreeze.Push();
             battleAudio.PlaySfx("S22_DetectPing", 0.9f);
-            hud.PushEvent("[무전 타임] 분대에 지시하라", StrikeVfx.MineNeon);
             RequestSquadBriefing(); // 분대가 먼저 상황을 보고한다 — 지시만 받는 부하가 아니라 대화 상대
             // 온라인 첫 판 — 첫 무전 타임에도 예시 문장으로 안내 (그 뒤론 가이드 종료)
             if (Guide.Wanted && NetBoot.IsOnline && radio != null && radio.enabled && !Spectating)
@@ -1115,7 +1114,6 @@ namespace SeoYuGi.BattleView
                     {
                         teamOrders[u.team].SetFocus(enemy.id, Battle.time + 6f);
                         if (u.team == playerTeam)
-                            hud.PushEvent($"[무전] {FindSlot(enemy.id).callsign} 집중 사격!", teamColors[playerTeam]);
                         break;
                     }
             if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
@@ -1505,7 +1503,6 @@ namespace SeoYuGi.BattleView
             hud.ShowAnnounce(ours
                 ? $"아군이 {letter} 거점을 점령했습니다"
                 : $"상대팀이 {letter} 거점을 점령했습니다", teamColors[owner], 2.8f);
-            hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[owner]);
             if (!ours) RequestEventBriefing($"상대가 {letter} 거점을 점령했다");
 
             var center = ZoneWorldCenter(zone);
@@ -1929,7 +1926,6 @@ namespace SeoYuGi.BattleView
                     ? $"아군이 {letter} 거점을 점령했습니다"
                     : $"상대팀이 {letter} 거점을 점령했습니다";
                 hud.ShowAnnounce(ment, teamColors[zone.owner], 2.8f); // 상단 중앙 큰 공지
-                hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[zone.owner]);
                 battleAudio.PlayVoice(ours ? "Voice_ZoneCaptured" : "Voice_ZoneLost"); // 음성만 (자막은 배너가)
                 if (!ours) RequestEventBriefing($"상대가 {letter} 거점을 점령했다");
 
@@ -2296,7 +2292,6 @@ namespace SeoYuGi.BattleView
                 {
                     victim.hp = victim.maxHp; // 죽지 않는다 — 이 핸들러는 사망 판정보다 먼저 불린다
                     trainingLastHitAt = Time.time;
-                    hud.PushEvent($"허수아비 피격 -{dmg}", teamColors[playerTeam]);
                 }
                 var victimView = viewRegistry.Get(unitId);
                 victimView?.PlayHit(new Vector3(hitDir.x, 0f, hitDir.y)); // 리코일 틸트 + 플래시
@@ -2707,8 +2702,6 @@ namespace SeoYuGi.BattleView
                 SpectateFollowAlly();
 
             hud.AddKill(killerName, victimName, feedColor);
-            hud.PushEvent(killerName != null ? $"{killerName}이(가) {victimName} 처치!" : $"{victimName} 처치됨",
-                feedColor); // 상단 배너 전황 로그
             hud.PingEdge(gridView.CoordToWorld(dead.pos), feedColor); // 프레임 밖 킬 — 가장자리 방향 화살표 (가시성 패스 D)
 
             // 멀티킬 콜아웃 (2026-09-05 모멘텀) — 잘 싸운 순간을 게임이 크게 불러준다
@@ -3121,7 +3114,6 @@ namespace SeoYuGi.BattleView
             bool spectatingNow = Spectating;
             if (spectatingNow && !spectatingPrev && GameModeState.IsCommander)
             {
-                hud.PushEvent("전사. 무전(Enter), 숫자키로 분대 지휘는 계속됩니다", StrikeVfx.MineNeon);
                 RequestEventBriefing("지휘관이 전사했다. 남은 분대가 관전 중인 지휘관의 무전을 받는다");
             }
             spectatingPrev = spectatingNow;

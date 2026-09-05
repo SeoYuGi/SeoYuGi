@@ -26,6 +26,7 @@ namespace SeoYuGi.BattleView
 
         Func<string> ackProvider;
         GUIStyle hintStyle, inputStyle, ackStyle;
+        Texture2D texBar; // 무전 단말 패널 아트 (Panel_Radio) — 없으면 어두운 판 폴백
         bool stylesReady;
         string draft = "";   // 입력 중인 문장
         bool waiting;        // 발신 후 응답 대기 — 재발신 잠금 (게임은 돌아간다)
@@ -78,6 +79,7 @@ namespace SeoYuGi.BattleView
         {
             if (stylesReady) return;
             stylesReady = true;
+            texBar = BattleHud.LoadKeyed("UI/Panel_Radio");
             inputStyle = new GUIStyle(GUI.skin.textField) { alignment = TextAnchor.MiddleLeft };
             hintStyle = new GUIStyle(GUI.skin.label)
             {
@@ -118,12 +120,14 @@ namespace SeoYuGi.BattleView
                 return;
             }
 
-            // 배경판
+            // 배경판 — 무전 단말 아트 (스피커 그릴·시안 테두리), 없으면 어두운 판
             var prev = GUI.color;
+            var back = new Rect(x - pad, yField - 30f * s - pad, w + pad * 2, fieldH + 30f * s + pad * 2);
             GUI.color = new Color(0.02f, 0.04f, 0.08f, 0.88f);
-            GUI.DrawTexture(new Rect(x - pad, yField - 30f * s - pad, w + pad * 2, fieldH + 30f * s + pad * 2),
-                Texture2D.whiteTexture);
+            GUI.DrawTexture(back, Texture2D.whiteTexture);
             GUI.color = prev;
+            if (texBar != null)
+                GUI.DrawTexture(back, texBar, ScaleMode.StretchToFill);
 
             string ack = ackProvider != null ? ackProvider() : "";
             string topLine = waiting ? "…교신 중"

@@ -37,14 +37,16 @@ namespace SeoYuGi.Battle
 
         /// <summary>-1 = 진행 중. 0/1 = 승리 팀.</summary>
         public int Winner { get; private set; } = -1;
-        public bool SuddenDeath { get; private set; }
 
-        /// <summary>거점 독점했지만 상대가 아직 거점을 밟고 있어 라운드가 유지되는 중.</summary>
+
+        /// <summary>
+        /// 추가시간 — 제한시간이 다 됐는데 거점 수도 생존 수도 같아 승패를 가릴 수 없을 때만 켜진다.
+        /// 이 동안에는 다음 탈환이나 다음 킬이 곧바로 승부를 낸다.
+        /// </summary>
         public bool Overtime { get; private set; }
 
         public event Action<Zone> OnZoneCaptured;
-        public event Action<bool> OnSuddenDeath; // true 고정 — HUD 연출용
-        public event Action<bool> OnOvertime;    // 추가시간 진입/해제 — HUD 연출용
+        public event Action<bool> OnOvertime;    // 추가시간 진입 — HUD 연출용
         public event Action<int> OnRoundEnd;     // 승리 팀
 
         readonly List<Zone> zones = new List<Zone>();
@@ -155,7 +157,7 @@ namespace SeoYuGi.Battle
                     z.capturingTeam = -1;
                     z.progress = 0f;
                     OnZoneCaptured?.Invoke(z);
-                    if (SuddenDeath) { EndRound(team); return; }
+                    if (Overtime) { EndRound(team); return; } // 추가시간엔 탈환이 곧 승리
                 }
             }
         }
@@ -179,7 +181,7 @@ namespace SeoYuGi.Battle
             CountAlive(alive);
 
             // 서든데스: 킬 즉시 승부
-            if (SuddenDeath)
+            if (Overtime) // 추가시간엔 킬이 곧 승부
             {
                 if (alive[0] < prevAlive[0] && alive[1] >= prevAlive[1]) { EndRound(1); return; }
                 if (alive[1] < prevAlive[1] && alive[0] >= prevAlive[0]) { EndRound(0); return; }
@@ -198,38 +200,19 @@ namespace SeoYuGi.Battle
             foreach (var z in zones)
                 if (z.owner >= 0) owned[z.owner]++;
 
-            int monopoly = owned[0] == zones.Count ? 0 : owned[1] == zones.Count ? 1 : -1;
-            if (monopoly >= 0 && !EnemyOnAnyZone(monopoly)) { SetOvertime(false); EndRound(monopoly); return; }
-            SetOvertime(monopoly >= 0);
+            if (owned[0] == zones.Count) { EndRound(0); return; }
+            if (owned[1] == zones.Count) { EndRound(1); return; }
 
-            // 시간 초과 판정: 거점 수 → 생존 수 → 서든데스
-            if (!SuddenDeath && State.time >= Config.roundSeconds)
+            // 시간 초과 판정: 거점 수 → 생존 수 → 그래도 못 가리면 추가시간
+            if (!Overtime && State.time >= Config.roundSeconds)
             {
                 if (owned[0] != owned[1]) { EndRound(owned[0] > owned[1] ? 0 : 1); return; }
                 if (alive[0] != alive[1]) { EndRound(alive[0] > alive[1] ? 0 : 1); return; }
-                SuddenDeath = true;
-                OnSuddenDeath?.Invoke(true);
+
+                // 제한시간이 다 됐는데 거점도 생존도 같다 = 무승부. 여기서만 연장한다.
+                Overtime = true;
+                OnOvertime?.Invoke(true);
             }
-        }
-
-        /// <summary>독점 팀의 상대가 거점 패치를 밟고 있나 — 추가시간 유지 조건.</summary>
-        bool EnemyOnAnyZone(int team)
-        {
-            foreach (var z in zones)
-                foreach (var cell in z.cells)
-                {
-                    int unitId = State.Grid.GetUnitAt(cell);
-                    if (unitId == Cell.NoUnit) continue;
-                    if (State.GetUnit(unitId).team != team) return true;
-                }
-            return false;
-        }
-
-        void SetOvertime(bool on)
-        {
-            if (Overtime == on) return;
-            Overtime = on;
-            OnOvertime?.Invoke(on);
         }
 
         void CountAlive(int[] counts)

@@ -30,6 +30,7 @@ namespace SeoYuGi.BattleView
         Func<bool> canRecord;   // 러너가 준다 — 전투 중 && 타이핑 중 아님
         AudioClip clip;
         GUIStyle recStyle;
+        Texture2D texMic;       // 마이크 배지 아트 — 녹음 표시
 
         public void Init(Func<bool> canRecordNow)
         {
@@ -146,11 +147,12 @@ namespace SeoYuGi.BattleView
                     normal = { textColor = new Color(1f, 0.35f, 0.35f) }
                 };
                 GameFonts.Apply(recStyle, GameFonts.Hud);
+                texMic = BattleHud.LoadKeyed("UI/Icon_Mic");
             }
             float s = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
             recStyle.fontSize = Mathf.RoundToInt(30 * s);
 
-            // 화면 중앙 하단 — 어두운 판 + ● 점멸로 확실히 보이게 (unscaled: 프리즈 중에도 깜빡인다)
+            // 화면 중앙 하단 — 어두운 판 + 마이크 배지 점멸로 확실히 보이게 (unscaled: 프리즈 중에도 깜빡인다)
             float w = 480f * s, h = 64f * s;
             var box = new Rect((Screen.width - w) * 0.5f, Screen.height * 0.72f, w, h);
             var prev = GUI.color;
@@ -158,7 +160,16 @@ namespace SeoYuGi.BattleView
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             GUI.color = prev;
             bool blink = Time.unscaledTime % 0.8f < 0.5f;
-            GUI.Label(box, (blink ? "● " : "   ") + "녹음 중 — 손 떼면 발신", recStyle);
+            if (texMic != null)
+            {
+                GUI.color = new Color(1f, 1f, 1f, blink ? 1f : 0.35f);
+                GUI.DrawTexture(new Rect(box.x + 10f * s, box.y + 6f * s, h - 12f * s, h - 12f * s),
+                    texMic, ScaleMode.ScaleToFit);
+                GUI.color = prev;
+                GUI.Label(box, "녹음 중 — 손 떼면 발신", recStyle);
+            }
+            else
+                GUI.Label(box, (blink ? "● " : "   ") + "녹음 중 — 손 떼면 발신", recStyle);
         }
     }
 }

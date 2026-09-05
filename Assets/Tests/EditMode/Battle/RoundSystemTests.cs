@@ -154,31 +154,10 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void AllZones_EnemyStandingOnZone_OvertimeHoldsRound()
+        public void AllZones_WinsEvenWithEnemyOnZone()
         {
-            Add(1, 0, zoneL);
-            Add(2, 0, zoneM);
-            var c = Add(3, 0, new Coord(7, 6)); // 우측 거점 옆에서 대기
-            var e = Add(4, 1, new Coord(0, 0));
-            NewWideRound();
-
-            bool overtime = false;
-            round.OnOvertime += on => overtime = on;
-
-            round.Tick(2.1f);              // 좌·중 점거 (거점 2개)
-            MoveTo(e, zoneL + Coord.Up);   // 적이 우리 거점 진입 — 경합으로 동결, 소유는 유지
-            MoveTo(c, zoneR);
-            round.Tick(2.1f);              // 우측 점거 → 독점이지만 적이 아직 거점 위
-
-            Assert.AreEqual(0, round.Zones[0].owner); // 경합 중에도 소유는 그대로
-            Assert.AreEqual(-1, round.Winner);        // 라운드 유지
-            Assert.IsTrue(round.Overtime);
-            Assert.IsTrue(overtime);
-        }
-
-        [Test]
-        public void AllZones_EnemyLeavesZone_WinsImmediately()
-        {
+            // 예전에는 적이 거점을 밟고 있으면 독점 승리를 막았으나(무한 추가시간),
+            // 2026-09-05 규칙 변경으로 독점하면 그 자리에서 끝난다.
             Add(1, 0, zoneL);
             Add(2, 0, zoneM);
             var c = Add(3, 0, new Coord(7, 6));
@@ -186,37 +165,27 @@ namespace SeoYuGi.Battle.Tests
             NewWideRound();
 
             round.Tick(2.1f);
-            MoveTo(e, zoneL + Coord.Up);
+            MoveTo(e, zoneL + Coord.Up); // 적이 우리 거점 위에 서 있어도
             MoveTo(c, zoneR);
             round.Tick(2.1f);
-            Assert.IsTrue(round.Overtime);
-
-            MoveTo(e, new Coord(0, 0)); // 발을 뗀다 → 즉시 승부
-            round.Tick(0.1f);
 
             Assert.AreEqual(0, round.Winner);
-            Assert.IsFalse(round.Overtime);
+            Assert.IsFalse(round.Overtime); // 추가시간은 시간 초과 무승부에서만 켜진다
         }
 
         [Test]
-        public void Overtime_Annihilation_StillWinsImmediately()
+        public void Overtime_OnlyOnTimeoutDraw()
         {
+            // 거점 2:1, 생존 동수 — 시간이 다 돼도 거점 수로 갈리므로 추가시간이 아니다
             Add(1, 0, zoneL);
-            Add(2, 0, zoneM);
-            var c = Add(3, 0, new Coord(7, 6));
-            var e = Add(4, 1, new Coord(0, 0));
-            NewWideRound();
+            Add(2, 1, new Coord(0, 0));
+            NewRound();
 
-            round.Tick(2.1f);
-            MoveTo(e, zoneL + Coord.Up);
-            MoveTo(c, zoneR);
-            round.Tick(2.1f);
-            Assert.IsTrue(round.Overtime);
-
-            e.alive = false;              // 거점 위에서 격파 — 추가시간에 막히면 안 된다
-            battle.Grid.RemoveUnit(e.pos);
+            round.Tick(2.1f);      // 팀0이 거점 1개
+            battle.time = 120f;
             round.Tick(0.1f);
 
+            Assert.IsFalse(round.Overtime);
             Assert.AreEqual(0, round.Winner);
         }
 
@@ -263,7 +232,7 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void Timeout_FullTie_SuddenDeath_NextCaptureWins()
+        public void Timeout_FullTie_Overtime_NextCaptureWins()
         {
             var a = Add(1, 0, new Coord(0, 0));
             Add(2, 1, new Coord(8, 8));
@@ -271,11 +240,11 @@ namespace SeoYuGi.Battle.Tests
 
             battle.time = 120f;
             round.Tick(0.1f);
-            Assert.IsTrue(round.SuddenDeath);
+            Assert.IsTrue(round.Overtime);
             Assert.AreEqual(-1, round.Winner);
 
             MoveTo(a, zoneL);
-            round.Tick(2.1f); // 서든데스 탈환 = 즉시 승리
+            round.Tick(2.1f); // 추가시간 탈환 = 즉시 승리
 
             Assert.AreEqual(0, round.Winner);
         }
@@ -311,7 +280,7 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [Test]
-        public void SuddenDeath_KillWins()
+        public void Overtime_KillWins()
         {
             Add(1, 0, new Coord(0, 0));
             Add(2, 0, new Coord(2, 0));
@@ -321,7 +290,7 @@ namespace SeoYuGi.Battle.Tests
 
             battle.time = 120f;
             round.Tick(0.1f);
-            Assert.IsTrue(round.SuddenDeath);
+            Assert.IsTrue(round.Overtime);
 
             e1.alive = false; // 킬 발생 (전멸 아님 — 팀1에 1기 남음)
             battle.Grid.RemoveUnit(e1.pos);

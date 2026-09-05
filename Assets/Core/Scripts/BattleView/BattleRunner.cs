@@ -1240,12 +1240,12 @@ namespace SeoYuGi.BattleView
                 ImpactVfx.Pillar(center, Color.Lerp(teamColors[zone.owner], Color.white, 0.4f));
                 CameraShaker.Shake(0.2f);
             };
-            Round.OnSuddenDeath += _ =>
+            Round.OnOvertime += _ =>
             {
-                Debug.Log("서든데스! 다음 탈환 또는 킬로 즉시 승부");
+                Debug.Log("추가시간! 다음 탈환 또는 킬로 즉시 승부");
                 battleAudio.PlaySfx("S15_SuddenDeath", 2f);
-                PlayVoiceLine("Voice_SuddenDeath", "서든데스");
-                ImpactFx.SetSuddenDeath(true); // 화면 가장자리 적색 맥동 시작
+                PlayVoiceLine("Voice_SuddenDeath", "추가시간");
+                ImpactFx.SetSuddenDeath(true); // 화면 가장자리 맥동 시작
             };
 
             // 슬롯: MatchSetup 기준 — Bot 슬롯만 AI 뇌, 인간 반대팀 뇌에만 Predictor 주입 (기획서 §05).

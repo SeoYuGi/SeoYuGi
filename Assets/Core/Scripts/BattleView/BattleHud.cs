@@ -520,13 +520,7 @@ namespace SeoYuGi.BattleView
             // 남은시간 (탱고파이브 중앙 타이머) — 프레임 아트의 테두리 여백만큼 텍스트를 안쪽에
             var timerBox = new Rect(W / 2f - 84, 2, 168, 62);
             DrawFrame(timerBox, texTimer != null ? texTimer : texInfo);
-            if (round.SuddenDeath)
-            {
-                GUI.color = new Color(1f, 0.4f, 0.3f);
-                GUI.Label(new Rect(timerBox.x, timerBox.y + 12, timerBox.width, 38), "서든데스", timerStyle);
-                GUI.color = Color.white;
-            }
-            else if (round.Overtime)
+            if (round.Overtime)
             {
                 GUI.color = new Color(1f, 0.78f, 0.25f); // 호박색 — 빨강은 적 위협 전용
                 GUI.Label(new Rect(timerBox.x, timerBox.y + 12, timerBox.width, 38), "추가시간", timerStyle);

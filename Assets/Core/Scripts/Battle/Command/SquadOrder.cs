@@ -32,9 +32,11 @@ namespace SeoYuGi.Battle
         public OrderGoal goal;
         public int zoneIndex;     // goal == Zone 일 때만 의미 있음
         public OrderStance stance;
+        public int focusEnemyId;  // 이 유닛이 우선 노릴 적 unitId. -1 = 없음. 시야 규칙은 그대로 — 보여야 쏜다.
+        public bool persistent;   // true = "매치 내내" — 라운드가 바뀌어도 유지. false(기본) = 이번 라운드만.
 
         public static UnitOrder Free(int unitId) =>
-            new UnitOrder { unitId = unitId, goal = OrderGoal.Free, zoneIndex = -1, stance = OrderStance.Normal };
+            new UnitOrder { unitId = unitId, goal = OrderGoal.Free, zoneIndex = -1, stance = OrderStance.Normal, focusEnemyId = -1, persistent = false };
     }
 
     /// <summary>
@@ -62,6 +64,18 @@ namespace SeoYuGi.Battle
         /// <summary>마지막 무전 응답 — HUD 표시용.</summary>
         public string LastAck { get; private set; } = "";
 
+        /// <summary>핑 포커스 — 지휘관이 핑 찍은 적. AiBrain이 타겟 선정에서 최우선한다. -1 = 없음.</summary>
+        public int FocusEnemyId { get; private set; } = -1;
+
+        /// <summary>포커스 만료 시각 (전투 시계 기준).</summary>
+        public float FocusUntil { get; private set; }
+
+        public void SetFocus(int enemyId, float until)
+        {
+            FocusEnemyId = enemyId;
+            FocusUntil = until;
+        }
+
         public UnitOrder Get(int unitId) =>
             byUnit.TryGetValue(unitId, out var o) ? o : UnitOrder.Free(unitId);
 
@@ -75,11 +89,17 @@ namespace SeoYuGi.Battle
             foreach (var o in squad.orders) byUnit[o.unitId] = o;
         }
 
-        /// <summary>라운드 시작 = 백지. 지난 판 명령이 새 판에 남지 않는다.</summary>
+        /// <summary>라운드 시작 = 백지. 단 "매치 내내"(persistent) 명령은 라운드를 넘어 유지된다.</summary>
         public void Clear()
         {
+            var keep = new List<UnitOrder>();
+            foreach (var kv in byUnit)
+                if (kv.Value.persistent) keep.Add(kv.Value);
             byUnit.Clear();
+            foreach (var o in keep) byUnit[o.unitId] = o;
             LastAck = "";
+            FocusEnemyId = -1;
+            FocusUntil = 0f;
         }
     }
 }

@@ -454,6 +454,7 @@ namespace SeoYuGi.Ai
 
         private ActorState? PickTarget(IWorldView world, ActorState me)
         {
+            var myOrder = _orders != null ? _orders.Get(_actorId) : SeoYuGi.Battle.UnitOrder.Free(_actorId);
             ActorState? best = null;
             float bestScore = float.MinValue;
             foreach (var a in world.Actors)
@@ -465,6 +466,12 @@ namespace SeoYuGi.Ai
                 if (a.IsHuman) score += _cfg.HumanTargetBonus;
                 if (!visible) score -= 2f;
                 score += (3 - a.Hp) * 0.5f; // 마무리 우선
+                // 지휘관 핑 포커스 — 지목된 적은 보이는 한 최우선 (지휘관 모드 전용, _orders 없으면 무시)
+                if (_orders != null && a.Id == _orders.FocusEnemyId && world.Time < _orders.FocusUntil)
+                    score += 100f;
+                // 무전 지명 타겟 ("저격수부터 노려") — 상시 명령이라 다음 명령·라운드 끝까지 유지
+                if (a.Id == myOrder.focusEnemyId)
+                    score += 100f;
                 if (score > bestScore) { bestScore = score; best = a; }
             }
             return best;

@@ -84,28 +84,175 @@ namespace SeoYuGi.BattleView
         /// <summary>지휘관 모드 — 내 팀 봇에게 내린 상시 명령. 멀티 모드에선 항상 비어 있다(= 완전 자율).</summary>
         public CommandState Orders { get; } = new CommandState();
 
-        RadioWindow radio; // 지휘관 모드 전용 무전창. 멀티 모드에선 비활성.
+        RadioWindow radio; // 지휘관 모드 전용 무전 채팅바. 멀티 모드에선 비활성.
+        VoiceRadio voice;  // 음성 무전 (V 꾹 — push-to-talk). 지휘관 모드 전용.
+        bool typingPrev;   // 텍스트 입력 상태 엣지 — 유닛 조작 잠금/복원용
 
         /// <summary>
-        /// 무전창 준비 — 지휘관 모드에서만 활성. 프리셋은 LLM을 거치지 않고 바로 명령이 된다.
+        /// 무전 준비 — 지휘관 모드에서만 활성. 채팅바(Enter)·음성(V 꾹)이 같은 LLM 길로 들어가고,
+        /// 퀵챗(숫자키)은 LLM 없이 즉시 명령이 된다 (ApplyQuickChatOrder).
         /// </summary>
         void EnsureRadio()
         {
             if (radio == null)
             {
                 radio = gameObject.AddComponent<RadioWindow>();
-                radio.Init(() => Orders.LastAck,
-                    () => OrderPresets.For(Round != null ? Round.Zones.Count : 0)); // 거점 지목은 맵의 거점 수만큼
-                radio.OnPreset += p =>
-                {
-                    var squad = CommandableUnitIds();
-                    if (squad.Count == 0) return;
-                    Orders.Apply(OrderPresets.Build(p, squad, Round != null ? Round.Zones.Count : 0));
-                    battleAudio.PlaySfx("S2_TelegraphAlly", 0.7f); // 무전 발신음 — 전용 SFX 나오기 전까지 대용
-                };
+                radio.Init(() => Orders.LastAck);
+                radio.OnFreeText += SendFreeText;
+
+                voice = gameObject.AddComponent<VoiceRadio>();
+                voice.Init(() => phase == Phase.Playing && !RadioWindow.TextInputActive);
+                voice.OnTranscript += SendFreeText; // 받아쓴 문장이 내 채팅 줄로 남는다 (SendFreeText가 표시)
             }
             radio.enabled = GameModeState.IsCommander;
+            voice.enabled = GameModeState.IsCommander;
             if (!radio.enabled) radio.Close(); // 모드가 바뀌었는데 시간이 느린 채로 남지 않게
+        }
+
+        /// <summary>자연어 무전 발신 — 채팅바·음성 공용. 내 발신·분대 응답 모두 채팅 로그에 남는다.</summary>
+        void SendFreeText(string text)
+        {
+            var squad = CommandableUnitIds();
+            if (squad.Count == 0) { if (radio != null) radio.SetWaiting(false); return; }
+            ShowRadioLine(playerUnitId, text); // 내가 보낸 무전 — 말풍선 + 채팅 로그
+            battleAudio.PlaySfx("S2_TelegraphAlly", 0.7f); // 무전 발신음 — 전용 SFX 나오기 전까지 대용
+            var enemies = new List<int>();
+            foreach (var u in Battle.Units)
+                if (u.alive && u.team != playerTeam) enemies.Add(u.id);
+            LlmRadio.Request(text, SquadBrief(squad, enemies), Round != null ? Round.Zones.Count : 0, squad, enemies,
+                result =>
+                {
+                    Orders.Apply(result); // understood=false면 기존 명령 유지 — ack만 갱신
+                    int speaker = result.orders.Count > 0 ? result.orders[0].unitId
+                                : squad.Count > 0 ? squad[0] : playerUnitId;
+                    ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "…수신 불량." : result.ack);
+                    ShowOrderMarkers(result.orders);
+                    if (radio != null) radio.SetWaiting(false);
+                });
+        }
+
+        /// <summary>무전 한 줄 시각화 — ShowChatVisual과 같은 문법(말풍선 + 채팅 로그), 문구만 자유.</summary>
+        void ShowRadioLine(int unitId, string text)
+        {
+            var u = Battle?.GetUnit(unitId);
+            if (u == null) return;
+            var view = viewRegistry.Get(unitId);
+            if (view != null && view.gameObject.activeInHierarchy)
+                ChatBubble.Show(unitId, view.transform, text, Color.white);
+            hud.AddChatLine(FindSlot(unitId).callsign, text, Color.Lerp(teamColors[u.team], Color.white, 0.55f));
+        }
+
+        /// <summary>복종 가시화 — 명령 받은 봇 머리 위에 뭘 할지 띄운다. "말이 게임을 바꿨다"가 눈에 보이게.</summary>
+        void ShowOrderMarkers(List<UnitOrder> orders)
+        {
+            foreach (var o in orders)
+            {
+                var view = viewRegistry.Get(o.unitId);
+                if (view == null || !view.gameObject.activeInHierarchy) continue;
+                FloatingText.Spawn(view.transform.position, OrderDesc(o),
+                    Color.Lerp(teamColors[playerTeam], Color.white, 0.35f), 1.1f, 1.8f);
+            }
+        }
+
+        string OrderDesc(UnitOrder o)
+        {
+            if (o.focusEnemyId >= 0)
+                return FindSlot(o.focusEnemyId).callsign + " 노려!"; // 지명 타겟이 제일 중요한 정보
+            switch (o.goal)
+            {
+                case OrderGoal.Zone: return OrderPresets.ZoneName(o.zoneIndex) + " 거점으로!";
+                case OrderGoal.Highland: return "고지대로!";
+                case OrderGoal.Regroup: return "집결!";
+                case OrderGoal.Fallback: return "후퇴!";
+                default:
+                    return o.stance == OrderStance.Aggressive ? "돌격!"
+                         : o.stance == OrderStance.Evasive ? "교전 회피!" : "자율 판단!";
+            }
+        }
+
+        /// <summary>퀵챗 = 무전 명령 (지휘관 모드) — 숫자키 채팅 문구대로 팀 봇이 움직인다. 8~0(사교)은 채팅만.</summary>
+        void ApplyQuickChatOrder(int lineId)
+        {
+            if (!GameModeState.IsCommander) return;
+            var squad = CommandableUnitIds();
+            if (squad.Count == 0) return;
+            int zoneCount = Round != null ? Round.Zones.Count : 0;
+
+            OrderPresets.Preset p;
+            switch (lineId)
+            {
+                case 0: p = new OrderPresets.Preset { kind = OrderPresets.Kind.Aggressive, ack = "교전에 들어갑니다." }; break;
+                case 1: p = new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone, ack = "거점별로 전개합니다." }; break;
+                case 2:
+                case 3:
+                case 4:
+                {
+                    int z = lineId - 2;
+                    if (z >= zoneCount) return; // 이 맵에 없는 거점 — 채팅만 나간다
+                    p = new OrderPresets.Preset { kind = OrderPresets.Kind.GatherZone, zone = z, ack = $"{OrderPresets.ZoneName(z)} 거점으로 집결합니다." };
+                    break;
+                }
+                case 5: p = new OrderPresets.Preset { kind = OrderPresets.Kind.RegroupOnMe, ack = "지휘관께 붙습니다." }; break;
+                case 6: p = new OrderPresets.Preset { kind = OrderPresets.Kind.Fallback, ack = "물러납니다." }; break;
+                default: return;
+            }
+            var built = OrderPresets.Build(p, squad, zoneCount);
+            Orders.Apply(built);
+            ShowRadioLine(squad[0], Orders.LastAck); // 분대 응답도 채팅 로그에
+            ShowOrderMarkers(built.orders);
+        }
+
+        /// <summary>
+        /// LLM 무전 프롬프트용 전장 상황 — 분대원(HP·위치)·지휘관 위치·거점 소유까지.
+        /// 이게 있어야 "피 없는 애는 빠져", "제일 가까운 애가 B 막아" 같은 상황 인지 명령이 성립한다.
+        /// </summary>
+        string SquadBrief(List<int> squad, List<int> enemies)
+        {
+            var sb = new System.Text.StringBuilder();
+            var me = Battle.GetUnit(playerUnitId);
+            if (me != null)
+                sb.Append("지휘관 위치: (").Append(me.pos.x).Append(',').Append(me.pos.y).Append(")\n");
+            sb.Append("아군 분대:\n");
+            foreach (var id in squad)
+            {
+                var r = FindRoster(id);
+                var u = Battle.GetUnit(id);
+                sb.Append(id).Append(": ").Append(ClassNames.For(r.team, r.cls))
+                  .Append(" (").Append(RoleWord(r.cls)).Append(") HP ")
+                  .Append(u.hp).Append('/').Append(u.maxHp)
+                  .Append(" 위치 (").Append(u.pos.x).Append(',').Append(u.pos.y).Append(")\n");
+            }
+            // 적은 편성만 준다 — 위치·HP는 시야 밖 정보라 새면 안 된다 (실제 사격도 시야 규칙을 탄다)
+            sb.Append("적군 (생존, 위치 불명):\n");
+            foreach (var id in enemies)
+            {
+                var r = FindRoster(id);
+                sb.Append(id).Append(": ").Append(ClassNames.For(r.team, r.cls))
+                  .Append(" (").Append(RoleWord(r.cls)).Append(")\n");
+            }
+            if (Round != null)
+                for (int i = 0; i < Round.Zones.Count; i++)
+                {
+                    var z = Round.Zones[i];
+                    string owner = z.owner < 0 ? "중립" : z.owner == playerTeam ? "아군" : "적군";
+                    sb.Append("거점 ").Append(OrderPresets.ZoneName(i)).Append('(').Append(i)
+                      .Append("): ").Append(owner)
+                      .Append(" — 중심 (").Append(z.Center.x).Append(',').Append(z.Center.y).Append(")\n");
+                }
+            return sb.ToString();
+        }
+
+        static string RoleWord(UnitClass cls)
+        {
+            switch (cls)
+            {
+                case UnitClass.Tank: return "근접 탱커";
+                case UnitClass.Balance: return "돌격형";
+                case UnitClass.Assassin: return "암살자";
+                case UnitClass.Grenadier: return "폭격형";
+                case UnitClass.Sniper: return "저격수";
+                default: return "";
+            }
         }
 
         /// <summary>지휘 대상 — 내 팀에서 나를 뺀 살아있는 봇.</summary>
@@ -377,6 +524,16 @@ namespace SeoYuGi.BattleView
                 PingMarker.Spawn(gridView.CoordToWorld(cell), teamColors[u.team], type);
                 battleAudio.PlaySfx("S29_Ping", 0.9f); // 핑 전용음 — 적 감지음과 분리
             }
+
+            // 지휘관 모드 — 내가 적 유닛 칸을 핑하면 팀 봇들이 그 적을 우선 타겟 (포커싱, 6초)
+            if (GameModeState.IsCommander && unitId == playerUnitId)
+                foreach (var enemy in Battle.Units)
+                    if (enemy.alive && enemy.team != playerTeam && enemy.pos.Equals(cell))
+                    {
+                        Orders.SetFocus(enemy.id, Battle.time + 6f);
+                        hud.PushEvent($"[무전] {FindSlot(enemy.id).callsign} 집중 사격!", teamColors[playerTeam]);
+                        break;
+                    }
             if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
                 foreach (var s in NetLobby.Slots)
                     if (s.owner == SlotOwner.RemoteHuman && s.team == u.team)
@@ -1796,20 +1953,28 @@ namespace SeoYuGi.BattleView
                 input.enabled = true;
             }
 
-            // 무전 (TAB) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
+            // 무전 채팅바 (Enter) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
             if (radio != null && radio.enabled) radio.HandleHotkey();
 
+            // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
+            bool typing = RadioWindow.TextInputActive;
+            if (typing != typingPrev)
+            {
+                input.enabled = !typing; // 유닛 이동·스킬 조작 — 여기(Playing 단계)선 카운트다운 뒤라 안전
+                typingPrev = typing;
+            }
+
             // 해킹 (H) — 궁게이지 만충 시, 5초간 적 예측 AI 교란 + 적 전원 위치 표시. 클라는 Pending.
-            if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
+            if (!typing && Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
                 intentSink.Submit(BattleIntent.Hack(playerUnitId));
 
             // 싱글 — 내가 죽으면 SPACE로 결과까지 빨리감기 (부활 대신, 2026-09-05). 온라인은 남들이 싸우는 중이라 불가.
             var meForSkip = Battle.GetUnit(playerUnitId);
             bool canSkip = !NetBoot.IsOnline && meForSkip != null && !meForSkip.alive;
-            if (canSkip && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (canSkip && !typing && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
                 fastForward = !fastForward;
             if (!canSkip) fastForward = false;
-            if (fastForward) Time.timeScale = 6f;            // 히트스톱이 1로 되돌려도 매 프레임 다시 6
+            if (fastForward && !GameFreeze.Active) Time.timeScale = 6f; // 히트스톱이 1로 되돌려도 매 프레임 다시 6 (프리즈는 존중)
             else if (Time.timeScale > 1f) Time.timeScale = 1f; // 해제 순간 복원 (히트스톱 0.05는 건드리지 않음)
             hud.SetSkipHint(canSkip, fastForward);
 
@@ -1825,7 +1990,7 @@ namespace SeoYuGi.BattleView
 
             // 빠른채팅 — 숫자키 1~8 즉시 전송. Tab = 치트시트 토글(기본 켜짐, 읽기 전용).
             // 쿨다운·팀 배달은 호스트 권위 — 클라는 요청만 쏜다.
-            if (Keyboard.current != null)
+            if (!typing && Keyboard.current != null)
             {
                 if (Keyboard.current.tabKey.wasPressedThisFrame)
                     hud.ShowChatCheatsheet = !hud.ShowChatCheatsheet;
@@ -1833,14 +1998,15 @@ namespace SeoYuGi.BattleView
                     if (Keyboard.current[ChatKeys[i]].wasPressedThisFrame)
                     {
                         if (IsNetClient) NetSync.ClientSendChat(playerUnitId, i);
-                        else quickChat.TrySend(playerUnitId, i, Time.time);
+                        else if (quickChat.TrySend(playerUnitId, i, Time.time))
+                            ApplyQuickChatOrder(i); // 지휘관 모드 — 퀵챗이 곧 명령
                         break;
                     }
             }
 
             // 휠클릭 핑 — 탭 = ▼(디폴트), 꾹 누르고 끌면 ▼/!/? 선택 휠 (롤식).
             // 칸은 누른 순간 기준 — 휠 조작으로 마우스가 옮겨가도 핑 위치는 안 흔들린다.
-            UpdatePingInput();
+            if (!typing) UpdatePingInput();
 
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
             if (IsNetClient)

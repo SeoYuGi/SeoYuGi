@@ -21,7 +21,8 @@ namespace SeoYuGi.Battle
             Highland,     // 고지대 선점
             Avoid,        // 교전 회피 (목적지는 유지)
             Aggressive,   // 적극 교전 (목적지는 유지)
-            GatherZone    // 지정 거점으로 전원 집결
+            GatherZone,   // 지정 거점으로 전원 집결
+            Fallback      // 후퇴 — 지휘관 쪽으로 물러나며 교전 회피
         }
 
         public struct Preset
@@ -99,6 +100,10 @@ namespace SeoYuGi.Battle
                         o.goal = OrderGoal.Zone;
                         o.zoneIndex = p.zone;
                         o.stance = OrderStance.Normal;
+                        break;
+                    case Kind.Fallback:
+                        o.goal = OrderGoal.Fallback;
+                        o.stance = OrderStance.Evasive;
                         break;
                 }
                 s.orders.Add(o);

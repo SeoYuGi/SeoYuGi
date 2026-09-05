@@ -1,70 +1,72 @@
-﻿using System;
-using System.Collections.Generic;
-using SeoYuGi.Battle;
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 무전 지휘창 (지휘관 모드) — TAB으로 열면 전투가 느려지고, 팀원에게 상시 명령을 내린다.
+    /// 무전 채팅바 (지휘관 모드) — Enter로 열고 문장을 치면 LLM이 명령으로 해석한다.
+    /// 프리셋 창은 은퇴 (2026-09-05): 정형 콜은 퀵채팅(숫자키)이 즉시 명령이 되고,
+    /// 이 바는 퀵챗으로 못 하는 자연어 명령 전용이다. 음성(V 꾹)도 같은 길로 들어온다.
     ///
-    /// 프리셋 버튼은 LLM을 거치지 않는다. 즉시 나가고 오프라인에서도 동작하므로
-    /// 네트워크가 없어도 지휘관 모드 전체가 성립한다. 자유 서술은 나중에 얹는 확장이다.
-    ///
-    /// 시간은 Time.timeScale로 늦춘다 — 전투 시계(Combat/Move/Round.Tick)가 전부
-    /// Time.deltaTime에서 나오므로 별도 배선 없이 같이 느려진다. 완전 정지(0) 대신
-    /// 아주 느리게(0.08) 두는 이유는, 멈추면 코루틴·연출이 얼어붙고 "정지 버그"처럼 보이기 때문이다.
+    /// 열려 있는 동안 완전 정지(GameFreeze) — 슬로모(0.08)는 "덜 멈춘 느낌"이라는
+    /// 피드백(2026-09-05)으로 폐기. 전투 시계가 전부 Time.deltaTime이라 같이 멈춘다.
+    /// 발신(Enter)하면 즉시 닫혀 게임이 재개되고, 응답은 HUD 이벤트 피드로 온다.
     /// </summary>
     public class RadioWindow : MonoBehaviour
     {
-        const float SlowScale = 0.08f;   // 열려 있는 동안의 시간 배속
-        const float FadeSeconds = 0.12f;
-
         public bool IsOpen { get; private set; }
 
-        /// <summary>프리셋 선택. 러너가 실제 명령으로 펴서 적용한다.</summary>
-        public event Action<OrderPresets.Preset> OnPreset;
+        /// <summary>텍스트 입력 중 — 게임 핫키(해킹·퀵챗·핑·카메라·이동)가 이걸 보고 잠긴다.
+        /// 한글 타이핑의 물리키가 게임키와 겹치기 때문 (ㅂ/ㅈ=카메라 회전, ㅗ=해킹).</summary>
+        public static bool TextInputActive { get; private set; }
+
+        /// <summary>자유 서술 발신 (Enter). 러너가 LlmRadio로 보내고, 응답이 오면 SetWaiting(false).</summary>
+        public event Action<string> OnFreeText;
 
         Func<string> ackProvider;
-        Func<IReadOnlyList<OrderPresets.Preset>> presetProvider;
-        float restoreScale = 1f;
-        GUIStyle titleStyle, presetStyle, ackStyle, hintStyle;
+        GUIStyle hintStyle, inputStyle, ackStyle;
         bool stylesReady;
+        string draft = "";   // 입력 중인 문장
+        bool waiting;        // 발신 후 응답 대기 — 재발신 잠금 (게임은 돌아간다)
+        bool wantFocus;      // 열린 직후 입력줄에 포커스
 
-        public void Init(Func<string> lastAck, Func<IReadOnlyList<OrderPresets.Preset>> presets)
+        /// <summary>교신 대기 해제 — 러너가 LlmRadio 응답 콜백에서 부른다.</summary>
+        public void SetWaiting(bool value) => waiting = value;
+
+        public void Init(Func<string> lastAck)
         {
             ackProvider = lastAck;
-            presetProvider = presets;
         }
 
         /// <summary>러너가 매 프레임 호출 — 지휘관 모드가 아니거나 전투 중이 아니면 enabled=false로 둔다.</summary>
         public void HandleHotkey()
         {
             if (Keyboard.current == null) return;
-            if (Keyboard.current.tabKey.wasPressedThisFrame) Toggle();
-            else if (IsOpen && Keyboard.current.escapeKey.wasPressedThisFrame) Close();
-        }
-
-        public void Toggle()
-        {
-            if (IsOpen) Close();
-            else Open();
+            if (!IsOpen && (Keyboard.current.enterKey.wasPressedThisFrame ||
+                            Keyboard.current.numpadEnterKey.wasPressedThisFrame))
+                Open();
+            else if (IsOpen && Keyboard.current.escapeKey.wasPressedThisFrame)
+                Close();
         }
 
         void Open()
         {
             if (IsOpen) return;
             IsOpen = true;
-            restoreScale = Mathf.Approximately(Time.timeScale, SlowScale) ? 1f : Time.timeScale;
-            Time.timeScale = SlowScale;
+            GameFreeze.Push(); // 완전 정지 — 치는 동안 전장이 안 흐른다
+            Input.imeCompositionMode = IMECompositionMode.On; // 한글 조합 — Both 입력 모드 필수
+            TextInputActive = true;
+            wantFocus = true;
         }
 
         public void Close()
         {
             if (!IsOpen) return;
             IsOpen = false;
-            Time.timeScale = restoreScale <= 0f ? 1f : restoreScale;
+            GameFreeze.Pop();
+            Input.imeCompositionMode = IMECompositionMode.Auto;
+            TextInputActive = false;
         }
 
         void OnDisable()
@@ -76,26 +78,20 @@ namespace SeoYuGi.BattleView
         {
             if (stylesReady) return;
             stylesReady = true;
-            titleStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = new Color(0.55f, 0.9f, 1f) }
-            };
-            presetStyle = new GUIStyle(GUI.skin.button) { fontSize = 20, fontStyle = FontStyle.Bold };
-            ackStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 18, alignment = TextAnchor.MiddleLeft, wordWrap = true,
-                normal = { textColor = new Color(0.75f, 0.95f, 0.8f) }
-            };
+            inputStyle = new GUIStyle(GUI.skin.textField) { alignment = TextAnchor.MiddleLeft };
             hintStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 15, alignment = TextAnchor.MiddleLeft,
+                alignment = TextAnchor.MiddleLeft,
                 normal = { textColor = new Color(0.55f, 0.62f, 0.72f) }
             };
-            GameFonts.Apply(titleStyle, GameFonts.Title);
-            GameFonts.Apply(presetStyle, GameFonts.Hud);
-            GameFonts.Apply(ackStyle, GameFonts.Hud);
+            ackStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleLeft, wordWrap = true,
+                normal = { textColor = new Color(0.75f, 0.95f, 0.8f) }
+            };
+            GameFonts.Apply(inputStyle, GameFonts.Hud);
             GameFonts.Apply(hintStyle, GameFonts.Hud);
+            GameFonts.Apply(ackStyle, GameFonts.Hud);
         }
 
         void OnGUI()
@@ -103,54 +99,67 @@ namespace SeoYuGi.BattleView
             if (!IsOpen) return;
             EnsureStyles();
 
-            var presets = presetProvider != null ? presetProvider() : null;
-            int n = presets != null ? presets.Count : 0;
+            float s = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
+            inputStyle.fontSize = Mathf.RoundToInt(18 * s);
+            hintStyle.fontSize = Mathf.RoundToInt(14 * s);
+            ackStyle.fontSize = Mathf.RoundToInt(15 * s);
 
-            // 화면 중앙 — 구석에 있으면 전투에 시선이 묶여 안 보인다는 피드백 (2026-09-05)
-            const float BtnH = 56f, GapY = 12f, GapX = 14f, PadX = 26f;
-            int cols = n > 5 ? 2 : 1;
-            int rows = cols == 1 ? n : (n + 1) / 2;
-            float btnW = 300f;
-            float W = PadX * 2 + btnW * cols + GapX * (cols - 1);
-            float headerH = 92f, footerH = 56f;
-            float H = headerH + rows * (BtnH + GapY) + footerH;
+            // 하단 좌측 채팅바 — 시선이 전장에 남는 위치
+            float w = Mathf.Min(560f * s, Screen.width * 0.5f);
+            float fieldH = 42f * s, pad = 10f * s;
+            float x = 24f * s;
+            float yField = Screen.height - 120f * s;
 
-            var box = new Rect((Screen.width - W) * 0.5f, (Screen.height - H) * 0.5f, W, H);
-
-            // 화면 전체를 살짝 눌러 무전창에 시선을 모은다
-            var prev = GUI.color;
-            GUI.color = new Color(0f, 0f, 0f, 0.45f);
-            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
-
-            GUI.color = new Color(0.35f, 0.85f, 1f, 0.55f);            // 테두리
-            GUI.DrawTexture(new Rect(box.x - 2f, box.y - 2f, box.width + 4f, box.height + 4f), Texture2D.whiteTexture);
-            GUI.color = new Color(0.02f, 0.04f, 0.08f, 0.97f);         // 판
-            GUI.DrawTexture(box, Texture2D.whiteTexture);
-            GUI.color = prev;
-
-            float y = box.y + 20f;
-            GUI.Label(new Rect(box.x + PadX, y, box.width - PadX * 2, 34f), "무전", titleStyle);
-            y += 36f;
-            GUI.Label(new Rect(box.x + PadX, y, box.width - PadX * 2, 24f),
-                "팀원에게 지시한다 · TAB 또는 ESC로 닫기", hintStyle);
-            y = box.y + headerH;
-
-            for (int i = 0; i < n; i++)
+            if (!LlmRadio.HasKey)
             {
-                int col = cols == 1 ? 0 : i % cols;
-                int row = cols == 1 ? i : i / cols;
-                var r = new Rect(box.x + PadX + col * (btnW + GapX),
-                                 y + row * (BtnH + GapY), btnW, BtnH);
-                if (GUI.Button(r, presets[i].label, presetStyle))
-                {
-                    OnPreset?.Invoke(presets[i]);
-                    Close();
-                }
+                GUI.Label(new Rect(x, yField, w, fieldH),
+                    "자유 무전 오프라인 — API 키 없음. 퀵챗(숫자키)은 동작한다.", hintStyle);
+                return;
             }
 
+            // 배경판
+            var prev = GUI.color;
+            GUI.color = new Color(0.02f, 0.04f, 0.08f, 0.88f);
+            GUI.DrawTexture(new Rect(x - pad, yField - 30f * s - pad, w + pad * 2, fieldH + 30f * s + pad * 2),
+                Texture2D.whiteTexture);
+            GUI.color = prev;
+
             string ack = ackProvider != null ? ackProvider() : "";
-            if (!string.IsNullOrEmpty(ack))
-                GUI.Label(new Rect(box.x + PadX, box.yMax - 44f, box.width - PadX * 2, 34f), "> " + ack, ackStyle);
+            string topLine = waiting ? "…교신 중"
+                : !string.IsNullOrEmpty(ack) ? "> " + ack
+                : "무전 · Enter 발신 · ESC 취소";
+            GUI.Label(new Rect(x, yField - 28f * s, w, 26f * s), topLine,
+                waiting || string.IsNullOrEmpty(ack) ? hintStyle : ackStyle);
+
+            // Enter = 발신 — TextField가 이벤트를 먹기 전에 가로챈다
+            var ev = Event.current;
+            bool submit = !waiting && ev.type == EventType.KeyDown &&
+                          (ev.keyCode == KeyCode.Return || ev.keyCode == KeyCode.KeypadEnter) &&
+                          GUI.GetNameOfFocusedControl() == "RadioFreeText";
+            if (submit)
+            {
+                ev.Use();
+                var text = draft.Trim();
+                draft = "";
+                if (text.Length > 0)
+                {
+                    waiting = true;
+                    OnFreeText?.Invoke(text);
+                }
+                Close(); // 발신 즉시 게임 재개 — 응답은 HUD 피드로
+                return;
+            }
+
+            GUI.enabled = !waiting;
+            GUI.SetNextControlName("RadioFreeText");
+            draft = GUI.TextField(new Rect(x, yField, w, fieldH), draft, inputStyle);
+            GUI.enabled = true;
+
+            if (wantFocus)
+            {
+                GUI.FocusControl("RadioFreeText");
+                wantFocus = false;
+            }
         }
     }
 }

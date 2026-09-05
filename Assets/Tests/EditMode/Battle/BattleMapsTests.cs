@@ -38,7 +38,7 @@ namespace SeoYuGi.Battle.Tests
         }
 
         [TestCaseSource(nameof(AllMapIndices))]
-        public void ZonePatches_Odd_3x3_LeftToRight_PointSymmetric(int index)
+        public void ZonePatches_Rect3to5_LeftToRight_PointSymmetric(int index)
         {
             var map = BattleMaps.Get(index);
             // 리마스터: 맵마다 거점 수 가변(1 또는 3) — 단 홀수(동점 없음)
@@ -47,7 +47,17 @@ namespace SeoYuGi.Battle.Tests
             var centers = new List<Coord>();
             foreach (var zone in map.Zones)
             {
-                Assert.AreEqual(9, zone.Count, $"{map.Name}: 거점은 3×3 패치");
+                // 거점 크기 가변: 꽉 찬 직사각형, 한 변 3~5칸 (3×3 / 4×4 / 5×5)
+                int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+                foreach (var c in zone)
+                {
+                    if (c.x < minX) minX = c.x; if (c.x > maxX) maxX = c.x;
+                    if (c.y < minY) minY = c.y; if (c.y > maxY) maxY = c.y;
+                }
+                int w = maxX - minX + 1, h = maxY - minY + 1;
+                Assert.That(w, Is.InRange(3, 5), $"{map.Name}: 거점 폭은 3~5칸");
+                Assert.That(h, Is.InRange(3, 5), $"{map.Name}: 거점 높이는 3~5칸");
+                Assert.AreEqual(w * h, zone.Count, $"{map.Name}: 거점은 꽉 찬 직사각형 패치");
                 centers.Add(CenterOf(zone));
             }
             for (int i = 0; i < centers.Count - 1; i++)

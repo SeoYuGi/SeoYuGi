@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using SeoYuGi.Ai;          // AiConfig, AiDifficulty
 using SeoYuGi.Battle;
 using SeoYuGi.BattleView; // GameFonts
 using SeoYuGi.UI;          // ClassCard
@@ -84,7 +85,54 @@ public class UIClassSelectPopup : UIPopup
         teamCls = (UnitClass[])initial.Clone();
         editIdx = 0;
         BuildTeamStrip();
+        BuildDifficultyBar();
         RefreshTeamStrip();
+    }
+
+    // ── AI 난이도 선택 (상/중/하) ─────────────────────────────
+
+    readonly Image[] diffBgs = new Image[3];
+    readonly Text[] diffTexts = new Text[3];
+    static readonly (string label, AiDifficulty diff, Color color)[] DiffOptions =
+    {
+        ("하 · EASY",   AiDifficulty.Easy,   new Color(0.35f, 0.8f, 0.45f)),
+        ("중 · NORMAL", AiDifficulty.Normal, new Color(0.4f, 0.7f, 1f)),
+        ("상 · HARD",   AiDifficulty.Hard,   new Color(1f, 0.45f, 0.35f)),
+    };
+
+    void BuildDifficultyBar()
+    {
+        const float bw = 150f, bh = 40f, gap = 10f, y = 372f; // 상단
+        float total = 3 * bw + 2 * gap;
+        MakeText(transform, "AI 난이도", 16, FontStyle.Bold, DimText, TextAnchor.MiddleRight,
+            new Vector2(0.5f, 0.5f), new Vector2(-total / 2f - 14f, y), new Vector2(120f, bh), GameFonts.Hud);
+        for (int i = 0; i < 3; i++)
+        {
+            int idx = i;
+            float cx = -total / 2f + bw / 2f + i * (bw + gap);
+            var bg = MakeImage(transform, null, CardBg, new Vector2(0.5f, 0.5f), new Vector2(cx, y), new Vector2(bw, bh));
+            bg.GetComponent<Image>().raycastTarget = true;
+            BindEvent(bg.gameObject, _ => { AiConfig.Difficulty = DiffOptions[idx].diff; RefreshDifficulty(); });
+            var ol = bg.gameObject.AddComponent<Outline>();
+            ol.effectDistance = new Vector2(2f, -2f);
+            diffBgs[i] = bg.GetComponent<Image>();
+            diffTexts[i] = MakeText(bg, DiffOptions[i].label, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(bw, bh), GameFonts.Hud);
+        }
+        RefreshDifficulty();
+    }
+
+    void RefreshDifficulty()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            bool sel = AiConfig.Difficulty == DiffOptions[i].diff;
+            var c = DiffOptions[i].color;
+            diffBgs[i].color = sel ? Color.Lerp(CardBg, c, 0.4f) : CardBg;
+            diffTexts[i].color = sel ? Color.white : new Color(0.6f, 0.65f, 0.72f);
+            var ol = diffBgs[i].GetComponent<Outline>();
+            if (ol != null) ol.effectColor = sel ? c : new Color(0.25f, 0.3f, 0.4f);
+        }
     }
 
     void BuildTeamStrip()

@@ -1,5 +1,8 @@
 namespace SeoYuGi.Ai
 {
+    /// AI 난이도 — 매치 시작 시 러너가 설정. ForClass가 이 값으로 수치를 스케일.
+    public enum AiDifficulty { Easy, Normal, Hard }
+
     /// AiBrain 튜닝 수치. 코어에서 ScriptableObject로 감싸 노출 권장.
     public class AiConfig
     {
@@ -21,7 +24,40 @@ namespace SeoYuGi.Ai
         public int HealSeekMissingHp = 2;         // 잃은 HP가 이 이상일 때만 힐팩을 노린다 (0=비활성)
         public int HealSeekRadius = 6;            // 이 칸 이내의 힐팩만 — 너무 멀면 거점 플레이 우선
 
+        /// 매치 난이도 — 러너가 매치 시작 시 설정. ForClass가 이 값으로 수치를 스케일.
+        public static AiDifficulty Difficulty = AiDifficulty.Normal;
+
         public static AiConfig ForClass(ClassId cls)
+        {
+            var cfg = ForClassBase(cls);
+            ApplyDifficulty(cfg);
+            return cfg;
+        }
+
+        /// 난이도 적용 — 하: 굼뜨고 잘 못 피함 / 상: 빠르고 회피·예측 정확.
+        static void ApplyDifficulty(AiConfig c)
+        {
+            switch (Difficulty)
+            {
+                case AiDifficulty.Easy:
+                    c.DodgeChance *= 0.45f;
+                    c.AttackInterval *= 1.7f;      // 방아쇠 굼뜸
+                    c.MinDecisionInterval *= 1.5f; // 판단 느림
+                    c.AggressionDelay += 0.4f;     // 반응 지연
+                    c.HealSeekRadius = System.Math.Max(2, c.HealSeekRadius - 2);
+                    break;
+                case AiDifficulty.Hard:
+                    c.DodgeChance = System.Math.Min(0.95f, c.DodgeChance * 1.4f);
+                    c.DodgeCooldown *= 0.6f;       // 자주 피함
+                    c.AttackInterval *= 0.65f;     // 빠른 연사
+                    c.MinDecisionInterval *= 0.7f; // 기민한 판단
+                    c.HumanTargetBonus += 1.5f;    // 인간 집중 저격
+                    break;
+                    // Normal = 기본값 유지
+            }
+        }
+
+        static AiConfig ForClassBase(ClassId cls)
         {
             switch (cls)
             {

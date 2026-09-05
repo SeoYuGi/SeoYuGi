@@ -134,7 +134,7 @@ public class UITitlePopup : UIPopup
         var label = btn.GetComponentInChildren<Text>();
         if (label != null)
         {
-            label.text = "지휘관 모드";
+            label.text = "지휘관 모드 (싱글)";
             label.fontSize = 22;
             label.fontStyle = FontStyle.Bold;
             label.color = Color.Lerp(Color.white, Cyan, 0.45f);
@@ -144,7 +144,7 @@ public class UITitlePopup : UIPopup
 
     void BuildFooter()
     {
-        MakeText("Footer", "3판 2선승 · 라운드 120초 · 지휘관 모드에서는 TAB으로 팀원에게 무전한다", 14, FontStyle.Normal,
+        MakeText("Footer", "3판 2선승 · 라운드 120초 · 지휘관 모드: Enter 채팅 무전 · V 꾹 음성 무전 · 숫자키 퀵명령", 14, FontStyle.Normal,
             new Color(DimText.r, DimText.g, DimText.b, 0.8f),
             new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(900f, 22f), GameFonts.Hud);
     }

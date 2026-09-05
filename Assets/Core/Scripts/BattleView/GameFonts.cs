@@ -1,12 +1,12 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace SeoYuGi.BattleView
 {
     /// <summary>
     /// 게임 폰트 로더 — Resources/Fonts. 구글 폰트 네이티브 TTF만 사용
     /// (woff 변환본은 Unity에서 글리프 메시 생성 실패 — 텍스트 중복/누락 버그의 원인이었음).
-    /// Title/HudHeavy = Gothic A1 Black (타이틀·배너·자막·숫자 — 단단하고 샤프),
-    /// Hud = IBM Plex Sans KR Medium (라벨·이름표·본문 — 테크니컬 정제).
+    /// Title/HudHeavy = Pretendard Bold (타이틀·배너·자막·숫자),
+    /// Hud = Pretendard Regular (라벨·이름표·본문). 2026-09-05 프리텐다드로 통일.
     /// 없으면 null 반환 — 호출부는 기본 폰트 유지 (안전 폴백).
     /// </summary>
     public static class GameFonts
@@ -22,9 +22,11 @@ namespace SeoYuGi.BattleView
         {
             if (loaded) return;
             loaded = true;
-            // 전반적으로 얇게 — 제목도 IBM Plex Regular, 본문은 Light
-            title = Resources.Load<Font>("Fonts/IBMPlexSansKR-Regular");
-            hud = Resources.Load<Font>("Fonts/IBMPlexSansKR-Light");
+            title = Resources.Load<Font>("Fonts/Pretendard-Bold");
+            hud = Resources.Load<Font>("Fonts/Pretendard-Regular");
+            // 폰트가 아직 안 들어왔을 때만 구 폰트로 — 화면이 통째로 비지 않게
+            if (title == null) title = Resources.Load<Font>("Fonts/IBMPlexSansKR-Regular");
+            if (hud == null) hud = Resources.Load<Font>("Fonts/IBMPlexSansKR-Light");
         }
 
         /// <summary>TextMesh에 폰트 적용 — 머티리얼까지 교체해야 글자가 보인다.</summary>

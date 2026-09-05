@@ -718,6 +718,12 @@ namespace SeoYuGi.BattleView
                 GameModeState.Current = GameMode.Multi;
                 StartCoroutine(MatchmakeRoutine(popup));
             };
+            popup.OnSettings = () =>
+            {
+                // 타이틀에는 아직 전용 설정 화면이 없다 — 일시정지 메뉴의 설정을 그대로 띄운다.
+                EnsureRadio(); // pauseMenu 생성이 여기 묶여 있다
+                if (pauseMenu != null) pauseMenu.OpenSettings();
+            };
             popup.OnCommander = () =>
             {
                 // 지휘관 모드 — 매칭 없이 바로 봇전. 팀원 2기를 무전으로 지휘한다.

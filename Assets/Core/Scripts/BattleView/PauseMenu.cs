@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -50,6 +50,13 @@ namespace SeoYuGi.BattleView
             inSettings = false;
             restoreScale = Time.timeScale > 0f ? Time.timeScale : 1f;
             Time.timeScale = 0f;
+        }
+
+        /// <summary>설정만 바로 연다 — 타이틀 화면의 '설정' 버튼용.</summary>
+        public void OpenSettings()
+        {
+            Open();
+            inSettings = true;
         }
 
         public void Close()

@@ -81,7 +81,7 @@
             new ClassDef
             {
                 id = UnitClass.Tank, maxHp = 15, sightRange = 3, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3.0f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.5f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 2f, damage = 1, range = 2, cooldownSeconds = 6f },
@@ -91,7 +91,7 @@
             new ClassDef
             {
                 id = UnitClass.Balance, maxHp = 10, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.6f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.3f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 3, cooldownSeconds = 6f },
@@ -101,7 +101,7 @@
             new ClassDef
             {
                 id = UnitClass.Assassin, maxHp = 8, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.10f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.2f },
+                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.10f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.1f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Blink, telegraphSeconds = 0f, damage = 0, range = 3, cooldownSeconds = 6f },
@@ -111,7 +111,7 @@
             new ClassDef
             {
                 id = UnitClass.Grenadier, maxHp = 8, sightRange = 4, attackShape = AttackShape.Circle2,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.6f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.3f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 3, cooldownSeconds = 6f },
@@ -121,7 +121,7 @@
             new ClassDef
             {
                 id = UnitClass.Sniper, maxHp = 5, sightRange = 5, attackShape = AttackShape.Square2,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3.4f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.4f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 2, cooldownSeconds = 7f },

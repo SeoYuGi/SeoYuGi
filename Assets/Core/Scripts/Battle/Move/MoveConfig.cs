@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace SeoYuGi.Battle
 {
@@ -13,7 +13,8 @@ namespace SeoYuGi.Battle
         public int maxRange = 4;                  // 클릭 한 번에 갈 수 있는 최대 거리(칸)
         public float gaugeRegenPerSecond = 0.7f;  // 게이지 초당 회복량 (2026-09-05 이동 템포 상향)
         public float regenDelaySeconds = 1f;      // 이동 직후 게이지 회복 정지 시간 (홉 스팸 방지)
-        public float yellowCooldownSeconds = 3f;  // 노랑 이동 후 이동 불가 시간
+        public float yellowCooldownSeconds = 1.5f;// 노랑 이동 후 이동 불가 시간. 가장 짧은 적 예고보다 짧아야 한다 —
+                                                  // 길면 예고를 보고도 못 피해서 '무리한 대가'가 아니라 처형이 된다 (2026-09-05)
     }
 
     /// <summary>전투 공통 이동 설정. 프로필 없는 유닛은 defaultProfile을 쓴다.</summary>

@@ -17,6 +17,9 @@
         public float HumanTargetBonus = 3f;       // 타겟 선정 시 인간 슬롯 가중(거리 환산)
         public int SnipeRange = 7;   // 코어 조준사격 range 6 + 십자 끝 여유
         public float AggressionDelay = 0f;        // 판단 후 실행 지연 — 난이도 낮출 때 증가
+        public float AimReactionDelay = 0.5f;     // 조준이 대상의 새 위치를 따라잡는 데 걸리는 시간.
+                                                  // 0이면 플레이어가 착지하는 순간 그 칸에 예고가 깔려 회피가 성립하지 않는다
+                                                  // — 사람은 낼 수 없는 반응속도라 '억까'로 체감된다 (2026-09-05)
 
         public int GrenadeRange = 4; // 코어 파열탄·폭탄 배달 +1에 맞춤
 
@@ -44,6 +47,7 @@
                     c.AttackInterval *= 1.7f;      // 방아쇠 굼뜸
                     c.MinDecisionInterval *= 1.5f; // 판단 느림
                     c.AggressionDelay += 0.4f;     // 반응 지연
+                    c.AimReactionDelay = 0.8f;     // 조준이 굼뜸 — 이동으로 확실히 뿌리칠 수 있다
                     c.HealSeekRadius = System.Math.Max(2, c.HealSeekRadius - 2);
                     break;
                 case AiDifficulty.Hard:
@@ -52,6 +56,7 @@
                     c.AttackInterval *= 0.65f;     // 빠른 연사
                     c.MinDecisionInterval *= 0.7f; // 기민한 판단
                     c.HumanTargetBonus += 1.5f;    // 인간 집중 저격
+                    c.AimReactionDelay = 0.3f;     // 빠른 재조준 — 그래도 0은 아니다
                     break;
                     // Normal = 기본값 유지
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using SeoYuGi.Prediction;
 
@@ -135,7 +135,7 @@ namespace SeoYuGi.Ai
             // 2~3) 공격·스킬 — AttackInterval 페이싱 (연타 방지, 인간적 템포)
             if (target.HasValue && world.Time >= _nextAttackTime)
             {
-                var aim = AimCell(target.Value, out bool predictedAim); // 예측 칸(학습 전이면 현재 칸)
+                var aim = AimCell(world, target.Value, out bool predictedAim); // 반응 지연을 먹인 조준 칸
                 bool predicted = predictedAim && !aim.Equals(target.Value.Pos); // 현재 칸과 다를 때만 "통수"
                 var skill = TrySkill(world, me, target.Value, aim);
                 if (skill.Type != CommandType.None)
@@ -412,7 +412,7 @@ namespace SeoYuGi.Ai
             return best;
         }
 
-        private Cell AimCell(ActorState target, out bool predicted)
+        private Cell AimCell(IWorldView world, ActorState target, out bool predicted)
         {
             predicted = false;
             if (_predictor != null)
@@ -424,7 +424,30 @@ namespace SeoYuGi.Ai
                     return preds[0].Cell;
                 }
             }
-            return target.Pos;
+            return LaggedPos(world, target); // 즉시 추적 금지 — 이게 회피 창을 만든다
+        }
+
+        // 조준 기억 — (조준에 반영된 칸, 대상의 현재 칸, 그 칸으로 옮긴 시각)
+        private readonly Dictionary<int, (Cell aimed, Cell latest, float since)> _aimMemory
+            = new Dictionary<int, (Cell, Cell, float)>();
+
+        /// <summary>
+        /// 반응 지연을 먹인 조준 칸. 대상이 움직이면 AimReactionDelay 만큼 지난 뒤에야 조준이 따라간다.
+        /// 이게 없으면 플레이어가 착지하는 프레임에 그 칸으로 예고가 깔려 회피 자체가 성립하지 않는다.
+        /// </summary>
+        private Cell LaggedPos(IWorldView world, ActorState target)
+        {
+            if (!_aimMemory.TryGetValue(target.Id, out var m))
+            {
+                _aimMemory[target.Id] = (target.Pos, target.Pos, world.Time);
+                return target.Pos;
+            }
+            if (!m.latest.Equals(target.Pos))
+                m = (m.aimed, target.Pos, world.Time); // 방금 움직였다 — 지연 시계 재시작
+            if (world.Time - m.since >= _cfg.AimReactionDelay)
+                m.aimed = m.latest;                    // 지연이 지나면 조준이 따라잡는다
+            _aimMemory[target.Id] = m;
+            return m.aimed;
         }
 
         private Cell? StepTowardBestZone(IWorldView world, ActorState me)

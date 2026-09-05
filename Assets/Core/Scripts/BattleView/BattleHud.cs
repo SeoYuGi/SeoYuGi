@@ -635,19 +635,12 @@ namespace SeoYuGi.BattleView
                 GUI.Label(letterRect, i < letters.Length ? letters[i] : "?", slotNameStyle);
             }
 
-            // 판세 스코어 (2026-09-05) — "지금 누가 이기고 있나"를 칩 색만으로 못 읽던 문제
-            int myZ = 0, enZ = 0;
-            foreach (var z in round.Zones)
-            {
-                if (z.owner == playerTeam) myZ++;
-                else if (z.owner == 1 - playerTeam) enZ++;
-            }
+            // 라운드 + 매치 스코어 한 줄 (2026-09-06 "상단 정보 너무 많다"): "거점 n : m 적"은 칩 색과 중복이라 은퇴,
+            // 팀 칸의 "승리 0/2"도 여기로 합침. 승패는 내 기준.
             var zsStyle = new GUIStyle(dotStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 15 };
-            ShadowLabel(new Rect(W / 2f - 100, 97, 88, 18), $"거점 {myZ}", zsStyle, allyColor);
-            ShadowLabel(new Rect(W / 2f - 12, 97, 24, 18), ":", zsStyle, new Color(0.6f, 0.65f, 0.72f));
-            ShadowLabel(new Rect(W / 2f + 12, 97, 88, 18), $"{enZ} 적", zsStyle, enemyColor);
-            GUI.Label(new Rect(W / 2f - 100, 114, 200, 14),
-                $"ROUND {match.CurrentRound}/{MatchSystem.MaxRounds}", roundStyle);
+            ShadowLabel(new Rect(W / 2f - 120, 97, 240, 18),
+                $"ROUND {match.CurrentRound}/{MatchSystem.MaxRounds}   {match.GetWins(playerTeam)}승 {match.GetWins(1 - playerTeam)}패",
+                zsStyle, Color.white);
             if (!string.IsNullOrEmpty(roundRuleChip))
             {
                 // 라운드 변형 규칙 상시 칩 (2026-09-05) — 제목 + 설명 한 줄. 시작 자막은 은퇴 (2026-09-06 "칩에 한 줄 적는 게 낫다")
@@ -698,9 +691,7 @@ namespace SeoYuGi.BattleView
                 i++;
             }
 
-            string winsText = $"승리 {match.GetWins(team)}/{MatchSystem.WinsNeeded}"; // 3판 2선승
-            GUI.Label(new Rect(r.x, r.y + 30, r.width, 16),
-                winsText, new GUIStyle(roundStyle) { alignment = rightAlign ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft });
+            // "승리 n/2"는 중앙 ROUND 줄의 승패로 합침 (2026-09-06)
         }
 
         // ── 상황 안내 배너 (탱고파이브 "공격할 대상을 선택하세요") ────

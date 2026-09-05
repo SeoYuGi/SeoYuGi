@@ -72,6 +72,7 @@ public class UIManager : Singleton<UIManager>
 
         name ??= typeof(T).Name;
         var go = Instantiate(_loader.Load($"UI/HUD/{name}"));
+        ApplyGameFonts(go);
         var ui = go.GetComponent<T>();
         if (ui == null) ui = go.AddComponent<T>();
         go.transform.SetParent(HUDRoot.transform, false);
@@ -91,6 +92,7 @@ public class UIManager : Singleton<UIManager>
     {
         name ??= typeof(T).Name;
         var go = Instantiate(_loader.Load($"UI/Popup/{name}"));
+        ApplyGameFonts(go);
         var popup = go.GetComponent<T>();
         if (popup == null) popup = go.AddComponent<T>();
         _popupStack.Push(popup);
@@ -98,6 +100,26 @@ public class UIManager : Singleton<UIManager>
         go.transform.SetAsLastSibling();
         popup.Init();
         return popup;
+    }
+
+    /// <summary>프리팹 텍스트 폰트 통일 — 빌더가 LegacyRuntime으로 만든 Text를 전부 에이투지체로 (2026-09-06 "모든 UI 에이투지체").
+    /// Bold 요청은 볼드 파일(Title)+Normal, 나머지는 Medium(Hud). 무게 규칙은 GameFonts.Resolve 그대로.
+    /// 런타임에 GameFonts로 만든 텍스트는 이미 게임 폰트라 건너뛴다.</summary>
+    static void ApplyGameFonts(GameObject root)
+    {
+        var title = SeoYuGi.BattleView.GameFonts.Title;
+        var hud = SeoYuGi.BattleView.GameFonts.Hud;
+        if (title == null && hud == null) return;
+        foreach (var t in root.GetComponentsInChildren<UnityEngine.UI.Text>(true))
+        {
+            if (t.font == title || t.font == hud) continue;
+            Font font = null;
+            var style = t.fontStyle;
+            SeoYuGi.BattleView.GameFonts.Resolve(ref font, ref style);
+            if (font == null) continue;
+            t.font = font;
+            t.fontStyle = style;
+        }
     }
 
     /// <summary>ESC 뒤로가기용 — 이 팝업이 스택 최상단인가 (겹친 팝업 중 위만 반응).</summary>
@@ -127,6 +149,7 @@ public class UIManager : Singleton<UIManager>
     {
         name ??= typeof(T).Name;
         var go = Instantiate(_loader.Load($"UI/System/{name}"));
+        ApplyGameFonts(go);
         var popup = go.GetComponent<T>();
         if (popup == null) popup = go.AddComponent<T>();
         _systemStack.Push(popup);

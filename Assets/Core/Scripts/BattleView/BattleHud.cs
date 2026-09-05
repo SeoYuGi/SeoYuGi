@@ -1123,20 +1123,15 @@ namespace SeoYuGi.BattleView
                 hs[i] = Mathf.Max(26f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
                 total += hs[i];
             }
-            // 무전창이 열려 있으면 채팅 로그가 입력줄 바로 위에 붙는다 — 롤 채팅처럼 한 덩어리 (2026-09-06 "따로 노는 느낌")
+            // 채팅 로그는 항상 무전 입력줄 바로 위 자리 — 롤 채팅처럼 한 덩어리 (2026-09-06 "따로 노는 느낌").
+            // 무전창이 닫혀도 같은 자리에 둔다. 열 때마다 위로 튀고 닫으면 내려가던 게 거슬린다 (2026-09-06 "위치 고정").
             // RadioWindow와 같은 스케일·x·폭으로 맞춘다 (그쪽은 Screen 픽셀, 여기는 HUD 단위 → UiScale로 환산)
-            float logX = 12f, logW = boxW;
-            float y;
-            if (RadioWindow.TextInputActive)
-            {
-                float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
-                float radioW = Mathf.Min(560f * rs, Screen.width * 0.5f), pad = 10f * rs;
-                float radioTopPx = Screen.height - (RadioWindow.FieldBottom + 30f) * rs - pad; // 입력줄 + 상단 안내줄(30) + 패드
-                logX = (24f * rs - pad) / UiScale;
-                logW = (radioW + pad * 2f) / UiScale;
-                y = radioTopPx / UiScale - 6f - total;
-            }
-            else y = H - 108f - total;
+            float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
+            float radioW = Mathf.Min(560f * rs, Screen.width * 0.5f), pad = 10f * rs;
+            float radioTopPx = Screen.height - (RadioWindow.FieldBottom + 30f) * rs - pad; // 입력줄 + 상단 안내줄(30) + 패드
+            float logX = (24f * rs - pad) / UiScale;
+            float logW = (radioW + pad * 2f) / UiScale;
+            float y = radioTopPx / UiScale - 6f - total;
 
             var logBox = new Rect(logX, y - 4, logW, total + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));

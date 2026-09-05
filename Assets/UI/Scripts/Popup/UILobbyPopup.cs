@@ -197,8 +197,9 @@ public class UILobbyPopup : UIPopup
                 img.sprite = btnSprite;
                 img.color = Color.white;
                 img.preserveAspect = false; // 키잉 후 비율이 바뀌어 프레임이 납작해지며 글씨가 삐져나왔다 (2026-09-05)
+                img.rectTransform.sizeDelta = BottomButtonSize; // 프리팹 60은 너무 얇다 (2026-09-06 "세로로 뚱뚱하게")
                 var bl = Get<GameObject>((int)b).GetComponentInChildren<Text>();
-                if (bl != null) { bl.fontSize = 17; bl.alignment = TextAnchor.MiddleCenter; } // 프레임 금속 밴드 안에 여유 있게
+                if (bl != null) { bl.fontSize = BottomButtonFont; bl.alignment = TextAnchor.MiddleCenter; } // 프레임 금속 밴드 안에 여유 있게
             }
     }
 
@@ -319,6 +320,10 @@ public class UILobbyPopup : UIPopup
 
     Text commanderLabel;
 
+    /// <summary>하단 버튼 줄 공통 치수 — 캐릭터 선택 팝업(UIClassSelectPopup)의 출격 버튼도 같은 값 (2026-09-06).</summary>
+    public static readonly Vector2 BottomButtonSize = new Vector2(220f, 78f);
+    public const int BottomButtonFont = 20;
+
     /// <summary>지휘관 대전 토글 — 호스트만 바꾸고, 상태는 NetLobby.Commander로 전원 동기화.
     /// 하단 버튼 줄 왼쪽 칸(폐지된 코드 복사 자리). 나가기 위에 쌓으면 1배 카드 밑단과 겹친다 (2026-09-06).</summary>
     void CreateCommanderToggle()
@@ -329,6 +334,7 @@ public class UILobbyPopup : UIPopup
         var rt = go.GetComponent<RectTransform>();
         var src = template.GetComponent<RectTransform>();
         rt.anchoredPosition = src.anchoredPosition + new Vector2(-480f, 0f);
+        rt.sizeDelta = BottomButtonSize;
         commanderLabel = go.GetComponentInChildren<Text>();
         // 복제 시점이 ApplySkin보다 앞이라 민짜로 남는다 — 버튼 판 스킨·글자 크기 직접 적용 (2026-09-06)
         var plate = UISkin.ButtonPlate();
@@ -336,7 +342,7 @@ public class UILobbyPopup : UIPopup
         if (plate != null && img2 != null) { img2.sprite = plate; img2.color = Color.white; img2.preserveAspect = false; }
         foreach (var extra in go.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
             if (extra.gameObject != go && !(extra is Text)) extra.enabled = false;
-        if (commanderLabel != null) { commanderLabel.fontSize = 17; commanderLabel.alignment = TextAnchor.MiddleCenter; }
+        if (commanderLabel != null) { commanderLabel.fontSize = BottomButtonFont; commanderLabel.alignment = TextAnchor.MiddleCenter; }
         BindEvent(go, _ =>
         {
             if (!NetBoot.IsHost) { if (statusText != null) statusText.text = "모드는 호스트가 정합니다"; return; }

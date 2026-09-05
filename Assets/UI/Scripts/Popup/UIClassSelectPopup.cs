@@ -217,15 +217,15 @@ public class UIClassSelectPopup : UIPopup
         statusText = MakeText(transform, "", 26, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter,
             new Vector2(0.5f, 0.5f), new Vector2(0f, StatusY), new Vector2(700f, 44f), GameFonts.Hud);
 
-        // 출격 — 로비 하단 버튼과 같은 판(220x60)·글자(17)
+        // 출격 — 로비 하단 버튼과 같은 판·치수·글자 (UILobbyPopup.BottomButtonSize)
         var plate = UISkin.ButtonPlate();
         var btn = MakeImage(transform, plate, plate != null ? Color.white : new Color(0.16f, 0.7f, 0.55f),
-            new Vector2(0.5f, 0.5f), new Vector2(0f, ButtonY), new Vector2(220f, 60f));
+            new Vector2(0.5f, 0.5f), new Vector2(0f, ButtonY), UILobbyPopup.BottomButtonSize);
         btn.GetComponent<Image>().raycastTarget = true;
         btn.GetComponent<Image>().preserveAspect = false; // 키잉 플레이트 비율 변화 대응 (2026-09-05)
         BindEvent(btn.gameObject, _ => StartTeam());
-        MakeText(btn, "출격  (Enter)", 17, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(220f, 60f), GameFonts.Hud);
+        MakeText(btn, "출격  (Enter)", UILobbyPopup.BottomButtonFont, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.5f), Vector2.zero, UILobbyPopup.BottomButtonSize, GameFonts.Hud);
     }
 
     void RefreshTeamSlots()

@@ -11,8 +11,11 @@ namespace SeoYuGi.Ai
     /// </summary>
     public static class RangeTemplates
     {
-        /// <summary>8방 인접 3×3 링 — 너구리·고라니·검은냥 기본공격, 발톱, 비명 교란, 방패밀기, 강타, 까치 넉백탄.</summary>
+        /// <summary>8방 인접 3×3 링. 2026-09-05 사거리 +1 이후로는 기본공격도 근접 스킬도 이 모양을 쓰지 않는다 — 참조용 원본.</summary>
         public static readonly Cell[] Adjacent8 = Ring(1);
+
+        /// <summary>근접 스킬 사거리 — 5×5(반경2). 코어 InMeleeRange(range=2)와 같은 모양. 2026-09-05 +1.</summary>
+        public static readonly Cell[] MeleeSkill = Ring(2);
 
         /// <summary>
         /// 근접 클래스 기본공격 — 5×5(반경2, 24칸). 2026-09-05 사거리 +1.
@@ -27,25 +30,25 @@ namespace SeoYuGi.Ai
         /// <summary>7×7(자기 제외 48칸) — 까치 기본공격. 2026-09-05 사거리 +1.</summary>
         public static readonly Cell[] MagpieBasic = Ring(3);
 
-        /// <summary>맨해튼 4 다이아몬드 + 십자 방향 5칸 연장 — 까치 조준 사격 지정 범위 (열 전체에서 변경).</summary>
-        public static readonly Cell[] SnipeRange = BuildRect(5, (dx, dy) =>
-            (dx != 0 || dy != 0) && (Abs(dx) + Abs(dy) <= 4 || (dx == 0 && Abs(dy) == 5) || (dy == 0 && Abs(dx) == 5)));
+        /// <summary>맨해튼 5 다이아몬드 + 십자 방향 6칸 연장 — 까치 조준 사격 (코어 CanSnipe range=6과 동일 모양). 2026-09-05 +1.</summary>
+        public static readonly Cell[] SnipeRange = BuildRect(6, (dx, dy) =>
+            (dx != 0 || dy != 0) && (Abs(dx) + Abs(dy) <= 5 || (dx == 0 && Abs(dy) == 6) || (dy == 0 && Abs(dx) == 6)));
 
-        /// <summary>십자 직선 2칸 — 고라니 돌파(방향 선택).</summary>
-        public static readonly Cell[] Cross2 = Cross(2);
+        /// <summary>십자 직선 3칸 — 고라니 돌파(방향 선택). 2026-09-05 +1.</summary>
+        public static readonly Cell[] Cross2 = Cross(3);
 
-        /// <summary>5×5 링(자기 제외 24칸) — 검은냥 그림자 도약 착지 후보.</summary>
-        public static readonly Cell[] Square2 = Build(2, (dx, dy) => dx != 0 || dy != 0);
+        /// <summary>7×7 링(자기 제외 48칸) — 검은냥 그림자 도약 착지 후보. 2026-09-05 +1.</summary>
+        public static readonly Cell[] Square2 = Ring(3);
 
-        /// <summary>5×5 전체(중심 포함) — 비둘기 파열탄 지정 가능 범위.</summary>
-        public static readonly Cell[] Square2WithCenter = Build(2, (dx, dy) => true);
+        /// <summary>7×7 전체(중심 포함) — 비둘기 파열탄 지정 가능 범위. 2026-09-05 +1.</summary>
+        public static readonly Cell[] Square2WithCenter = Build(3, (dx, dy) => true);
 
         /// <summary>십자 5칸(중심+4방) — 파열탄·폭탄 배달의 투하(피해) 모양. 지정 칸 기준 오프셋.</summary>
         public static readonly Cell[] BlastCross = { new Cell(0, 0), new Cell(0, 1), new Cell(0, -1), new Cell(1, 0), new Cell(-1, 0) };
 
-        /// <summary>맨해튼 4 다이아몬드 — 비둘기 폭탄 배달 지정(비행 착지) 범위. 투하 모양은 BlastCross.</summary>
-        public static readonly Cell[] BombDeliveryRange = BuildRect(4, (dx, dy) =>
-            (dx != 0 || dy != 0) && Abs(dx) + Abs(dy) <= 4);
+        /// <summary>맨해튼 5 다이아몬드 — 비둘기 폭탄 배달 지정(비행 착지) 범위. 투하 모양은 BlastCross. 2026-09-05 +1.</summary>
+        public static readonly Cell[] BombDeliveryRange = BuildRect(5, (dx, dy) =>
+            (dx != 0 || dy != 0) && Abs(dx) + Abs(dy) <= 5);
 
         /// <summary>클래스별 기본공격 범위.</summary>
         public static Cell[] BasicAttack(ClassId cls)

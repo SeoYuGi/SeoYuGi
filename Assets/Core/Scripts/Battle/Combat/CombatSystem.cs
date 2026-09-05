@@ -102,14 +102,15 @@ namespace SeoYuGi.Battle
         /// <summary>기본공격 사거리 판정 — 클래스별 모양 (범위 다이어그램 원본).</summary>
         /// <summary>bonus = 고지대 사거리 연장(+2). 모양을 유지한 채 반경만 커진다.</summary>
         /// <summary>
-        /// 인접 8방(3×3에서 자기 제외) — 근접 스킬(방패밀기·강타·발톱·비명 교란·넉백샷)의 고정 사거리.
-        /// 2026-09-05 기본공격 사거리를 +1 했을 때, 모양 열거형(Melee8)을 공유하던 스킬까지
-        /// 같이 늘어나는 것을 막으려고 분리했다. 스킬 사거리는 여기, 기본공격은 InAttackShape.
+        /// 근접 스킬 사거리(체비셰프 반경) — 방패밀기·강타·발톱·비명 교란·넉백샷.
+        /// 반경은 SkillDef.range가 정한다. 고지대 보너스는 붙지 않는다 — 자기중심·인접 모양
+        /// 스킬은 지형으로 늘어나지 않는다는 기존 규칙(EffRange 주석) 유지.
+        /// 기본공격은 별도 모양 표(InAttackShape)를 쓴다.
         /// </summary>
-        public static bool IsAdjacent8(Coord from, Coord to)
+        public static bool InMeleeRange(Coord from, Coord to, int range)
         {
             int dx = Math.Abs(to.x - from.x), dy = Math.Abs(to.y - from.y);
-            return (dx != 0 || dy != 0) && dx <= 1 && dy <= 1;
+            return (dx != 0 || dy != 0) && dx <= range && dy <= range;
         }
 
         public static bool InAttackShape(AttackShape shape, Coord from, Coord to, int bonus = 0)
@@ -208,7 +209,7 @@ namespace SeoYuGi.Battle
         /// <summary>인접8 단일 칸 예고 타격 — 방패밀기(밀침2·벽꿍), 강타(밀침1), 발톱(순수 딜).</summary>
         ActDenied CastMeleeStrike(UnitState unit, Coord target, SkillDef skill, int pushCells, int wallBonus)
         {
-            if (!IsAdjacent8(unit.pos, target)) return ActDenied.BadTarget; // 근접 스킬 = 인접8 고정 (기본공격 +1과 무관)
+            if (!InMeleeRange(unit.pos, target, skill.range)) return ActDenied.BadTarget; // 근접 스킬 사거리 = 표(SkillDef.range)
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             var d = target - unit.pos;
@@ -287,8 +288,9 @@ namespace SeoYuGi.Battle
                 damage = skill.damage,
                 stunSeconds = skill.stunSeconds
             };
-            for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++)
+            int r = skill.range; // 인접8 고정이 아니라 표를 따른다 — 사거리 +1이 광역에도 반영된다
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
             {
                 if (dx == 0 && dy == 0) continue;
                 var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
@@ -369,7 +371,7 @@ namespace SeoYuGi.Battle
         ActDenied CastKnockShot(UnitState unit, Coord target, SkillDef skill)
         {
             // 인접8 적에게 즉발 피해 + 본인이 반대 방향 2칸 후퇴 (벽 막힘, 낙하 자기 부담)
-            if (!IsAdjacent8(unit.pos, target)) return ActDenied.BadTarget; // 근접 스킬 = 인접8 고정 (기본공격 +1과 무관)
+            if (!InMeleeRange(unit.pos, target, skill.range)) return ActDenied.BadTarget; // 근접 스킬 사거리 = 표(SkillDef.range)
             int victimId = State.Grid.GetUnitAt(target);
             if (victimId == Cell.NoUnit) return ActDenied.BadTarget;
             var victim = State.GetUnit(victimId);
@@ -453,14 +455,17 @@ namespace SeoYuGi.Battle
                 case SkillKind.Claw:
                 case SkillKind.Scream:
                 case SkillKind.KnockShot:
-                    for (int dx = -1; dx <= 1; dx++)
-                    for (int dy = -1; dy <= 1; dy++)
+                {
+                    int r = skill.range; // 근접 스킬 사거리 = 표. 고지대 보너스 없음(InMeleeRange와 같은 규칙)
+                    for (int dx = -r; dx <= r; dx++)
+                    for (int dy = -r; dy <= r; dy++)
                     {
                         if (dx == 0 && dy == 0) continue;
                         var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
                         if (State.Grid.IsWalkableTerrain(c)) cells.Add(c);
                     }
                     break;
+                }
                 case SkillKind.Dash:
                 {
                     int range = EffRange(unit, skill); // 고지대 위 +1
@@ -531,7 +536,7 @@ namespace SeoYuGi.Battle
                 case SkillKind.Smash:
                 case SkillKind.Claw:
                 case SkillKind.KnockShot:
-                    if (!IsAdjacent8(unit.pos, hover) || !State.Grid.IsWalkableTerrain(hover)) return false;
+                    if (!InMeleeRange(unit.pos, hover, skill.range) || !State.Grid.IsWalkableTerrain(hover)) return false;
                     cells.Add(hover);
                     return true;
                 case SkillKind.Scream:

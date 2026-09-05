@@ -1,4 +1,4 @@
-namespace SeoYuGi.Ai
+﻿namespace SeoYuGi.Ai
 {
     /// AI 난이도 — 매치 시작 시 러너가 설정. ForClass가 이 값으로 수치를 스케일.
     public enum AiDifficulty { Easy, Normal, Hard }
@@ -15,10 +15,10 @@ namespace SeoYuGi.Ai
         public float MoveInterval = 0.3f;         // 이동 한 걸음 뒤 최소 대기 (회피 제외) — 제자리 왔다갔다 방지 (0.45는 굼떴다)
         public float AttackInterval = 0.6f;       // 공격·스킬 간 최소 간격 — 코어 쿨(2s)이 실제 스로틀, 이건 "시도" 간격
         public float HumanTargetBonus = 3f;       // 타겟 선정 시 인간 슬롯 가중(거리 환산)
-        public int SnipeRange = 6;
+        public int SnipeRange = 7;   // 코어 조준사격 range 6 + 십자 끝 여유
         public float AggressionDelay = 0f;        // 판단 후 실행 지연 — 난이도 낮출 때 증가
 
-        public int GrenadeRange = 3;
+        public int GrenadeRange = 4; // 코어 파열탄·폭탄 배달 +1에 맞춤
 
         // 힐팩 추구 성향 (클래스별 차등) — "전술적으로 안 먹기"를 두 문턱으로 표현
         public int HealSeekMissingHp = 2;         // 잃은 HP가 이 이상일 때만 힐팩을 노린다 (0=비활성)

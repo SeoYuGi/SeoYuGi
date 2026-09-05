@@ -28,6 +28,13 @@ namespace SeoYuGi.Battle
         /// <summary>4방향. 순서 고정(결정론) — Up, Down, Left, Right.</summary>
         public static readonly Coord[] Directions4 = { Up, Down, Left, Right };
 
+        /// <summary>8방향. 순서 고정(결정론) — 십자 4방 뒤 대각 4방.</summary>
+        public static readonly Coord[] Directions8 =
+        {
+            Up, Down, Left, Right,
+            new Coord(1, 1), new Coord(1, -1), new Coord(-1, 1), new Coord(-1, -1)
+        };
+
         public static Coord operator +(Coord a, Coord b) => new Coord(a.x + b.x, a.y + b.y);
         public static Coord operator -(Coord a, Coord b) => new Coord(a.x - b.x, a.y - b.y);
         public static bool operator ==(Coord a, Coord b) => a.x == b.x && a.y == b.y;

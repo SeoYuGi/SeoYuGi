@@ -99,19 +99,23 @@ namespace SeoYuGi.Battle
         }
 
         /// <summary>기본공격 사거리 판정 — 클래스별 모양 (범위 다이어그램 원본).</summary>
-        public static bool InAttackShape(AttackShape shape, Coord from, Coord to)
+        /// <summary>bonus = 고지대 사거리 연장(+2). 모양을 유지한 채 반경만 커진다.</summary>
+        public static bool InAttackShape(AttackShape shape, Coord from, Coord to, int bonus = 0)
         {
             int dx = Math.Abs(to.x - from.x), dy = Math.Abs(to.y - from.y);
             if (dx == 0 && dy == 0) return false;
             int cheb = Math.Max(dx, dy);
             switch (shape)
             {
-                case AttackShape.Melee8: return cheb == 1;
-                case AttackShape.Circle2: return cheb <= 2 && !(dx == 2 && dy == 2);
-                case AttackShape.Square2: return cheb <= 2;
+                case AttackShape.Melee8: return cheb <= 1 + bonus;
+                case AttackShape.Circle2: { int r = 2 + bonus; return cheb <= r && !(dx == r && dy == r); }
+                case AttackShape.Square2: return cheb <= 2 + bonus;
                 default: return false;
             }
         }
+
+        /// <summary>고지대 위 유닛의 일반공격 사거리 연장 — EffRange와 같은 규칙(+2).</summary>
+        int AttackBonus(UnitState unit) => State.Grid.IsHighland(unit.pos) ? 2 : 0;
 
         // ── 일반공격 ──────────────────────────────────────────────
 
@@ -123,7 +127,7 @@ namespace SeoYuGi.Battle
             if (IsLocked(unit)) return ActDenied.Locked;
             if (unit.attackReadyAt > State.time) return ActDenied.Cooldown;
             var def = ClassCatalog.Get(unit.unitClass);
-            if (!InAttackShape(def.attackShape, unit.pos, target)) return ActDenied.BadTarget;
+            if (!InAttackShape(def.attackShape, unit.pos, target, AttackBonus(unit))) return ActDenied.BadTarget;
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             unit.attackReadyAt = State.time + Config.attackCooldownSeconds;
@@ -180,6 +184,11 @@ namespace SeoYuGi.Battle
 
         // ── 스킬 구현 ─────────────────────────────────────────────
 
+        /// <summary>고지대 위 유닛은 사거리형 스킬 +2 — 시야 +2와 짝 (2026-09-05).
+        /// 인접8 모양 스킬(근접기·비명)은 모양 고정이라 해당 없음 (일반공격은 AttackBonus가 처리).</summary>
+        int EffRange(UnitState unit, SkillDef skill) =>
+            skill.range + (State.Grid.IsHighland(unit.pos) ? 2 : 0);
+
         /// <summary>인접8 단일 칸 예고 타격 — 방패밀기(밀침2·벽꿍), 강타(밀침1), 발톱(순수 딜).</summary>
         ActDenied CastMeleeStrike(UnitState unit, Coord target, SkillDef skill, int pushCells, int wallBonus)
         {
@@ -204,7 +213,8 @@ namespace SeoYuGi.Battle
 
         ActDenied CastDash(UnitState unit, Coord target, SkillDef skill)
         {
-            var dir = UnitDir(unit.pos, target, skill.range);
+            int range = EffRange(unit, skill);
+            var dir = UnitDir(unit.pos, target, range);
             if (dir == Coord.Zero) return ActDenied.BadTarget;
 
             // 즉발 대시: 벽만 못 뚫고 유닛은 통과. 경로의 적은 피해 + 1칸 밀침(유닛당 1회).
@@ -213,7 +223,7 @@ namespace SeoYuGi.Battle
             int dealt = 0;
             var landing = unit.pos;
             var probe = unit.pos;
-            for (int step = 0; step < skill.range; step++)
+            for (int step = 0; step < range; step++)
             {
                 var next = probe + dir;
                 if (!State.Grid.IsWalkableTerrain(next)) break; // 벽·경계 정지
@@ -273,9 +283,9 @@ namespace SeoYuGi.Battle
 
         ActDenied CastBlink(UnitState unit, Coord target, SkillDef skill)
         {
-            // 5×5 (체비쇼프 2) 내 아무 빈 칸으로 점멸 — 범위 다이어그램 원본
+            // 5×5 (체비쇼프 2) 내 아무 빈 칸으로 점멸 — 범위 다이어그램 원본. 고지대 위 +1
             var d = target - unit.pos;
-            if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > skill.range || d == Coord.Zero) return ActDenied.BadTarget;
+            if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > EffRange(unit, skill) || d == Coord.Zero) return ActDenied.BadTarget;
             if (!State.Grid.IsWalkable(target)) return ActDenied.BadTarget;
 
             State.Grid.MoveOccupant(unit.pos, target); // 점멸 — 벽 무시 순간이동
@@ -286,9 +296,9 @@ namespace SeoYuGi.Battle
 
         ActDenied CastBurst(UnitState unit, Coord target, SkillDef skill)
         {
-            // 5×5 (체비쇼프 2, 자기 칸 포함 가능 — 자폭 피해 없음) 지정 → 십자 5칸
+            // 5×5 (체비쇼프 2, 자기 칸 포함 가능 — 자폭 피해 없음) 지정 → 십자 5칸. 고지대 위 +1
             var d = target - unit.pos;
-            if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > skill.range) return ActDenied.BadTarget;
+            if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > EffRange(unit, skill)) return ActDenied.BadTarget;
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             var strike = new TelegraphStrike
@@ -313,7 +323,7 @@ namespace SeoYuGi.Battle
         {
             // 맨해튼 4 내 칸에 폭탄 배달 후 원위치 복귀 — 시뮬 위치는 출발 칸 그대로
             // (왕복 비행은 뷰 소관). 비행 중 무적·행동 불가. 적 점유 칸도 지정 가능.
-            if (Coord.Manhattan(unit.pos, target) > skill.range || target == unit.pos) return ActDenied.BadTarget;
+            if (Coord.Manhattan(unit.pos, target) > EffRange(unit, skill) || target == unit.pos) return ActDenied.BadTarget;
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             unit.flyingUntil = State.time + skill.telegraphSeconds;
@@ -357,7 +367,7 @@ namespace SeoYuGi.Battle
         /// 벽 LOS 필요 — 고지대 사수는 벽을 넘겨 쏜다. 구 직선 관통은 폐기.</summary>
         ActDenied CastSnipe(UnitState unit, Coord target, SkillDef skill)
         {
-            if (!CanSnipe(unit, target, skill.range)) return ActDenied.BadTarget;
+            if (!CanSnipe(unit, target, EffRange(unit, skill))) return ActDenied.BadTarget;
 
             var strike = new TelegraphStrike
             {
@@ -381,11 +391,13 @@ namespace SeoYuGi.Battle
             var unit = State.GetUnit(unitId);
             if (unit == null || !unit.alive) return;
             var shape = ClassCatalog.Get(unit.unitClass).attackShape;
-            for (int dx = -2; dx <= 2; dx++)
-            for (int dy = -2; dy <= 2; dy++)
+            int bonus = AttackBonus(unit);
+            int r = 2 + bonus; // 가장 넓은 모양(Square2) 기준 탐색 반경
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
             {
                 var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
-                if (InAttackShape(shape, unit.pos, c) && State.Grid.IsWalkableTerrain(c))
+                if (InAttackShape(shape, unit.pos, c, bonus) && State.Grid.IsWalkableTerrain(c))
                     cells.Add(c);
             }
         }
@@ -397,7 +409,7 @@ namespace SeoYuGi.Battle
             var unit = State.GetUnit(unitId);
             if (unit == null || !unit.alive) return false;
             var shape = ClassCatalog.Get(unit.unitClass).attackShape;
-            if (!InAttackShape(shape, unit.pos, hover) || !State.Grid.IsWalkableTerrain(hover)) return false;
+            if (!InAttackShape(shape, unit.pos, hover, AttackBonus(unit)) || !State.Grid.IsWalkableTerrain(hover)) return false;
             cells.Add(hover);
             return true;
         }
@@ -428,18 +440,23 @@ namespace SeoYuGi.Battle
                     }
                     break;
                 case SkillKind.Dash:
-                    foreach (var dir in Coord.Directions4)
-                        for (int i = 1; i <= skill.range; i++)
+                {
+                    int range = EffRange(unit, skill); // 고지대 위 +1
+                    foreach (var dir in Coord.Directions8) // 대각 대시 허용 (2026-09-05)
+                        for (int i = 1; i <= range; i++)
                         {
                             var c = unit.pos + new Coord(dir.x * i, dir.y * i);
                             if (!State.Grid.IsWalkableTerrain(c)) break;
                             cells.Add(c);
                         }
                     break;
+                }
                 case SkillKind.Blink:
                 case SkillKind.Burst:
-                    for (int dx = -skill.range; dx <= skill.range; dx++)
-                    for (int dy = -skill.range; dy <= skill.range; dy++)
+                {
+                    int range = EffRange(unit, skill);
+                    for (int dx = -range; dx <= range; dx++)
+                    for (int dy = -range; dy <= range; dy++)
                     {
                         var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
                         if (c == unit.pos && skill.kind == SkillKind.Blink) continue;
@@ -449,23 +466,30 @@ namespace SeoYuGi.Battle
                         if (ok) cells.Add(c);
                     }
                     break;
+                }
                 case SkillKind.BombDeliver:
-                    for (int dx = -skill.range; dx <= skill.range; dx++)
-                    for (int dy = -skill.range; dy <= skill.range; dy++)
+                {
+                    int range = EffRange(unit, skill);
+                    for (int dx = -range; dx <= range; dx++)
+                    for (int dy = -range; dy <= range; dy++)
                     {
-                        if (Math.Abs(dx) + Math.Abs(dy) > skill.range || (dx == 0 && dy == 0)) continue;
+                        if (Math.Abs(dx) + Math.Abs(dy) > range || (dx == 0 && dy == 0)) continue;
                         var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
                         if (State.Grid.IsWalkableTerrain(c)) cells.Add(c); // 점유 칸도 폭격 가능 — 착지 안 하므로
                     }
                     break;
+                }
                 case SkillKind.Snipe:
-                    for (int dx = -skill.range; dx <= skill.range; dx++)
-                    for (int dy = -skill.range; dy <= skill.range; dy++)
+                {
+                    int range = EffRange(unit, skill);
+                    for (int dx = -range; dx <= range; dx++)
+                    for (int dy = -range; dy <= range; dy++)
                     {
                         var c = new Coord(unit.pos.x + dx, unit.pos.y + dy);
-                        if (CanSnipe(unit, c, skill.range)) cells.Add(c);
+                        if (CanSnipe(unit, c, range)) cells.Add(c);
                     }
                     break;
+                }
             }
         }
 
@@ -500,10 +524,11 @@ namespace SeoYuGi.Battle
                     return cells.Count > 0;
                 case SkillKind.Dash:
                 {
-                    var dir = UnitDir(unit.pos, hover, skill.range);
+                    int range = EffRange(unit, skill); // 고지대 위 +1
+                    var dir = UnitDir(unit.pos, hover, range);
                     if (dir == Coord.Zero) return false;
                     var pos = unit.pos;
-                    for (int i = 0; i < skill.range; i++)
+                    for (int i = 0; i < range; i++)
                     {
                         var next = pos + dir;
                         if (!State.Grid.IsWalkableTerrain(next)) break;
@@ -515,28 +540,28 @@ namespace SeoYuGi.Battle
                 case SkillKind.Blink:
                 {
                     var d = hover - unit.pos;
-                    if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > skill.range || !State.Grid.IsWalkable(hover)) return false;
+                    if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > EffRange(unit, skill) || !State.Grid.IsWalkable(hover)) return false;
                     cells.Add(hover);
                     return true;
                 }
                 case SkillKind.Burst:
                 {
                     var d = hover - unit.pos;
-                    if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > skill.range || !State.Grid.IsWalkableTerrain(hover)) return false;
+                    if (Math.Max(Math.Abs(d.x), Math.Abs(d.y)) > EffRange(unit, skill) || !State.Grid.IsWalkableTerrain(hover)) return false;
                     cells.Add(hover);
                     foreach (var dir in Coord.Directions4)
                         if (State.Grid.IsWalkableTerrain(hover + dir)) cells.Add(hover + dir);
                     return true;
                 }
                 case SkillKind.BombDeliver:
-                    if (Coord.Manhattan(unit.pos, hover) > skill.range || hover == unit.pos ||
+                    if (Coord.Manhattan(unit.pos, hover) > EffRange(unit, skill) || hover == unit.pos ||
                         !State.Grid.IsWalkableTerrain(hover)) return false;
                     cells.Add(hover);
                     foreach (var dir in Coord.Directions4)
                         if (State.Grid.IsWalkableTerrain(hover + dir)) cells.Add(hover + dir);
                     return true;
                 case SkillKind.Snipe:
-                    if (!CanSnipe(unit, hover, skill.range)) return false;
+                    if (!CanSnipe(unit, hover, EffRange(unit, skill))) return false;
                     cells.Add(hover);
                     return true;
                 default: return false;
@@ -555,13 +580,15 @@ namespace SeoYuGi.Battle
             return State.Grid.IsHighland(unit.pos) || VisionSystem.HasLineOfSight(State.Grid, unit.pos, target);
         }
 
-        /// <summary>target이 pos에서 직선(상하좌우) maxDist 이내면 단위 방향, 아니면 Zero.</summary>
+        /// <summary>target이 pos에서 직선(상하좌우) 또는 정대각 maxDist 이내면 단위 방향, 아니면 Zero.</summary>
         static Coord UnitDir(Coord pos, Coord target, int maxDist)
         {
             var d = target - pos;
             if (d == Coord.Zero) return Coord.Zero;
-            if (d.x != 0 && d.y != 0) return Coord.Zero;
-            int dist = Math.Abs(d.x + d.y);
+            bool straight = d.x == 0 || d.y == 0;
+            bool diagonal = Math.Abs(d.x) == Math.Abs(d.y);
+            if (!straight && !diagonal) return Coord.Zero;
+            int dist = Math.Max(Math.Abs(d.x), Math.Abs(d.y)); // 대각 1스텝 = 1칸 (체비쇼프)
             if (dist > maxDist) return Coord.Zero;
             return new Coord(Math.Sign(d.x), Math.Sign(d.y));
         }

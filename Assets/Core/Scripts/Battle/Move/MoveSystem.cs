@@ -87,7 +87,7 @@ namespace SeoYuGi.Battle
             if (unit == null || !unit.alive || unit.moveCooldown > 0f) return;
 
             int blueSteps = BlueSteps(unit);
-            var reach = Pathfinding.FloodFill(State.Grid, unit.pos, unit.profile.maxRange, OtherUnitCells(unitId));
+            var reach = Pathfinding.FloodFill(State.Grid, unit.pos, MaxRange(unit), OtherUnitCells(unitId));
             foreach (var r in reach)
                 (r.dist <= blueSteps ? blue : yellow).Add(r.coord);
         }
@@ -103,7 +103,7 @@ namespace SeoYuGi.Battle
                 return new MoveAttempt { denied = MoveDenied.Locked }; // 스턴·비행 중 = 제자리 고정
 
             var p = unit.profile;
-            var path = Pathfinding.FindPath(State.Grid, unit.pos, dest, p.maxRange, OtherUnitCells(unitId));
+            var path = Pathfinding.FindPath(State.Grid, unit.pos, dest, MaxRange(unit), OtherUnitCells(unitId));
             if (path == null)
                 return new MoveAttempt { denied = MoveDenied.Unreachable };
 
@@ -129,6 +129,10 @@ namespace SeoYuGi.Battle
             OnUnitMoved?.Invoke(unitId, path, yellow);
             return new MoveAttempt { success = true, isYellow = yellow, path = path };
         }
+
+        /// <summary>고지대 위 유닛은 이동 범위 +1 — 시야·사거리 보너스와 한 세트 (2026-09-05).</summary>
+        int MaxRange(UnitState unit) =>
+            unit.profile.maxRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0);
 
         HashSet<Coord> OtherUnitCells(int exceptUnitId)
         {

@@ -7,7 +7,7 @@
         "Unity.Networking.Transport",
         "Unity.Services.Core",
         "Unity.Services.Authentication",
-        "Unity.Services.Relay"
+        "Unity.Services.Multiplayer"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -18,8 +18,8 @@
     "defineConstraints": [],
     "versionDefines": [
         {
-            "name": "com.unity.services.relay",
-            "expression": "1.0.0",
+            "name": "com.unity.services.multiplayer",
+            "expression": "2.0.0",
             "define": "SEOYUGI_RELAY"
         }
     ],

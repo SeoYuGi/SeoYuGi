@@ -48,7 +48,7 @@ public class UIClassSelectPopup : UIPopup
             var rt = (RectTransform)Get<GameObject>(i).transform;
             cardRts[i] = rt;
             ClassCard.Build(rt, i, 1f);
-            rt.anchoredPosition = new Vector2((i - 2) * (ClassCard.BaseW + 22f), 20f);
+            rt.anchoredPosition = new Vector2((i - 2) * (ClassCard.BaseW + 22f), -10f); // 상단 난이도 바 자리 확보
             BindEvent(Get<GameObject>(i), _ => Pick(cls));
         }
     }
@@ -57,8 +57,7 @@ public class UIClassSelectPopup : UIPopup
     {
         if (TeamMode)
         {
-            teamCls[editIdx] = cls;
-            if (editIdx < teamCls.Length - 1) editIdx++;
+            teamCls[editIdx] = cls; // 자동 다음 칸 이동 없음 — 칩 클릭으로만 편집 칸 변경 (2026-09-05)
             RefreshTeamStrip();
             return;
         }
@@ -73,7 +72,7 @@ public class UIClassSelectPopup : UIPopup
         if (timerText == null)
         {
             timerText = MakeText(transform, "", 40, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0.5f, 1f), new Vector2(0f, -48f), new Vector2(200f, 56f), GameFonts.Title);
+                new Vector2(0.5f, 1f), new Vector2(360f, -90f), new Vector2(200f, 56f), GameFonts.Title); // 제목(600폭) 오른쪽 옆
         }
     }
 
@@ -102,10 +101,12 @@ public class UIClassSelectPopup : UIPopup
 
     void BuildDifficultyBar()
     {
-        const float bw = 150f, bh = 40f, gap = 10f, y = 372f; // 상단
+        // 선택 카드는 1.06배 확대라 상단이 361까지 올라온다 — 그 위(372~408) 띠에 배치
+        const float bw = 150f, bh = 36f, gap = 10f, y = 390f;
         float total = 3 * bw + 2 * gap;
+        // MiddleRight도 pos는 rect "중심" — 오른쪽 끝이 바 왼쪽에 닿도록 중심을 라벨 반폭만큼 더 왼쪽에
         MakeText(transform, "AI 난이도", 16, FontStyle.Bold, DimText, TextAnchor.MiddleRight,
-            new Vector2(0.5f, 0.5f), new Vector2(-total / 2f - 14f, y), new Vector2(120f, bh), GameFonts.Hud);
+            new Vector2(0.5f, 0.5f), new Vector2(-total / 2f - 14f - 60f, y), new Vector2(120f, bh), GameFonts.Hud);
         for (int i = 0; i < 3; i++)
         {
             int idx = i;

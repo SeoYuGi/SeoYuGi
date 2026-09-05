@@ -142,6 +142,15 @@ namespace SeoYuGi.Prediction
 
         // ── 스타일 분류 + 카운터 전술 API (R2+ "습성 조건부 대응") ──────
 
+        /// HUD 학습 게이지용 0..1 — 표본 수(20수에 만충) 60% + 이동 패턴 일치율 40%.
+        /// "AI가 나를 학습한다"를 상시 숫자로 보이게 (2026-09-05).
+        public float LearningProgress(int actorId)
+        {
+            if (!_actors.TryGetValue(actorId, out var p)) return 0f;
+            float samples = Math.Min(1f, p.ObservedMoves / 20f);
+            return samples * 0.6f + Predictability(p) * 0.4f;
+        }
+
         /// 유저 플레이 스타일. 표본 6수 미만이면 Unknown.
         public PlayStyle GetStyle(int actorId)
         {

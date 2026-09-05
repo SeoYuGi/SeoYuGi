@@ -182,7 +182,7 @@ namespace SeoYuGi.UI
 
         static string SkillDesc(SkillKind k) => k switch
         {
-            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "밀침·벽충돌", SkillKind.Dash => "직선 2칸 대시",
+            SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "밀침·벽충돌", SkillKind.Dash => "직선·대각 2칸 대시",
             SkillKind.Scream => "주변 1초 스턴", SkillKind.Blink => "2칸 점멸", SkillKind.Claw => "고위력 근접",
             SkillKind.Burst => "십자 5칸", SkillKind.BombDeliver => "원거리 투척",
             SkillKind.KnockShot => "밀쳐내는 사격", SkillKind.Snipe => "1열 관통", _ => ""

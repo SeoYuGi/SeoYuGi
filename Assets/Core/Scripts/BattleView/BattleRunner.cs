@@ -339,21 +339,33 @@ namespace SeoYuGi.BattleView
             popup.OnMatch = () => StartCoroutine(MatchmakeRoutine(popup));
         }
 
-        /// <summary>매칭 연출 — 상대를 찾다가 인원 부족분은 AI로 채워 시작.
-        /// 실사람 매칭(Matchmaker)이 붙으면 여기서 세션 참가 → 로비로 분기한다.</summary>
+        /// <summary>매칭 — 매치메이커로 실사람을 찾고, 못 채우면 봇전으로 폴백.
+        /// 세션 성사 시 SDK가 NGO를 시작 → NetLobby로 이어진다.</summary>
         System.Collections.IEnumerator MatchmakeRoutine(UITitlePopup popup)
         {
             popup.ShowSearching();
+            var task = NetBoot.MatchmakeAsync("Seoyugi"); // 대시보드 큐 이름
+            const float Timeout = 32f; // 매치메이커 티켓 타임아웃(30s)보다 살짝 길게
             float t = 0f;
-            const float SearchTime = 2.5f;
-            while (t < SearchTime)
+            while (!task.IsCompleted && t < Timeout)
             {
                 popup.SetSearchDots(1 + (int)(t * 2f) % 3);
                 t += Time.deltaTime;
                 yield return null;
             }
+
+            bool matched = task.IsCompleted && !task.IsFaulted && task.Result;
             UIManager.Instance.ClosePopupUI(popup);
-            PickRandomMap(); // 봇으로 채운 매치 — 실사람 매칭 연결 시 이 분기를 세션 결과로 대체
+
+            if (matched)
+            {
+                NetLobby.Begin();
+                ShowLobby(); // 실사람 매칭 성사 — 로비(빈 슬롯은 봇)
+            }
+            else
+            {
+                PickRandomMap(); // 상대 못 찾음 → 봇전
+            }
         }
 
         UILobbyPopup lobbyPopup;
@@ -1188,14 +1200,19 @@ namespace SeoYuGi.BattleView
                     NetSync.HostSendKill(deadId, killerId); // 클라 킬피드도 뜨게
             };
 
-            Combat.OnStunned += (unitId, _) =>
+            Combat.OnStunned += (unitId, seconds) =>
             {
                 var u = Battle.GetUnit(unitId);
                 if (u.team == playerTeam || playerVisibleFn(u.pos))
                 {
-                    CellFlash.Spawn(gridView.CoordToWorld(u.pos), new Color(1f, 0.85f, 0.3f));
-                    FloatingText.Spawn(gridView.CoordToWorld(u.pos), "스턴!", new Color(1f, 0.85f, 0.3f), 0.9f, 0.7f);
+                    var world = gridView.CoordToWorld(u.pos);
+                    CellFlash.Spawn(world, StunVfx.Gold);
+                    RingWave.Spawn(world, StunVfx.Gold, 1.6f, 0.4f); // 스턴 적중 충격파 — 준 쪽도 성공을 본다
+                    FloatingText.Spawn(world, "스턴!", StunVfx.Gold, 0.9f, 0.7f);
+                    var view = viewRegistry.Get(unitId);
+                    if (view != null) StunVfx.Ensure(view.transform, seconds);
                 }
+                if (unitId == playerUnitId) { ImpactFx.Punch(0.5f); ImpactFx.SetGlitch(0.25f); } // 내가 맞음 — 화면이 휘청
             };
 
             humanPrevPos.Clear();
@@ -1664,7 +1681,7 @@ namespace SeoYuGi.BattleView
             {
                 bool onHigh = Battle.Grid.IsHighland(me.pos);
                 if (onHigh && !playerWasOnHighland)
-                    hud.ShowAnnounce("고지대 확보 — 시야 +2", teamColors[playerTeam], 2.2f);
+                    hud.ShowAnnounce("고지대 확보 — 시야 +2 · 사거리 +2 · 이동 +1", teamColors[playerTeam], 2.2f);
                 playerWasOnHighland = onHigh;
             }
 
@@ -1714,6 +1731,10 @@ namespace SeoYuGi.BattleView
 
                 // 쿨타임/스턴 시각화: 잠긴 유닛은 어둡게
                 view.SetDimmed(unit.moveCooldown > 0f || unit.stunnedUntil > Battle.time);
+
+                // 스턴 지속 동안 머리 위 별 궤도 — 이벤트가 아닌 상태 기반이라 해킹 스턴·클라 동기화도 커버
+                if (unit.stunnedUntil > Battle.time)
+                    StunVfx.Ensure(view.transform, unit.stunnedUntil - Battle.time);
 
                 // 밀침·대시·점멸 등 연출 없는 위치 변경 동기화
                 if (!view.IsMoving && !view.IsAt(unit.pos))

@@ -7,7 +7,9 @@ using UnityEngine;
 using Unity.Networking.Transport.Relay;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
-using Unity.Services.Relay;
+using Unity.Services.Relay;         // Multiplayer 2.x가 번들한 Relay SDK (같은 네임스페이스)
+using Unity.Services.Relay.Models;  // Allocation.ToRelayServerData 확장
+using Unity.Services.Multiplayer;
 #endif
 
 namespace SeoYuGi.Net
@@ -57,7 +59,7 @@ namespace SeoYuGi.Net
                 var alloc = await RelayService.Instance.CreateAllocationAsync(MaxPlayers - 1);
                 JoinCode = await RelayService.Instance.GetJoinCodeAsync(alloc.AllocationId);
                 nm.GetComponent<UnityTransport>()
-                    .SetRelayServerData(new RelayServerData(alloc, "dtls"));
+                    .SetRelayServerData(alloc.ToRelayServerData("dtls"));
                 return nm.StartHost();
             }
             catch (Exception e)
@@ -82,7 +84,7 @@ namespace SeoYuGi.Net
                 await SignInAsync();
                 var join = await RelayService.Instance.JoinAllocationAsync(code.Trim().ToUpperInvariant());
                 nm.GetComponent<UnityTransport>()
-                    .SetRelayServerData(new RelayServerData(join, "dtls"));
+                    .SetRelayServerData(join.ToRelayServerData("dtls"));
                 return nm.StartClient();
             }
             catch (Exception e)
@@ -92,6 +94,36 @@ namespace SeoYuGi.Net
             }
 #else
             Debug.LogError("Relay 패키지 미리졸브 — Unity 에디터에서 패키지 리졸브 후 다시");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+
+        /// <summary>
+        /// 매치메이커 — 큐에 티켓 넣고 6명(2팀×3) 모으면 Relay 세션 자동 생성.
+        /// 성공 시 SDK가 NGO 호스트/클라를 시작한다. 부족분은 게임(NetLobby)이 봇으로 채운다.
+        /// 인원 안 모이거나 실패하면 false → 러너가 봇전으로 폴백.
+        /// </summary>
+        public static async Task<bool> MatchmakeAsync(string queueName)
+        {
+#if SEOYUGI_RELAY
+            try
+            {
+                Ensure();
+                await SignInAsync();
+                var mm = new MatchmakerOptions { QueueName = queueName };
+                var session = await MultiplayerService.Instance.MatchmakeSessionAsync(
+                    mm, new SessionOptions { MaxPlayers = MaxPlayers }.WithRelayNetwork());
+                JoinCode = null; // 매치메이커는 조인 코드 불필요
+                return session != null;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"매칭 실패/타임아웃 — 봇전으로: {e.Message}");
+                return false;
+            }
+#else
+            Debug.LogWarning("매치메이커 미활성(SEOYUGI_RELAY define 필요) — 봇전으로");
             await Task.CompletedTask;
             return false;
 #endif

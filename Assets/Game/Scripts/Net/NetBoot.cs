@@ -100,26 +100,32 @@ namespace SeoYuGi.Net
         }
 
         /// <summary>
-        /// 매치메이커 — 큐에 티켓 넣고 6명(2팀×3) 모으면 Relay 세션 자동 생성.
-        /// 성공 시 SDK가 NGO 호스트/클라를 시작한다. 부족분은 게임(NetLobby)이 봇으로 채운다.
-        /// 인원 안 모이거나 실패하면 false → 러너가 봇전으로 폴백.
+        /// 퀵조인 매칭 — 빈 자리 있는 세션에 합류, 없으면 내가 방을 만들고 로비에서 대기.
+        /// (구 매치메이커 큐 방식은 성사 전 인원(n/n)을 알 수 없고 티켓 30초에 잘려 폐기 — 2026-09-05)
+        /// 성공 시 SDK가 NGO 호스트/클라를 시작 → 로비 슬롯이 합류자를 실시간 표시.
+        /// 출격은 호스트가 원할 때 — 부족분은 게임(NetLobby)이 봇으로 채운다.
+        /// 네트워크/인증 실패 시에만 false → 러너가 봇전으로 폴백.
         /// </summary>
-        public static async Task<bool> MatchmakeAsync(string queueName)
+        public static async Task<bool> QuickMatchAsync()
         {
 #if SEOYUGI_RELAY
             try
             {
                 Ensure();
                 await SignInAsync();
-                var mm = new MatchmakerOptions { QueueName = queueName };
+                var quick = new QuickJoinOptions
+                {
+                    Timeout = TimeSpan.FromSeconds(8), // 기존 세션 탐색 시간 — 없으면 아래 옵션으로 방 생성
+                    CreateSession = true
+                };
                 var session = await MultiplayerService.Instance.MatchmakeSessionAsync(
-                    mm, new SessionOptions { MaxPlayers = MaxPlayers }.WithRelayNetwork());
-                JoinCode = null; // 매치메이커는 조인 코드 불필요
+                    quick, new SessionOptions { MaxPlayers = MaxPlayers }.WithRelayNetwork());
+                JoinCode = null; // 퀵조인은 조인 코드 불필요
                 return session != null;
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"매칭 실패/타임아웃 — 봇전으로: {e.Message}");
+                Debug.LogWarning($"매칭 실패 — 봇전으로: {e.Message}");
                 return false;
             }
 #else

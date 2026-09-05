@@ -422,8 +422,8 @@ namespace SeoYuGi.BattleView
         System.Collections.IEnumerator MatchmakeRoutine(UITitlePopup popup)
         {
             popup.ShowSearching();
-            var task = NetBoot.MatchmakeAsync("Seoyugi"); // 대시보드 큐 이름
-            const float Timeout = 32f; // 매치메이커 티켓 타임아웃(30s)보다 살짝 길게
+            var task = NetBoot.QuickMatchAsync(); // 빈 세션 합류 or 방 생성 — 이후 대기는 로비(n/6 표시)에서
+            const float Timeout = 20f; // 퀵조인 탐색(8s)+세션 생성 여유 — 이 안에 못 끝나면 네트워크 문제
             float t = 0f;
             while (!task.IsCompleted && t < Timeout)
             {

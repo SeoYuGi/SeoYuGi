@@ -81,51 +81,51 @@
             new ClassDef
             {
                 id = UnitClass.Tank, maxHp = 15, sightRange = 3, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.85f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.2f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3.0f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 1.5f, damage = 1, range = 1, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 1.5f, damage = 2, range = 1, cooldownSeconds = 8f }
+                    new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 2f, damage = 1, range = 1, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 2f, damage = 2, range = 1, cooldownSeconds = 8f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Balance, maxHp = 10, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.8f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.6f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Dash, telegraphSeconds = 0f, damage = 1, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 1.2f, damage = 0, range = 1, cooldownSeconds = 8f, stunSeconds = 1f }
+                    new SkillDef { kind = SkillKind.Scream, telegraphSeconds = 1.6f, damage = 0, range = 1, cooldownSeconds = 8f, stunSeconds = 1f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Assassin, maxHp = 8, sightRange = 4, attackShape = AttackShape.Melee8,
-                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.5f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.5f },
+                move = new MoveProfile { freeRange = 3, maxRange = 5, gaugeRegenPerSecond = 1.10f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.2f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Blink, telegraphSeconds = 0f, damage = 0, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Claw, telegraphSeconds = 1.8f, damage = 3, range = 1, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Claw, telegraphSeconds = 2.4f, damage = 3, range = 1, cooldownSeconds = 10f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Grenadier, maxHp = 8, sightRange = 4, attackShape = AttackShape.Circle2,
-                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 1.1f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.8f },
+                move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.6f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 1.8f, damage = 1, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 2f, damage = 2, range = 4, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 2, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 2.6f, damage = 2, range = 4, cooldownSeconds = 10f }
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Sniper, maxHp = 5, sightRange = 5, attackShape = AttackShape.Square2,
-                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.85f, regenDelaySeconds = 0f, yellowCooldownSeconds = 2.6f },
+                move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 3.4f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 1, cooldownSeconds = 7f },
-                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 1.8f, damage = 3, range = 5, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 2.4f, damage = 3, range = 5, cooldownSeconds = 10f }
                 }
             }
         };

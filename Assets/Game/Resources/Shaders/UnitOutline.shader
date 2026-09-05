@@ -1,4 +1,4 @@
-// 유닛 외곽선 — 뒤집힌 껍질(Cull Front) + 월드 단위 노멀 확장. URP 전용.
+﻿// 유닛 외곽선 — 뒤집힌 껍질(Cull Front) + 월드 단위 노멀 확장. URP 전용.
 // 렌더러의 머티리얼 배열 끝에 추가 패스로 얹는다 (UnitOutlineApplier) — 스킨드 메시도 그대로 먹는다.
 // Resources 아래에 두는 이유: 머티리얼 에셋이 참조하지 않아도 빌드에 포함되고 Shader.Find가 된다.
 Shader "SeoYuGi/UnitOutline"
@@ -6,7 +6,7 @@ Shader "SeoYuGi/UnitOutline"
     Properties
     {
         _OutlineColor ("Outline Color", Color) = (0.05, 0.04, 0.06, 1)
-        _OutlineWidth ("Outline Width (world units)", Float) = 0.045
+        _OutlineWidth ("Outline Width (world units)", Float) = 0.028
     }
     SubShader
     {

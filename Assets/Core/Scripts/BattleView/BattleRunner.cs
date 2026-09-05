@@ -582,7 +582,9 @@ namespace SeoYuGi.BattleView
         // 무전 타임 (지휘관 대전, 2026-09-05) — 호스트 시계로 전원이 동시에 8초 정지, 그 안에 양쪽 지휘관이 지시한다.
         // 개인 일시정지는 상대에게 억까, 정지 없음은 타이핑하다 죽는다 → 정해진 주기에 같이 멈추는 게 유일한 공정한 답.
         // 25초 전투 + 8초 지휘가 반복되며 '실시간 턴제'의 턴이 된다. 싱글 지휘관은 무전창 열 때 정지하므로 해당 없음.
-        const float RadioTimeFirst = 20f, RadioTimeEvery = 30f, RadioTimeLen = 8f;
+        // 길이: 첫 무전(작전 타임) 15초, 이후 10초 — 8초는 문장을 다 못 친다 (2026-09-06)
+        const float RadioTimeFirst = 20f, RadioTimeEvery = 30f, RadioTimeLen = 10f, RadioTimeFirstLen = 15f;
+        bool firstRadioTimeDone; // 라운드마다 첫 무전 타임만 길게
         float nextRadioTimeAt = -1f;  // 전투 시계(Battle.time) 기준 다음 무전 타임. -1 = 없음
         bool radioTimeActive;
         float radioTimeEndsAt;        // 실시간(unscaled) 기준 종료 시각 — 정지 중엔 전투 시계가 안 가므로
@@ -860,8 +862,10 @@ namespace SeoYuGi.BattleView
             }
             if (!online || !schedules || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
             nextRadioTimeAt = Battle.time + RadioTimeEvery;
-            BeginRadioTime(RadioTimeLen);
-            if (NetBoot.IsOnline) NetSync.HostSendRadioTime(true, RadioTimeLen);
+            float len = firstRadioTimeDone ? RadioTimeLen : RadioTimeFirstLen;
+            firstRadioTimeDone = true;
+            BeginRadioTime(len);
+            if (NetBoot.IsOnline) NetSync.HostSendRadioTime(true, len);
         }
 
         /// <summary>훈련장 — 허수아비 제자리 복귀(밀려난 뒤 3초 안 맞으면) + F1~F5 캐릭터 교체.</summary>
@@ -2580,6 +2584,7 @@ namespace SeoYuGi.BattleView
             else RequestCountdownBanter();               // 분대원 둘이 잡담 — 카운트다운 3초를 살아 있는 시간으로
             if (radioTimeActive) EndRadioTime(); // 라운드 재조립 — 정지 잔재 제거
             nextRadioTimeAt = RadioTimeFirst;
+            firstRadioTimeDone = false; // 새 라운드 — 첫 무전 타임은 다시 15초
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
                 NetSync.HostSendBeginRound(Match.CurrentRound); // 클라 — 같은 라운드 조립 신호
@@ -3012,8 +3017,7 @@ namespace SeoYuGi.BattleView
                     hud.SetMatchStats(BuildMatchStats());
                     hud.ShowMatchEnd();
                     battleAudio.PlayBgm(myWin ? "B4_Victory" : "B5_Defeat", loop: false);
-                    if (myWin) PlayVoiceLine("Voice_MatchWin", "예측 초과. 통제 불능");
-                    else PlayVoiceLine("Voice_MatchLose", "구역 통제권 회수됨");
+                    // 승/패 관제 보이스·자막("예측 초과. 통제 불능" / "구역 통제권 회수됨")은 은퇴 — AI 학습 컨셉 잔재 (2026-09-06)
                 }));
             }
             else

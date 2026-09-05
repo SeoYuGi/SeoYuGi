@@ -39,7 +39,7 @@ namespace SeoYuGi.BattleView
 
         /// <summary>③ 가이드 무전 타임이 나올 전투 시각.</summary>
         public const float RadioAt = 20f;
-        public const float RadioLength = 14f; // 첫 무전은 넉넉히 — 예시 읽고 한 줄 치는 시간
+        public const float RadioLength = 15f; // 첫 무전은 넉넉히 — 예시 읽고 한 줄 치는 시간. 일반 첫 무전 타임(15초)과 같게 (2026-09-06)
 
         /// <summary>무전창에 돌아가는 예시 — 여러 유닛·조건·적 지목·별명 호칭이 다 된다는 걸 읽지 않아도 보이게.</summary>
         public static readonly string[] RadioExamples =

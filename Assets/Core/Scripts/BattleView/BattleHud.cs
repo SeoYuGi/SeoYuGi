@@ -9,7 +9,7 @@ namespace SeoYuGi.BattleView
     /// 상단: 생존 ● + 매치 스코어 | 남은시간 | A/B/C 거점 칩.
     /// 중앙 상단: 상황 안내 배너 ("공격할 대상을 선택하세요" 식).
     /// 하단: 통합 바 — 콜사인·HP | 이동/공격/스킬 슬롯(키·쿨타임) | 해킹 궁게이지.
-    /// 오버레이: 라운드 간 AI 분석 브리핑(기획서 §05 — 심사 핵심 어필) · 매치 종료.
+    /// 오버레이: 라운드 결과 화면 · 매치 종료. (AI 학습 브리핑은 2026-09-05 컨셉 선회로 폐기 — lines=null로 온다)
     /// hudScale로 전체 크기 조절 (GUI.matrix).
     /// </summary>
     public class BattleHud : MonoBehaviour
@@ -316,7 +316,7 @@ namespace SeoYuGi.BattleView
             }
         }
 
-        /// <summary>라운드 사이 — AI가 학습한 내용을 관제 로그 톤으로 보여준다.</summary>
+        /// <summary>라운드 사이 결과 화면. lines는 폐기된 브리핑 잔재 — null로 온다.</summary>
         public void ShowBriefing(int endedRound, int roundWinnerTeam, string[] lines)
         {
             briefingRound = endedRound;
@@ -793,11 +793,6 @@ namespace SeoYuGi.BattleView
                 $"ROUND {briefingRound} — {(myWin ? "승리" : "패배")}", briefTitleStyle);
             GUI.color = Color.white;
 
-            GUI.color = new Color(1f, 0.55f, 0.4f);
-            GUI.Label(new Rect(box.x, box.y + 78, box.width, 20), "── AI 관제 로그 · 학습 브리핑 ──",
-                new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
-            GUI.color = Color.white;
-
             float y = box.y + 106;
             if (briefingLines != null)
                 foreach (var line in briefingLines)
@@ -812,7 +807,7 @@ namespace SeoYuGi.BattleView
             GUI.color = new Color(1f, 0.85f, 0.25f);
             string footer = readyTotal > 1
                 ? $"SPACE — 다음 라운드 동의  ({readyCount}/{readyTotal})"
-                : "SPACE — 다음 라운드 (AI가 학습을 적용합니다)";
+                : "SPACE — 다음 라운드";
             GUI.Label(new Rect(box.x, box.y + box.height - 58, box.width, 22),
                 footer, new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter });
             GUI.color = Color.white;

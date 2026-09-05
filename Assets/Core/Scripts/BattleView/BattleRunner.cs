@@ -314,7 +314,6 @@ namespace SeoYuGi.BattleView
         bool hackReadyAnnounced; // 해킹 만충 공지 — 만충 상태로 올라가는 순간에만 1회
         bool fastForward;        // 싱글에서 내가 죽은 뒤 SPACE — 라운드 결과까지 6배속 (멀뚱히 기다리지 않게)
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
-        float nextFakeCalloutTime; // 사후 귀속 자막 남발 방지
 
         void Awake()
         {
@@ -1367,18 +1366,15 @@ namespace SeoYuGi.BattleView
                 }
                 else if (hit) battleAudio.PlaySfx("S3_Hit", 0.8f);
 
-                // 예측 사격 결과 (G) — 맞으면 소름, 빗나가면 "배신 성공" 피드백.
-                // 아군 봇도 예측샷을 쓰게 되면서(연계 패스) "읽혔습니다" 화법은 내가 당한 것에만 —
-                // 아군의 예측 적중은 "예측 적중!" 아군 연출로 분리.
+                // 예측 사격 결과 (G) — AI 학습 서사 자막은 폐기(2026-09-05), 타격 연출만 남긴다.
+                // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽고 쐈다"가 읽힌다.
                 if (predictedStrikes.Remove(strike))
                 {
                     var focus = gridView.CoordToWorld(strike.cells[strike.cells.Count / 2]);
                     bool againstMe = strike.team != playerTeam;
                     if (hit && againstMe)
                     {
-                        hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
                         battleAudio.PlaySfx("S26_PredictHit", 1.4f); // 예측 명중 스팅어 — 컨셉 상징음
-                        // 보라 = 예측. 일반 명중(주황 기둥)과 색으로 구분돼야 "읽혔다"가 읽힌다. (링 제거 — 기둥이 시그니처)
                         ImpactVfx.Pillar(focus, new Color(0.8f, 0.45f, 1f));
                         ImpactFx.Punch(0.85f);
                         CameraShaker.Shake(0.4f);
@@ -1392,20 +1388,8 @@ namespace SeoYuGi.BattleView
                     }
                     else if (againstMe)
                     {
-                        hud.ShowSubtitle("빗나갔습니다. 평소와 다르게 움직이셨군요.", 2.2f);
                         ImpactVfx.Sparks(focus, machine: true, scale: 0.8f); // 빗나간 조준이 흩어짐
                     }
-                }
-                // 사후 귀속 꼼수: 진짜 예측이 아니어도 플레이어가 맞았으면 35% 확률로
-                // "읽고 쏜 것처럼" 자막 — 어차피 맞은 건 사실이라 뇌가 알아서 소름 돋는다.
-                // R1 제외(바보 컨셉 유지), 8초 쿨다운으로 남발 방지.
-                else if (hit && strike.team != playerTeam && Match.CurrentRound >= 2 &&
-                         Time.time >= nextFakeCalloutTime &&
-                         StrikeCoversPlayer(strike) && UnityEngine.Random.value < 0.35f)
-                {
-                    nextFakeCalloutTime = Time.time + 8f;
-                    hud.ShowSubtitle("읽혔습니다. 당신이 갈 곳을 알고 쐈습니다.", 2.4f);
-                    battleAudio.PlaySfx("S26_PredictHit", 1.4f);
                 }
             };
             Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S30_Stun", 1f); // 스턴 = 둔탁한 퍽 (재생성본 — 고역 없음 검증)
@@ -1842,7 +1826,7 @@ namespace SeoYuGi.BattleView
                 foreach (var s in NetLobby.Slots)
                     if (s.owner == SlotOwner.RemoteHuman)
                         NetSync.HostSendRoundEnd(s.clientId, winnerTeam, Match.GetWins(0), Match.GetWins(1),
-                            matchOver, predictor.GetBriefing(s.unitId));
+                            matchOver, null); // AI 학습 브리핑 폐기 (2026-09-05) — 프로토콜은 유지, 내용만 비운다
 
             if (matchOver)
             {
@@ -1855,8 +1839,8 @@ namespace SeoYuGi.BattleView
             }
             else
             {
-                // 라운드 간 브리핑 — AI가 학습한 내용을 보여준다 (심사 기준 ① 어필 지점)
-                hud.ShowBriefing(endedRound, winnerTeam, predictor.GetBriefing(playerUnitId));
+                // 라운드 결과 화면 — AI 학습 브리핑(도발 문구)은 폐기 (2026-09-05, 컨셉 선회)
+                hud.ShowBriefing(endedRound, winnerTeam, null);
                 phase = Phase.Briefing;
                 ResetReadyGate(); // SPACE 동의 집계 초기화
                 battleAudio.PlayBgm("B3_Briefing");
@@ -2064,13 +2048,6 @@ namespace SeoYuGi.BattleView
             worldView.Refresh();
             foreach (var driver in aiDrivers)
                 driver.Tick(worldView);
-
-            // 실시간 패턴 감지 자막 (F) — 학습이 라운드 안에서 째깍거리는 연출
-            if (predictor.TryDequeueDetection(out var detection))
-            {
-                hud.ShowSubtitle(detection, 2.8f);
-                battleAudio.PlaySfx("S22_DetectPing", 0.6f);
-            }
 
             SyncPresentation();
 

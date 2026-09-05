@@ -5,7 +5,8 @@ using System.Linq;
 namespace SeoYuGi.Prediction
 {
     /// 학습형 예측기. 코어는 Observe/InjectDecoy로 데이터를 주고,
-    /// PredictNextCells/GetBriefing으로 결과를 읽는다. UnityEngine 비의존.
+    /// PredictNextCells로 결과를 읽는다. UnityEngine 비의존.
+    /// (브리핑·감지 자막 등 학습 서사 출력은 2026-09-05 컨셉 선회로 제거 — 예측 사격용 코어만 남음)
     public class Predictor
     {
         private readonly PredictionConfig _cfg;
@@ -46,7 +47,6 @@ namespace SeoYuGi.Prediction
                 _roundMoveCount.TryGetValue(e.ActorId, out int idx);
                 p.ObserveMove(e.From, e.To, e.Time, idx);
                 _roundMoveCount[e.ActorId] = idx + 1;
-                CheckDetections(e.ActorId, p);
             }
             else
             {
@@ -101,55 +101,7 @@ namespace SeoYuGi.Prediction
             return result;
         }
 
-        /// 라운드 간 브리핑 화면용 분석 문구.
-        public string[] GetBriefing(int actorId)
-        {
-            if (!_actors.TryGetValue(actorId, out var p) || p.ObservedMoves < 4)
-                return new[] { "아직 당신을 잘 모르겠습니다. 조금 더 지켜보겠습니다." };
-
-            // 사람 말로 — "무엇을 봤고, 그래서 다음 판에 뭘 할 건지" 한 문장씩. 수치·좌표·분류 용어 금지 (2026-09-05).
-            var lines = new List<string>();
-
-            var style = GetStyle(actorId);
-            if (style == PlayStyle.ZoneRusher)
-                lines.Add("당신은 거점으로 곧장 달려드는 편이더군요. 다음 판엔 높은 곳에서 내려다보며 쏘겠습니다.");
-            else if (style == PlayStyle.HighlandHolder)
-                lines.Add("높은 자리를 좋아하시는군요. 다음 판엔 그 자리에 제가 먼저 가 있겠습니다.");
-
-            int third = LaneThird(p, out float lanePct);
-            string[] laneNames = { "왼쪽", "가운데", "오른쪽" };
-            int outOfTen = Math.Max(1, (int)Math.Round(lanePct * 10));
-            if (lanePct >= 0.5f)
-                lines.Add($"열 번 중 {outOfTen}번은 {laneNames[third]} 길로 오셨습니다. 거기서 기다리겠습니다.");
-            else
-                lines.Add("길은 골고루 쓰시네요. 어디로 올지 아직 못 정했습니다.");
-
-            if (p.FirstZoneEntryTime >= 0f && p.FirstZoneEntryTime < 15f)
-                lines.Add($"시작 {p.FirstZoneEntryTime:0}초 만에 거점에 들어오셨습니다. 다음엔 들어오는 길목부터 겨누겠습니다.");
-
-            float predictability = Predictability(p);
-            if (predictability > 0.55f)
-                lines.Add("움직임이 꽤 규칙적입니다. 다음에 어느 칸으로 갈지 대충 보입니다.");
-            else
-                lines.Add("움직임이 들쭉날쭉해서 아직 읽기 어렵습니다.");
-
-            var opening = p.OpeningCells.OrderByDescending(kv => kv.Value).FirstOrDefault();
-            if (opening.Value >= 2)
-                lines.Add("시작할 때마다 같은 칸을 지나가시더군요. 거기에 미리 깔아두겠습니다.");
-
-            return lines.ToArray();
-        }
-
         // ── 스타일 분류 + 카운터 전술 API (R2+ "습성 조건부 대응") ──────
-
-        /// HUD 학습 게이지용 0..1 — 표본 수(20수에 만충) 60% + 이동 패턴 일치율 40%.
-        /// "AI가 나를 학습한다"를 상시 숫자로 보이게 (2026-09-05).
-        public float LearningProgress(int actorId)
-        {
-            if (!_actors.TryGetValue(actorId, out var p)) return 0f;
-            float samples = Math.Min(1f, p.ObservedMoves / 20f);
-            return samples * 0.6f + Predictability(p) * 0.4f;
-        }
 
         /// 유저 플레이 스타일. 표본 6수 미만이면 Unknown.
         public PlayStyle GetStyle(int actorId)
@@ -189,41 +141,6 @@ namespace SeoYuGi.Prediction
                 if (v > best) { best = v; cell = h; }
             }
             return best > 0.5f;
-        }
-
-        // ── 실시간 패턴 감지 (자막 연출용) — 감지 종류당 매치 1회 ──────
-
-        private readonly HashSet<string> _firedDetections = new HashSet<string>();
-        private readonly Queue<string> _detections = new Queue<string>();
-
-        public bool TryDequeueDetection(out string message)
-        {
-            message = null;
-            if (_detections.Count == 0) return false;
-            message = _detections.Dequeue();
-            return true;
-        }
-
-        private void CheckDetections(int actorId, ActorPattern p)
-        {
-            if (p.ObservedMoves < 6) return;
-
-            if (p.FirstZoneEntryTime >= 0f && p.FirstZoneEntryTime < 15f)
-                Fire(actorId, "rush", "거점으로 바로 달려드시는군요. 기억해 두겠습니다.");
-            if (p.HighlandEntries >= 3)
-                Fire(actorId, "high", "높은 자리를 좋아하시네요. 기억해 두겠습니다.");
-            int third = LaneThird(p, out float lanePct);
-            if (lanePct > 0.6f && p.ObservedMoves >= 10)
-            {
-                string[] laneNames = { "왼쪽", "가운데", "오른쪽" };
-                Fire(actorId, "lane", $"자꾸 {laneNames[third]} 길로 오시네요. 기억해 두겠습니다.");
-            }
-        }
-
-        private void Fire(int actorId, string key, string message)
-        {
-            if (_firedDetections.Add(actorId + ":" + key))
-                _detections.Enqueue(message);
         }
 
         private ActorPattern GetPattern(int actorId)
@@ -269,39 +186,5 @@ namespace SeoYuGi.Prediction
             return best;
         }
 
-        private int LaneThird(ActorPattern p, out float pct)
-        {
-            float[] lane = new float[3];
-            float sum = 0f;
-            int w = _cfg.MapWidth;
-            for (int x = 0; x < w; x++)
-                for (int y = 0; y < _cfg.MapHeight; y++)
-                {
-                    int t = Math.Min(2, x * 3 / w);
-                    lane[t] += p.Visits[x, y];
-                    sum += p.Visits[x, y];
-                }
-            int best = 0;
-            for (int i = 1; i < 3; i++) if (lane[i] > lane[best]) best = i;
-            pct = sum <= 0f ? 0f : lane[best] / sum;
-            return best;
-        }
-
-        private static float Predictability(ActorPattern p)
-        {
-            // 각 prevDir 행에서 최대 확률의 가중 평균 = "얼마나 뻔한가"
-            float acc = 0f, weight = 0f;
-            for (int ctx = 0; ctx < 2; ctx++)
-                for (int i = 0; i < ActorPattern.DirCount; i++)
-                {
-                    float row = 0f, max = 0f;
-                    for (int j = 0; j < ActorPattern.DirCount; j++)
-                    { row += p.Trans[ctx, i, j]; max = Math.Max(max, p.Trans[ctx, i, j]); }
-                    if (row <= 0f) continue;
-                    acc += max / row * row;
-                    weight += row;
-                }
-            return weight <= 0f ? 0f : acc / weight;
-        }
     }
 }

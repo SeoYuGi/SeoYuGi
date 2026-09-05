@@ -27,6 +27,14 @@
         public int HealSeekMissingHp = 2;         // 잃은 HP가 이 이상일 때만 힐팩을 노린다 (0=비활성)
         public int HealSeekRadius = 6;            // 이 칸 이내의 힐팩만 — 너무 멀면 거점 플레이 우선
 
+        // 클래스 성향 (2026-09-05) — "하루종일 거점에서 뭉쳐 싸우는" 균질함을 깨는 약한 보정. 세게 쓰지 말 것.
+        public float CohesionBonus = 2.5f;        // 아군이 붙은 거점 선호 가중 — 낮으면 혼자 다른 거점을 노린다
+        public float LowHpTargetWeight = 0.5f;    // 남은 HP 적은 적 우선 (마무리)
+        public float FragileTargetWeight = 0f;    // 피통(MaxHp) 작은 적 우선 — 암살자: 저격·폭격 같은 유리몸부터
+        public float RangedTargetBonus = 0f;      // 저격·폭격 클래스 타겟 가중 (+1 고지대 위면 추가)
+        public bool PreferHighlandPerch = false;  // 거점을 직접 밟는 대신 근처 고지대에 자리 잡음 (저격수)
+        public int KeepDistance = 0;              // 적이 이 체비쇼프 거리 안으로 붙으면 한 걸음 물러남 (몸 사림). 0=안 함
+
         /// 매치 난이도 — 러너가 매치 시작 시 설정. ForClass가 이 값으로 수치를 스케일.
         public static AiDifficulty Difficulty = AiDifficulty.Normal;
 
@@ -72,21 +80,25 @@
             {
                 // 회피 재조정 (2026-09-05): 확률 하향 + 쿨타임 — 근접 1:1에서 영원히 허공 치는 문제.
                 // 첫 공격은 피할 수 있어도 연속 공격은 맞는다. R1은 여기에 ×0.6 더 (EffectiveDodgeChance).
-                case ClassId.Tank:      // 둔중 — 잘 못 피하는 대신 몸으로 받는다. HP 6, 힐팩 잘 안 챙김
+                case ClassId.Tank:      // 둔중 — 잘 못 피하는 대신 몸으로 받는다. HP 6, 힐팩 잘 안 챙김. 거점 앵커 — 아군 옆에 선다
                     return new AiConfig { MinDecisionInterval = 0.25f, DodgeChance = 0.25f, DodgeCooldown = 4f, AttackInterval = 0.7f,
-                        HealSeekMissingHp = 3, HealSeekRadius = 4 };
-                case ClassId.Balance:   // 표준
+                        HealSeekMissingHp = 3, HealSeekRadius = 4, CohesionBonus = 3f };
+                case ClassId.Balance:   // 표준 — 서포터라 뭉치기 성향 최대
                     return new AiConfig { DodgeChance = 0.45f, DodgeCooldown = 3f, AttackInterval = 0.6f,
-                        HealSeekMissingHp = 2, HealSeekRadius = 6 };
-                case ClassId.Assassin:  // 기민 — 회피 특기지만 무한은 아님. HP 3 유리몸, 힐팩 적극
+                        HealSeekMissingHp = 2, HealSeekRadius = 6, CohesionBonus = 3.5f };
+                case ClassId.Assassin:  // 기민 — 회피 특기지만 무한은 아님. HP 3 유리몸, 힐팩 적극.
+                                        // 성향: 뭉치지 않고 혼자 돌며 후방 유리몸(저격·폭격, 고지대 위면 더)부터 노린다
                     return new AiConfig { DodgeChance = 0.6f, DodgeCooldown = 2f, AttackInterval = 0.45f,
-                        HealSeekMissingHp = 1, HealSeekRadius = 8 };
-                case ClassId.Grenadier: // 후방 표준
+                        HealSeekMissingHp = 1, HealSeekRadius = 8,
+                        CohesionBonus = 0.5f, FragileTargetWeight = 0.4f, RangedTargetBonus = 2.5f, LowHpTargetWeight = 0.8f };
+                case ClassId.Grenadier: // 후방 표준 — 붙으면 한 걸음 물러남
                     return new AiConfig { DodgeChance = 0.45f, DodgeCooldown = 3.5f, AttackInterval = 0.8f,
-                        HealSeekMissingHp = 2, HealSeekRadius = 6 };
-                case ClassId.Sniper:    // 조준하는 무게 — 제일 느긋한 방아쇠. HP 2 최유리몸, 회복에 민감
+                        HealSeekMissingHp = 2, HealSeekRadius = 6, CohesionBonus = 2f, KeepDistance = 1 };
+                case ClassId.Sniper:    // 조준하는 무게 — 제일 느긋한 방아쇠. HP 2 최유리몸, 회복에 민감.
+                                        // 성향: 거점을 직접 밟는 대신 근처 고지대에 앉고, 적이 2칸 안으로 오면 물러난다 (몸 사림)
                     return new AiConfig { MinDecisionInterval = 0.3f, DodgeChance = 0.5f, DodgeCooldown = 3f, AttackInterval = 1.0f,
-                        HealSeekMissingHp = 1, HealSeekRadius = 8 };
+                        HealSeekMissingHp = 1, HealSeekRadius = 8,
+                        CohesionBonus = 1.5f, PreferHighlandPerch = true, KeepDistance = 2 };
                 default:
                     return new AiConfig();
             }

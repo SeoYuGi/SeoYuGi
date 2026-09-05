@@ -72,7 +72,7 @@ namespace SeoYuGi.Ai
             if (cmd.Type == CommandType.None && world.Time - _lastActiveTime > 3f &&
                 !OnAnyZonePatch(world, me.Pos) && !EnemyAdjacent(world, me))
             {
-                var forced = StepTowardBestZone(world, me);
+                var forced = StepTowardBestZone(world, me, ZoneDeficit(world, me.Team) > 0);
                 if (forced.HasValue)
                 {
                     cmd = AiCommand.Of(CommandType.Move, forced.Value);
@@ -181,6 +181,18 @@ namespace SeoYuGi.Ai
             // (거점 다 털리는데 근접 대치로 멀뚱히 서 있거나 저격수가 고지대에 눌러앉던 문제.)
             bool losing = ZoneDeficit(world, me.Team) > 0;
 
+            // 3.1) 거리 유지 — 원거리 클래스는 적이 KeepDistance 안으로 붙으면 한 걸음 물러난다 (몸 사림).
+            //      공격·스킬(넉백샷 포함)이 위에서 먼저 나가고, 쿨이면 물러난다. 패배 긴급이면 생략.
+            if (!losing && _cfg.KeepDistance > 0)
+            {
+                var near = NearestEnemy(world, me, out int nearDist);
+                if (near.HasValue && nearDist <= _cfg.KeepDistance)
+                {
+                    var away = StepAway(world, me, near.Value.Pos);
+                    if (away.HasValue) return AiCommand.Of(CommandType.Move, away.Value);
+                }
+            }
+
             // 3.2) 근접 대치 — 적이 붙어 있으면 근접 클래스는 자리를 지킨다. 매 판단마다 거점으로 걸어 나가면
             //      플레이어가 쫓아다니는 술래잡기가 된다. 공격은 위 2~3단계가 쿨다운 돌 때 나간다.
             if (!losing && target.HasValue && IsMelee(me.Class) && IsOrthoAdjacent(me.Pos, target.Value.Pos))
@@ -216,7 +228,7 @@ namespace SeoYuGi.Ai
             }
 
             // 4) 거점 이동
-            var step = StepTowardBestZone(world, me);
+            var step = StepTowardBestZone(world, me, losing);
             if (step.HasValue)
                 return AiCommand.Of(CommandType.Move, step.Value);
 
@@ -487,7 +499,10 @@ namespace SeoYuGi.Ai
                 float score = -Manhattan(me.Pos, a.Pos);
                 if (a.IsHuman) score += _cfg.HumanTargetBonus;
                 if (!visible) score -= 2f;
-                score += (3 - a.Hp) * 0.5f; // 마무리 우선
+                score += (3 - a.Hp) * _cfg.LowHpTargetWeight; // 마무리 우선
+                score += (6 - a.MaxHp) * _cfg.FragileTargetWeight; // 유리몸 우선 (암살자)
+                if (_cfg.RangedTargetBonus > 0f && (a.Class == ClassId.Sniper || a.Class == ClassId.Grenadier))
+                    score += _cfg.RangedTargetBonus + (OnHighland(world, a.Pos) ? 1f : 0f); // 후방 저격·폭격, 고지대 위면 더
                 if (a.Stunned) score += 4f; // 연계 — 스턴 걸린 적을 다 같이 두들긴다 (스턴 콤보 +1과 세트)
                 if (_pingType == 1 && world.Time < _pingUntil && Chebyshev(a.Pos, _pingCell) <= 3)
                     score += 5f; // ! 핑 — 지휘관이 찍은 근처의 적 집중
@@ -540,7 +555,7 @@ namespace SeoYuGi.Ai
             return m.aimed;
         }
 
-        private Cell? StepTowardBestZone(IWorldView world, ActorState me)
+        private Cell? StepTowardBestZone(IWorldView world, ActorState me, bool losing = false)
         {
             // 목표 거점: 미소유(중립·적) 우선 — 이미 딴 거점은 제외하고 다음으로 로테이션.
             // 전부 우리 것이면 가장 가까운 거점을 수비.
@@ -555,10 +570,26 @@ namespace SeoYuGi.Ai
                 bool ours = z.HasOwner && z.Owner == me.Team;
                 if (anyNotOurs && ours) continue; // 먹은 거점에 눌러앉지 말 것
                 float score = -Manhattan(me.Pos, z.Cell);
-                if (TeammateNear(world, me, z.Cell, 3)) score += 2.5f; // 뭉치기 — 아군이 붙은 거점을 선호 (각개전투 억제)
+                if (TeammateNear(world, me, z.Cell, 3)) score += _cfg.CohesionBonus; // 뭉치기 — 아군이 붙은 거점을 선호 (클래스별: 서포터 높고 암살자 낮음)
                 if (score > bestScore) { bestScore = score; goal = z; }
             }
             if (!goal.HasValue) return null;
+
+            // 저격수 성향 — 거점을 직접 밟는 대신 그 근처(3칸) 고지대에 앉아 내려다본다. 지고 있을 땐 내려와 밟는다.
+            if (_cfg.PreferHighlandPerch && !losing)
+            {
+                Cell? perch = null;
+                int pd = int.MaxValue;
+                foreach (var h in world.Highlands)
+                {
+                    if (Chebyshev(h, goal.Value.Cell) > 3) continue;
+                    if (!h.Equals(me.Pos) && !world.IsWalkable(h)) continue; // 남이 앉아 있으면 제외
+                    int d = Manhattan(me.Pos, h);
+                    if (d < pd) { pd = d; perch = h; }
+                }
+                if (perch.HasValue)
+                    return perch.Value.Equals(me.Pos) ? null : GreedyStep(world, me, perch.Value); // 도착했으면 자리 사수
+            }
 
             var patch = goal.Value.Cells ?? new[] { goal.Value.Cell };
 
@@ -696,6 +727,35 @@ namespace SeoYuGi.Ai
             for (int i = 0; i < n; i++)
                 if (_recent[i].Equals(c)) return true;
             return false;
+        }
+
+        /// 가장 가까운 살아있는 적 (체비쇼프 거리). 없으면 null.
+        private static ActorState? NearestEnemy(IWorldView world, ActorState me, out int dist)
+        {
+            ActorState? best = null;
+            dist = int.MaxValue;
+            foreach (var a in world.Actors)
+            {
+                if (!a.Alive || a.Team == me.Team) continue;
+                int d = Chebyshev(me.Pos, a.Pos);
+                if (d < dist) { dist = d; best = a; }
+            }
+            return best;
+        }
+
+        /// from 적에게서 멀어지는 이웃 한 걸음 — 걸을 수 있고 위협 없는 칸 중 거리가 늘어나는 곳. 없으면 null.
+        private Cell? StepAway(IWorldView world, ActorState me, Cell from)
+        {
+            int cur = Manhattan(me.Pos, from);
+            Cell? best = null;
+            int bd = cur;
+            foreach (var n in OrthoNeighbors(me.Pos))
+            {
+                if (!world.IsWalkable(n) || IsThreatened(world, me.Team, n)) continue;
+                int d = Manhattan(n, from);
+                if (d > bd) { bd = d; best = n; }
+            }
+            return best;
         }
 
         /// 살아있는 아군(나 제외)이 cell에서 radius 이내에 있는가 — 뭉치기 판단.

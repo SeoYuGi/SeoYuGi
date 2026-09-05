@@ -188,7 +188,7 @@ namespace SeoYuGi.BattleView
             if (u == null) return;
             var view = viewRegistry.Get(unitId);
             if (view != null && view.gameObject.activeInHierarchy)
-                ChatBubble.Show(unitId, view.transform, text, Color.white);
+                ChatBubble.Show(unitId, view.transform, text, Color.white, 3.5f); // 무전 문장은 길다 — 기본 2.4초보다 오래 (2026-09-06)
             hud.AddChatLine(FindSlot(unitId).callsign, text, Color.Lerp(teamColors[u.team], Color.white, 0.55f));
         }
 

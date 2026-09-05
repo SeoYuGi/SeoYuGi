@@ -466,7 +466,7 @@ namespace SeoYuGi.BattleView
 
         public void AddChatLine(string callsign, string text, Color color)
         {
-            chatLog.Add(new ChatEntry { text = $"[{callsign}] {text}", color = color, until = Time.time + 6f });
+            chatLog.Add(new ChatEntry { text = $"[{callsign}] {text}", color = color, until = Time.time + 8f }); // 문장이 길어져 6 → 8초
             if (chatLog.Count > ChatLogMax) chatLog.RemoveAt(0);
         }
 
@@ -1117,13 +1117,13 @@ namespace SeoYuGi.BattleView
                 if (Time.time >= chatLog[i].until) chatLog.RemoveAt(i);
             if (chatLog.Count == 0) return;
 
-            const float boxW = 420f; // 무전 문장(35자 안팎)이 한 줄에 들어가는 폭. 넘치면 줄바꿈 (2026-09-06 "말이 다 잘림")
-            if (chatStyle == null) chatStyle = new GUIStyle(labelStyle) { wordWrap = true };
+            const float boxW = 480f; // 무전 문장(35자 안팎)이 한 줄에 들어가는 폭. 넘치면 줄바꿈 (2026-09-06 "말이 다 잘림")
+            if (chatStyle == null) chatStyle = new GUIStyle(labelStyle) { wordWrap = true, fontSize = 17 }; // 13 → 17, "대사가 잘 안 보인다" (2026-09-06)
             float total = 0f;
             var hs = new float[chatLog.Count];
             for (int i = 0; i < chatLog.Count; i++)
             {
-                hs[i] = Mathf.Max(22f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
+                hs[i] = Mathf.Max(26f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
                 total += hs[i];
             }
             // 무전창이 열려 있으면 그 위로 — 좌하단 입력줄·응답줄과 겹치던 것 (2026-09-05 지휘관 대전 테스트)

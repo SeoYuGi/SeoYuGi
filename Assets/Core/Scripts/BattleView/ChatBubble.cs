@@ -35,7 +35,7 @@ namespace SeoYuGi.BattleView
             b.tm = go.AddComponent<TextMesh>();
             b.tm.text = text;
             b.tm.fontSize = 56;
-            b.tm.characterSize = 0.045f;
+            b.tm.characterSize = 0.058f; // 0.045 → 0.058, 무전 대사 가독성 (2026-09-06)
             b.tm.anchor = TextAnchor.MiddleCenter;
             b.tm.alignment = TextAlignment.Center;
             b.tm.color = color;

@@ -163,10 +163,12 @@ namespace SeoYuGi.BattleView
                 result =>
                 {
                     Orders.Apply(result); // understood=false면 기존 명령 유지 — ack만 갱신
-                    if (IsNetClient) NetSync.ClientSendOrders(result); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
+                    if (IsNetClient && result.understood) NetSync.ClientSendOrders(result); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
                     int speaker = result.orders.Count > 0 ? result.orders[0].unitId
                                 : squad.Count > 0 ? squad[0] : playerUnitId;
                     ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "…수신 불량." : result.ack);
+                    if (result.refused) // 불복종 — 분대가 명령을 물렸다. 채팅 로그와 별개로 전황 배너에도 남긴다
+                        hud.PushEvent($"[무전] {FindSlot(speaker).callsign}: 명령 거부 — {result.ack}", new Color(1f, 0.78f, 0.25f));
                     ShowOrderMarkers(result.orders);
                     if (radio != null) radio.SetWaiting(false);
                 });
@@ -391,6 +393,8 @@ namespace SeoYuGi.BattleView
         float nextRadioTimeAt = -1f;  // 전투 시계(Battle.time) 기준 다음 무전 타임. -1 = 없음
         bool radioTimeActive;
         float radioTimeEndsAt;        // 실시간(unscaled) 기준 종료 시각 — 정지 중엔 전투 시계가 안 가므로
+        float nextBriefingAt;         // 분대 브리핑 쿨 (실시간) — 무전 타임·무전창 열 때 한 번, 최소 12초 간격
+        bool radioOpenPrev;           // 무전창 열림 엣지 — 싱글 지휘관 브리핑 트리거
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
         void Awake()
@@ -640,6 +644,27 @@ namespace SeoYuGi.BattleView
             GameFreeze.Push();
             battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             hud.PushEvent("[무전 타임] 분대에 지시하라", StrikeVfx.MineNeon);
+            RequestSquadBriefing(); // 분대가 먼저 상황을 보고한다 — 지시만 받는 부하가 아니라 대화 상대
+        }
+
+        /// <summary>분대 브리핑 — 분대원 한 명이 한 문장 보고. 키 없음·실패는 침묵. 12초 쿨.</summary>
+        void RequestSquadBriefing()
+        {
+            if (!GameModeState.IsCommander || Spectating || phase != Phase.Playing) return;
+            if (Time.unscaledTime < nextBriefingAt) return;
+            var squad = CommandableUnitIds();
+            if (squad.Count == 0) return;
+            nextBriefingAt = Time.unscaledTime + 12f;
+            var enemies = new List<int>();
+            foreach (var u in Battle.Units)
+                if (u.alive && u.team != playerTeam) enemies.Add(u.id);
+            LlmRadio.RequestBriefing(SquadBrief(squad, enemies), Round != null ? Round.Zones.Count : 0, squad,
+                (unitId, line) =>
+                {
+                    if (phase != Phase.Playing || Battle?.GetUnit(unitId) == null) return;
+                    ShowRadioLine(unitId, line);
+                    battleAudio.PlaySfx("S2_TelegraphAlly", 0.5f); // 수신음
+                });
         }
 
         void EndRadioTime()
@@ -2400,6 +2425,10 @@ namespace SeoYuGi.BattleView
             if (voice != null) voice.enabled = GameModeState.IsCommander && !Spectating;
 
             // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
+            bool radioOpen = radio != null && radio.IsOpen;
+            if (radioOpen && !radioOpenPrev && !NetBoot.IsOnline) RequestSquadBriefing(); // 싱글 지휘관 — Enter로 무전 열면 분대가 먼저 보고
+            radioOpenPrev = radioOpen;
+
             bool typing = RadioWindow.TextInputActive;
             bool inputLock = typing || GameFreeze.Active; // 무전 타임 정지 중엔 이동·스킬 제출도 잠금 — 시뮬은 즉시 반영이라 정지가 곧 선공이 된다
             if (inputLock != typingPrev)

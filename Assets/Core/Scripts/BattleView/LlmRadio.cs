@@ -109,6 +109,72 @@ namespace SeoYuGi.BattleView
             };
         }
 
+        /// <summary>
+        /// 분대 브리핑 — 분대원 한 명이 지휘관에게 상황 한 문장 보고 (무전 타임 시작·무전창 열 때).
+        /// "AI 팀원과 소통하는 느낌" — 지시만 받는 게 아니라 먼저 말을 건다. 실패·키 없음이면 조용히 아무 말 없음.
+        /// onLine(unitId, 문장) — unitId는 squad 안의 값만.
+        /// </summary>
+        public static void RequestBriefing(string squadBrief, int zoneCount,
+            System.Collections.Generic.IReadOnlyList<int> squad, Action<int, string> onLine)
+        {
+            var key = ResolveKey();
+            if (key == null || squad == null || squad.Count == 0) return;
+
+            var zones = zoneCount >= 3 ? "0=A(왼쪽), 1=B(중앙), 2=C(오른쪽)" : "0=A(중앙 단일 거점)";
+            string system =
+"너는 실시간 전술 게임의 아군 분대원 중 하나다. 아래 전장 상황을 보고 지휘관(플레이어)에게 무전으로 " +
+"상황 보고 한 문장을 한다. 위험 또는 기회 딱 하나만 — 예: 잃은 거점, 낮은 HP, 비어 있는 거점, 우세 거점.\n\n" +
+"전장 상황:\n" + squadBrief + "\n\n" +
+$"거점 zoneIndex: {zones}.\n\n" +
+"응답 형식 (JSON 외 텍스트 금지): {\"unitId\":3,\"line\":\"보고 한 문장\"}\n" +
+"unitId는 아군 분대 목록 중 보고하기에 가장 어울리는 분대원(관련 거점에 가까운 쪽, HP 낮으면 본인). " +
+"line은 한국어 35자 이내, 군용 무전 말투, 약간의 성격 허용. 지휘관을 '지휘관'이라 부른다.";
+
+            var body = new JObject
+            {
+                ["model"] = Model,
+                ["max_tokens"] = 120,
+                ["temperature"] = 0.7,
+                ["response_format"] = new JObject { ["type"] = "json_object" },
+                ["messages"] = new JArray
+                {
+                    new JObject { ["role"] = "system", ["content"] = system },
+                    new JObject { ["role"] = "user", ["content"] = "상황 보고." }
+                }
+            };
+
+            var req = new UnityWebRequest(Endpoint, "POST")
+            {
+                uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body.ToString())),
+                downloadHandler = new DownloadHandlerBuffer(),
+                timeout = TimeoutSeconds
+            };
+            req.SetRequestHeader("content-type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + key);
+
+            req.SendWebRequest().completed += _ =>
+            {
+                try
+                {
+                    if (req.result != UnityWebRequest.Result.Success) return; // 브리핑은 실패해도 침묵 — 게임엔 영향 없음
+                    var root = JObject.Parse(req.downloadHandler.text);
+                    string text = (string)(root["choices"] as JArray)?[0]?["message"]?["content"];
+                    if (string.IsNullOrEmpty(text)) return;
+                    int start = text.IndexOf('{'), end = text.LastIndexOf('}');
+                    if (start < 0 || end <= start) return;
+                    var payload = JObject.Parse(text.Substring(start, end - start + 1));
+                    string line = payload["line"]?.Value<string>();
+                    if (string.IsNullOrWhiteSpace(line)) return;
+                    int unitId = payload["unitId"]?.Value<int>() ?? -1;
+                    bool known = false;
+                    foreach (var id in squad) if (id == unitId) { known = true; break; }
+                    onLine(known ? unitId : squad[0], line.Trim());
+                }
+                catch (Exception e) { Debug.LogWarning($"LlmRadio 브리핑 파싱 실패: {e.Message}"); }
+                finally { req.Dispose(); }
+            };
+        }
+
         static string BuildSystemPrompt(string squadBrief, int zoneCount)
         {
             var zones = zoneCount >= 3 ? "0=A(왼쪽), 1=B(중앙), 2=C(오른쪽)" : "0=A(중앙 단일 거점)";
@@ -131,7 +197,10 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "goal은 언급 없으면 \"Free\", stance는 \"Aggressive\"가 자연스럽다.\n" +
 "- 게임에 없는 세부 행동(특정 스킬, 좌표 등)은 가장 가까운 goal/stance 조합으로 해석한다.\n" +
 "- 해석할 수 없거나 게임과 무관한 말이면 {\"understood\":false,\"ack\":\"짧은 되물음\"}.\n" +
-"- ack는 분대원이 무전으로 답하는 한국어 한 문장, 40자 이내. 군용 무전 말투.";
+"- 분대원에겐 사람 같은 자율성이 있다. 응답에 \"compliance\" 필드를 넣는다: \"obey\"(기본) | " +
+"\"question\"(모호해서 되묻는다 — orders 비움) | \"refuse\"(명백한 자살행위만 — HP 1로 돌격, 혼자서 적 셋이 든 거점 진입 등. " +
+"orders 비우고 ack에 거부 이유 + 대안 한 문장). 거부는 드물어야 한다 — 열에 아홉은 복종.\n" +
+"- ack는 분대원이 무전으로 답하는 한국어 한 문장, 40자 이내. 군용 무전 말투, 약간의 성격(툴툴·의욕·침착) 허용.";
         }
 
         static SquadOrders ParseResponse(string json, System.Collections.Generic.IReadOnlyList<int> squad,
@@ -156,6 +225,9 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
                 ack = payload["ack"]?.Value<string>() ?? ""
             };
             if (string.IsNullOrEmpty(s.ack)) s.ack = s.understood ? "수신했습니다." : "다시 말해 주십시오.";
+            // 반문·불복종 (2026-09-05) — orders를 적용하지 않고 ack만 남긴다. 기존 명령은 그대로.
+            string compliance = (payload["compliance"]?.Value<string>() ?? "obey").ToLowerInvariant();
+            if (compliance == "refuse" || compliance == "question") { s.understood = false; s.refused = compliance == "refuse"; return s; }
             if (!s.understood) return s;
 
             foreach (var jo in payload["orders"] as JArray ?? new JArray())

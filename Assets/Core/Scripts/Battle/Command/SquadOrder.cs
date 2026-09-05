@@ -46,6 +46,7 @@ namespace SeoYuGi.Battle
     public class SquadOrders
     {
         public bool understood = true;
+        public bool refused;                          // 분대가 명령을 거부했다 (understood=false와 함께) — 연출·로그 구분용
         public string ack = "";                       // 무전 응답 한 줄 (프리셋은 고정 문구, 자유 서술은 LLM이 쓴다)
         public List<UnitOrder> orders = new List<UnitOrder>();
 

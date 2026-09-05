@@ -112,7 +112,50 @@ public class UITitlePopup : UIPopup
         var fit = go.GetComponent<AspectRatioFitter>();
         fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
         fit.aspectRatio = (float)tex.width / tex.height;
+
+        // 위아래 경계 그라데이션 — 그림이 잘리는 가장자리가 검정 레터박스로 자연스럽게 녹는다 (2026-09-06)
+        AddEdgeFade(rt, top: true);
+        AddEdgeFade(rt, top: false);
         return rt;
+    }
+
+    static Sprite fadeSprite;
+
+    /// <summary>세로 페이드 스프라이트 — 아래 불투명 검정에서 위로 갈수록 투명. 절차 생성이라 에셋 불필요.</summary>
+    static Sprite FadeSprite()
+    {
+        if (fadeSprite != null) return fadeSprite;
+        const int h = 64;
+        var tex = new Texture2D(1, h, TextureFormat.RGBA32, false);
+        for (int y = 0; y < h; y++)
+        {
+            float t = y / (float)(h - 1);
+            float a = (1f - t) * (1f - t); // 제곱 감쇠 — 직선보다 경계가 부드럽다
+            tex.SetPixel(0, y, new Color(0f, 0f, 0f, a));
+        }
+        tex.Apply();
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        fadeSprite = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f));
+        return fadeSprite;
+    }
+
+    /// <summary>배경 위/아래 가장자리 페이드 띠 — 배경 자식이라 해상도가 바뀌어도 그림 가장자리를 따라간다.</summary>
+    static void AddEdgeFade(RectTransform bg, bool top)
+    {
+        var go = new GameObject(top ? "FadeTop" : "FadeBottom", typeof(RectTransform), typeof(Image));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(bg, false);
+        rt.anchorMin = new Vector2(0f, top ? 1f : 0f);
+        rt.anchorMax = new Vector2(1f, top ? 1f : 0f);
+        // 위쪽 띠: 피벗을 아래(0)로 두고 스케일 -1 — 피벗이 위(1)면 뒤집히며 화면 밖으로 나갔다 (2026-09-06)
+        rt.pivot = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(0f, 150f);
+        var img = go.GetComponent<Image>();
+        img.sprite = FadeSprite();
+        img.raycastTarget = false;
+        if (top) rt.localScale = new Vector3(1f, -1f, 1f); // 텍스처는 아래가 진하다 — 위쪽 띠는 뒤집어 내려온다
     }
 
     /// <summary>

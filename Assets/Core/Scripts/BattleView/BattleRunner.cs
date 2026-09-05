@@ -105,7 +105,7 @@ namespace SeoYuGi.BattleView
             if (radio == null)
             {
                 radio = gameObject.AddComponent<RadioWindow>();
-                radio.Init(() => Orders.LastAck);
+                // 무전창 "마지막 응답" 표시는 은퇴 (2026-09-06) — 응답은 채팅 로그가 클래스 색으로 보여준다
                 radio.OnFreeText += SendFreeText;
 
                 voice = gameObject.AddComponent<VoiceRadio>();
@@ -604,8 +604,7 @@ namespace SeoYuGi.BattleView
         // 개인 일시정지는 상대에게 억까, 정지 없음은 타이핑하다 죽는다 → 정해진 주기에 같이 멈추는 게 유일한 공정한 답.
         // 25초 전투 + 8초 지휘가 반복되며 '실시간 턴제'의 턴이 된다. 싱글 지휘관은 무전창 열 때 정지하므로 해당 없음.
         // 길이: 첫 무전(작전 타임) 15초, 이후 10초 — 8초는 문장을 다 못 친다 (2026-09-06)
-        const float RadioTimeFirst = 20f, RadioTimeEvery = 30f, RadioTimeLen = 10f, RadioTimeFirstLen = 15f;
-        bool firstRadioTimeDone; // 라운드마다 첫 무전 타임만 길게
+        const float RadioTimeFirst = 20f, RadioTimeEvery = 30f, RadioTimeLen = 8f; // 모든 무전 타임 8초 통일 (2026-09-06) — 첫 무전만 길게(15초)는 라운드마다 되살아나 헷갈렸다
         float nextRadioTimeAt = -1f;  // 전투 시계(Battle.time) 기준 다음 무전 타임. -1 = 없음
         bool radioTimeActive;
         float radioTimeEndsAt;        // 실시간(unscaled) 기준 종료 시각 — 정지 중엔 전투 시계가 안 가므로
@@ -874,10 +873,8 @@ namespace SeoYuGi.BattleView
             if (Guide.Active) return;
             if (!online || !schedules || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
             nextRadioTimeAt = Battle.time + RadioTimeEvery;
-            float len = firstRadioTimeDone ? RadioTimeLen : RadioTimeFirstLen;
-            firstRadioTimeDone = true;
-            BeginRadioTime(len);
-            if (NetBoot.IsOnline) NetSync.HostSendRadioTime(true, len);
+            BeginRadioTime(RadioTimeLen);
+            if (NetBoot.IsOnline) NetSync.HostSendRadioTime(true, RadioTimeLen);
         }
 
         /// <summary>훈련장 — 허수아비 제자리 복귀(밀려난 뒤 3초 안 맞으면) + F1~F5 캐릭터 교체.</summary>
@@ -910,8 +907,8 @@ namespace SeoYuGi.BattleView
 
         int guideScriptStrikeId = -1;        // 회피·엄폐 시연샷 — 판정 콜백 매칭용
         float guideScriptRetryAt;            // 회피 실패 시 재시도 시각
-        bool guidePredictMoved;              // 예측 단계 — 상대가 움직였는가 (움직인 상대를 맞히면 통과)
         float guidePredictStepAt;            // 예측 단계 — 상대 옆걸음 스크립트 주기
+        readonly HashSet<int> guidePredictShotIds = new HashSet<int>(); // 예측 단계 중에 쏜 내 예고 (늦은 명중 제외용)
         bool guideZoneWasOn;                 // 거점 단계 — 진입 시 이미 거점 위였는가 (새로 밟아야 인정)
         bool guideRadioOpened;               // 지휘 단계 — 무전창 자동 오픈 1회
         Guide.Step guideAnnouncedStep = Guide.Step.Count; // 단계 공지 중복 방지
@@ -1013,7 +1010,7 @@ namespace SeoYuGi.BattleView
                 guideAnnouncedStep = step;
                 hud.PushEvent($"튜토리얼 {(int)step + 1}/10. {Guide.Labels[(int)step]}: {Guide.Hint(step)}", StrikeVfx.MineNeon);
                 if (step == Guide.Step.Dodge) guideScriptRetryAt = Time.unscaledTime + 1.2f;
-                if (step == Guide.Step.Predict) { guidePredictMoved = false; guidePredictStepAt = Time.unscaledTime + 0.8f; }
+                if (step == Guide.Step.Predict) { guidePredictShotIds.Clear(); guidePredictStepAt = Time.unscaledTime + 0.8f; }
                 if (step == Guide.Step.Zone) guideZoneWasOn = PlayerOnActiveZone(); // 이미 서 있으면 나갔다 새로 밟아야 인정
                 if (step == Guide.Step.Heal) // 풀피면 회복할 게 없어 힐팩이 안 먹힌다 — 훈련 피해 1을 주고 시작
                 {
@@ -1115,7 +1112,8 @@ namespace SeoYuGi.BattleView
         {
             if (radioTimeActive) return;
             radioTimeActive = true;
-            radioTimeEndsAt = Time.unscaledTime + seconds + 0.5f; // 클라 상한 — 호스트 종료 통보가 보통 먼저 온다
+            // +0.5 버퍼는 온라인 전용(호스트 종료 통보가 먼저 오는 상한) — 싱글에 붙으면 15초가 "16"으로 표시됐다 (2026-09-06)
+            radioTimeEndsAt = Time.unscaledTime + seconds + (NetBoot.IsOnline ? 0.5f : 0f);
             GameFreeze.Push();
             battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             RequestSquadBriefing(); // 분대가 먼저 상황을 보고한다 — 지시만 받는 부하가 아니라 대화 상대
@@ -1232,11 +1230,11 @@ namespace SeoYuGi.BattleView
         void FinishTutorial()
         {
             Guide.Finish();
+            if (Combat != null) Combat.AlwaysHitAttackerId = SeoYuGi.Battle.Cell.NoUnit; // 실전 — 회피 규칙 원상복귀
             if (Round != null && Battle != null)
             {
                 Round.Config.roundSeconds = Battle.time + roundConfig.roundSeconds; // 지금부터 정규 시간
                 nextRadioTimeAt = Battle.time + RadioTimeEvery; // 주기 무전 타임 — 원래 텀으로 재개
-                firstRadioTimeDone = true; // 튜토리얼 지휘 단계가 첫 무전(15초)을 대신했다 — 이후는 10초
             }
             hud.ShowAnnounce("튜토리얼 완료. 이제 실전입니다", StrikeVfx.MineNeon, 4.5f);
             battleAudio.PlaySfx("S13_RoundStart", 1.2f);
@@ -2059,12 +2057,6 @@ namespace SeoYuGi.BattleView
             // ── 튜토리얼 체크리스트 배선 (2026-09-06 10단계) — 순서 강제라 TryMark가 지금 단계만 받는다 ──
             Move.OnUnitMoved += (id, _, isYellow) =>
             {
-                // 예측 단계 — 상대가 움직인 다음부터 명중이 통과로 인정된다 (2026-09-06 "상대가 움직인 후")
-                if (Guide.Active && Guide.Current == Guide.Step.Predict && id != playerUnitId)
-                {
-                    var mover = Battle.GetUnit(id);
-                    if (mover != null && mover.team != playerTeam) guidePredictMoved = true;
-                }
                 if (id != playerUnitId) return;
                 // 단계마다 그 행동을 반드시 하게 한다 — 파랑은 이동 단계만, 노랑은 질주 단계만 인정.
                 // 첫 클릭이 노랑이면 이동·질주가 한 번에 끝나 버렸다 (2026-09-06)
@@ -2081,17 +2073,16 @@ namespace SeoYuGi.BattleView
                 if (strike.attackerId != playerUnitId) return;
                 // 적이 있는 칸을 조준했을 때만 인정 — 빈 칸 클릭으로 넘어가지 않게 (2026-09-06 "변수를 제한")
                 if (AnyEnemyInCells(strike.cells)) GuideMark(Guide.Step.Attack);
-            };
-            // 예측 단계 — 자리를 옮긴 뒤 명중하면 통과. 빈 칸 예측샷 요구는 봇이 정지 중이라
-            // 성립하지 않았다 (2026-09-06 "애들이 안 움직여서 진행이 안 된다").
-            Combat.OnDamageDealt += (attackerId, _) =>
-            {
-                if (attackerId == playerUnitId && Guide.Active && Guide.Current == Guide.Step.Predict && guidePredictMoved)
-                    GuideMark(Guide.Step.Predict);
+                // 예측 단계 중에 쏜 예고만 예측샷 후보 — 이전 단계에서 걸어둔 예고의 늦은 명중은 안 친다
+                if (Guide.Active && Guide.Current == Guide.Step.Predict) guidePredictShotIds.Add(strike.id);
             };
             Combat.OnSkillCast += (id, _) => { if (id == playerUnitId) GuideMark(Guide.Step.Skill); };
             Combat.OnStrikeResolved += (strike, hitAnything) =>
             {
+                // 예측 단계 — 이 단계에서 쏜 예고가 (옆걸음으로 움직이는) 적을 맞히면 통과
+                // (2026-09-06 "맞췄는데도 안 넘어가" — 빈 칸 조준 요구가 과했다)
+                if (guidePredictShotIds.Remove(strike.id) && hitAnything && Guide.Current == Guide.Step.Predict)
+                    GuideMark(Guide.Step.Predict);
                 if (strike.id != guideScriptStrikeId) return;
                 guideScriptStrikeId = -1;
                 Combat.ForceMissOnceAttackerId = SeoYuGi.Battle.Cell.NoUnit; // 시연 플래그 잔재 제거 — 실전 판정에 새면 안 된다
@@ -2773,6 +2764,8 @@ namespace SeoYuGi.BattleView
                     guideAnnouncedStep = Guide.Step.Count; // 단계 공지 리셋
                     guideScriptStrikeId = -1;
                     guideRadioOpened = false;
+                    // 배우는 중엔 내 공격이 안 빗나간다 — 경계·측면 엄폐의 우연한 빗나감이 공격·예측 단계를 막았다 (2026-09-06)
+                    Combat.AlwaysHitAttackerId = playerUnitId;
                 }
                 else hud.ShowAnnounce("거점을 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다", Color.white, 5.5f); // 온라인 첫 판 등
             }
@@ -2797,7 +2790,6 @@ namespace SeoYuGi.BattleView
             else RequestCountdownBanter();               // 분대원 둘이 잡담 — 카운트다운 3초를 살아 있는 시간으로
             if (radioTimeActive) EndRadioTime(); // 라운드 재조립 — 정지 잔재 제거
             nextRadioTimeAt = RadioTimeFirst;
-            firstRadioTimeDone = false; // 새 라운드 — 첫 무전 타임은 다시 15초
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
                 NetSync.HostSendBeginRound(Match.CurrentRound); // 클라 — 같은 라운드 조립 신호
@@ -3192,6 +3184,13 @@ namespace SeoYuGi.BattleView
 
         void OnRoundFinished(int winnerTeam)
         {
+            // 체크리스트를 다 못 채우고 라운드가 끝났어도 튜토리얼은 여기서 종료 —
+            // Active가 다음 라운드로 넘어가면 봇 정지·시계 정지가 남아 적팀이 안 움직인다 (2026-09-06)
+            if (Guide.Active)
+            {
+                Guide.Finish();
+                if (Combat != null) Combat.AlwaysHitAttackerId = SeoYuGi.Battle.Cell.NoUnit;
+            }
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
             fastForward = false;
             if (radio != null && radio.IsOpen) radio.Close(); // 채팅 치던 중 끝남 — 무전창의 정지 홀드가 남으면 브리핑이 영영 안 넘어간다 (2026-09-06)

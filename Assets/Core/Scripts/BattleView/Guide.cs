@@ -59,7 +59,7 @@ namespace SeoYuGi.BattleView
             Step.Heal => "맞은 체력을 힐팩을 밟아 회복하세요",
             Step.Attack => "적을 찾아 A 누르고 적 칸 클릭 = 공격",
             Step.Dodge => "빨간 예고가 내 칸에! 터지기 전에 옆으로 피하세요",
-            Step.Predict => "적이 움직입니다. 도착할 칸을 노려 맞히세요. 예측해보세요!",
+            Step.Predict => "적이 계속 움직입니다. 움직임을 읽고 맞히세요. 예측해보세요!",
             Step.Cover => "벽 옆 칸으로 숨어보세요. 정면 엄폐는 공격이 절반 확률로 빗나갑니다",
             Step.Skill => "S 키로 스킬을 조준하고 써보세요",
             Step.Zone => "거점을 밟아 게이지를 채우세요",

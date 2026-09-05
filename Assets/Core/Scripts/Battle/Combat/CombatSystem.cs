@@ -784,6 +784,10 @@ namespace SeoYuGi.Battle
         /// <summary>튜토리얼 엄폐 시연 — 이 시전자의 다음 판정을 주사위 없이 빗나감 처리. 1회 소모.</summary>
         public int ForceMissOnceAttackerId = Cell.NoUnit;
 
+        /// <summary>튜토리얼 전용 — 이 시전자의 공격은 회피 주사위를 굴리지 않는다 (항상 명중).
+        /// 배우는 중에 우연한 빗나감으로 공격·예측 단계가 막히는 것 방지. 실전 모드는 NoUnit 그대로.</summary>
+        public int AlwaysHitAttackerId = Cell.NoUnit;
+
         bool ConsumeForceMiss(TelegraphStrike strike)
         {
             if (ForceMissOnceAttackerId == Cell.NoUnit || strike.attackerId != ForceMissOnceAttackerId) return false;
@@ -882,7 +886,8 @@ namespace SeoYuGi.Battle
                 // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다.
                 // 빗나감 = "피해"만 무효 — 이동 성분(낚아채기 끌기·밀치기)은 그대로 간다 (2026-09-05
                 // "빗나가면 스킬이동을 포기하네"). 엄폐로 몸은 지켜도 위치는 뺏길 수 있다.
-                if (!intercepted && attacker != null && (ConsumeForceMiss(strike) || RollMiss(strike, attacker, unit)))
+                if (!intercepted && attacker != null &&
+                    (ConsumeForceMiss(strike) || (strike.attackerId != AlwaysHitAttackerId && RollMiss(strike, attacker, unit))))
                 {
                     OnMissed?.Invoke(unit.id, strike.attackerId);
                     if (unit.alive && attacker.alive)

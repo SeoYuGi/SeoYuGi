@@ -34,8 +34,7 @@ namespace SeoYuGi.BattleView
         /// <summary>자유 서술 발신 (Enter). 러너가 LlmRadio로 보내고, 응답이 오면 SetWaiting(false).</summary>
         public event Action<string> OnFreeText;
 
-        Func<string> ackProvider;
-        GUIStyle hintStyle, inputStyle, ackStyle, rightHintStyle;
+        GUIStyle hintStyle, inputStyle, rightHintStyle;
         bool stylesReady;
         string draft = "";   // 입력 중인 문장
         bool waiting;        // 발신 후 응답 대기 — 재발신 잠금 (게임은 돌아간다)
@@ -44,10 +43,6 @@ namespace SeoYuGi.BattleView
         /// <summary>교신 대기 해제 — 러너가 LlmRadio 응답 콜백에서 부른다.</summary>
         public void SetWaiting(bool value) => waiting = value;
 
-        public void Init(Func<string> lastAck)
-        {
-            ackProvider = lastAck;
-        }
 
         /// <summary>러너가 매 프레임 호출 — 지휘관 모드가 아니거나 전투 중이 아니면 enabled=false로 둔다.</summary>
         public void HandleHotkey()
@@ -106,14 +101,8 @@ namespace SeoYuGi.BattleView
                 alignment = TextAnchor.MiddleLeft,
                 normal = { textColor = new Color(0.55f, 0.62f, 0.72f) }
             };
-            ackStyle = new GUIStyle(GUI.skin.label)
-            {
-                alignment = TextAnchor.MiddleLeft, wordWrap = true,
-                normal = { textColor = new Color(0.75f, 0.95f, 0.8f) }
-            };
             GameFonts.Apply(inputStyle, GameFonts.Hud);
             GameFonts.Apply(hintStyle, GameFonts.Hud);
-            GameFonts.Apply(ackStyle, GameFonts.Hud);
         }
 
         void OnGUI()
@@ -126,7 +115,6 @@ namespace SeoYuGi.BattleView
             float u = BattleHud.PixelPerHud;
             inputStyle.fontSize = Mathf.RoundToInt(17 * u);
             hintStyle.fontSize = Mathf.RoundToInt(14 * u);
-            ackStyle.fontSize = Mathf.RoundToInt(14 * u);
 
             float w = BattleHud.ChatW * u, fieldH = BattleHud.RadioFieldH * u;
             float x = (Screen.width - w) / 2f, yField = BattleHud.RadioFieldTopHud * u;
@@ -141,15 +129,14 @@ namespace SeoYuGi.BattleView
             GUI.DrawTexture(new Rect(fieldRect.x, fieldRect.y, 2f, fieldRect.height), Texture2D.whiteTexture);
             GUI.color = prev;
 
-            string ack = ackProvider != null ? ackProvider() : "";
             if (!IsOpen)
             {
+                // 마지막 응답 잔상 표시는 은퇴 (2026-09-06 "영원히 안 사라지는데") — 응답은 채팅 로그가
+                // 화자 클래스 색으로 이미 보여준다. 입력줄은 여는 법과 교신 상태만.
                 string idle = !LlmRadio.HasKey ? "자유 무전 오프라인 (API 키 없음). 퀵챗(숫자키)은 동작"
                     : waiting ? "...교신 중"
-                    : !string.IsNullOrEmpty(ack) ? "> " + ack
                     : "TAB  무전 입력";
-                bool dim = !LlmRadio.HasKey || waiting || string.IsNullOrEmpty(ack);
-                GUI.Label(inner, idle, dim ? hintStyle : ackStyle);
+                GUI.Label(inner, idle, hintStyle);
                 return;
             }
 

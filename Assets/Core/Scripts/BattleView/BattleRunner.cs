@@ -158,6 +158,7 @@ namespace SeoYuGi.BattleView
                 return;
             }
             nextFreeTextAt = Time.unscaledTime + 2.5f;
+            EndPlanning(); // 작전 시간의 첫 명령 — 바로 3·2·1
             var squad = CommandableUnitIds();
             if (squad.Count == 0) { if (radio != null) radio.SetWaiting(false); return; }
             ShowRadioLine(playerUnitId, text); // 내가 보낸 무전 — 말풍선 + 채팅 로그
@@ -226,8 +227,24 @@ namespace SeoYuGi.BattleView
         /// <summary>퀵챗 = 무전 명령 (지휘관 모드) — 숫자키 채팅 문구대로 팀 봇이 움직인다. 8~0(사교)은 채팅만.</summary>
         float nextPresetAt; // 프리셋 명령 최소 간격 — 연타 도배 방지 (2026-09-06). 자유 무전(2.5초)과 별개 카운터
 
+        /// <summary>작전 시간 조기 종료 — 첫 명령(무전·퀵챗)이나 SPACE. 남은 시간을 3초로 줄여 3·2·1로 넘어간다.
+        /// 싱글 전용 — 멀티는 양쪽 지휘관 공통이라 호스트 시계 10초 고정.</summary>
+        void EndPlanning()
+        {
+            if (!planningRunning || !countdownRunning || NetBoot.IsOnline) return;
+            countdownUntil = Mathf.Min(countdownUntil, Time.time + 3f);
+        }
+
+        void EndPlanningVisuals()
+        {
+            planningRunning = false;
+            hud.SetPlanning(0, false);
+            if (radio != null && radio.IsOpen) radio.Close(); // 3·2·1엔 입력줄 닫힘 — 싱글 정지(GameFreeze)도 같이 풀린다
+        }
+
         void ApplyQuickChatOrder(int lineId)
         {
+            EndPlanning(); // 작전 시간의 첫 명령
             if (!GameModeState.IsCommander) return;
             if (Time.unscaledTime < nextPresetAt)
             {
@@ -525,6 +542,8 @@ namespace SeoYuGi.BattleView
         Phase phase = Phase.Playing;
         float countdownUntil;   // 라운드 시작 3·2·1 — 이 시각까지 시뮬·조작 정지
         bool countdownRunning;
+        const float PlanningLen = 10f; // 작전 시간 (2026-09-06) — 라운드 시작 전 전장·규칙 보고 첫 명령. 지휘관 모드(훈련장 제외), 3·2·1 앞에 붙는다
+        bool planningRunning;          // 작전 시간 진행 중 — countdownRunning의 앞부분
         ParsedMap map;
         GridConfig gridConfig;
         int playerTeam;
@@ -2548,11 +2567,17 @@ namespace SeoYuGi.BattleView
             lastKillerId = -1; lastCapturerId = -1;
             if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); matchDamage.Clear(); matchCapture.Clear(); } // 새 매치 — 누적도 백지
             spectateUnitId = -1;
-            countdownUntil = Time.time + (GameModeState.Training ? 0f : Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로). 훈련장은 카운트다운 없음 (2026-09-06)
+            // 작전 시간 (2026-09-06): 지휘관 모드(훈련장 제외)는 3·2·1 앞에 10초 — 전장·규칙 보고 첫 명령. 싱글은 명령을 보내면(또는 SPACE) 바로 3·2·1.
+            // 훈련장은 카운트다운 없음. 첫 판 가이드(싱글, 작전 시간 없는 모드)는 거점 설명 읽을 시간만큼 더. 온라인은 호스트 시계라 그대로.
+            planningRunning = GameModeState.IsCommander && !GameModeState.Training;
+            countdownUntil = Time.time + (GameModeState.Training ? 0f
+                : planningRunning ? PlanningLen + 3f
+                : Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f);
             countdownRunning = true;
             contestedMaskPrev = 0;
             nextEventBriefAt = 0f;
-            RequestCountdownBanter(); // 분대원 둘이 잡담 — 카운트다운 3초를 살아 있는 시간으로
+            if (planningRunning) RequestSquadBriefing(); // 작전 시간 — 분대가 먼저 상황 보고 (지시받을 준비)
+            else RequestCountdownBanter();               // 분대원 둘이 잡담 — 카운트다운 3초를 살아 있는 시간으로
             if (radioTimeActive) EndRadioTime(); // 라운드 재조립 — 정지 잔재 제거
             nextRadioTimeAt = RadioTimeFirst;
 
@@ -3149,10 +3174,23 @@ namespace SeoYuGi.BattleView
             {
                 if (Time.time < countdownUntil)
                 {
-                    hud.SetCountdown(Mathf.CeilToInt(countdownUntil - Time.time));
+                    float remain = countdownUntil - Time.time;
+                    if (planningRunning && remain > 3f)
+                    {
+                        // 작전 시간 — 시뮬은 정지, 무전(TAB)·퀵챗 패널은 열린다. 싱글은 첫 명령(또는 SPACE)이면 바로 3·2·1
+                        hud.SetPlanning(Mathf.CeilToInt(remain - 3f), !NetBoot.IsOnline);
+                        hud.SetCountdown(0);
+                        if (radio != null && radio.enabled) radio.HandleHotkey();
+                        if (!NetBoot.IsOnline && !RadioWindow.TextInputActive && Keyboard.current != null &&
+                            Keyboard.current.spaceKey.wasPressedThisFrame) EndPlanning();
+                        return;
+                    }
+                    if (planningRunning) EndPlanningVisuals();
+                    hud.SetCountdown(Mathf.CeilToInt(remain));
                     return;
                 }
                 countdownRunning = false;
+                if (planningRunning) EndPlanningVisuals();
                 hud.SetCountdown(0);
                 input.enabled = true;
             }

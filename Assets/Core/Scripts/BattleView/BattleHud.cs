@@ -427,6 +427,25 @@ namespace SeoYuGi.BattleView
             countdownNum = 0;
         }
 
+        int planningSec; bool planningCanSkip; GUIStyle planningHintStyle;
+
+        /// <summary>작전 시간 표시 (2026-09-06) — 라운드 시작 전 10초, 상단바 아래 띠. 0 = 숨김.</summary>
+        public void SetPlanning(int sec, bool canSkip) { planningSec = sec; planningCanSkip = canSkip; }
+
+        void DrawPlanning()
+        {
+            if (planningSec <= 0) return;
+            if (planningHintStyle == null) planningHintStyle = new GUIStyle(roundStyle) { fontSize = 14 };
+            var box = new Rect(W / 2f - 270f, 160f, 540f, 66f);
+            Fill(box, new Color(0.02f, 0.04f, 0.09f, 0.8f));
+            Fill(new Rect(box.x, box.y, box.width, 2f), StrikeVfx.MineNeon);
+            ShadowLabel(new Rect(box.x, box.y + 6f, box.width, 30f), $"작전 시간  {planningSec}", subtitleStyle, StrikeVfx.MineNeon);
+            ShadowLabel(new Rect(box.x, box.y + 40f, box.width, 20f),
+                planningCanSkip ? "전장을 보고 무전(TAB)으로 첫 명령을 내리면 바로 출격.  SPACE = 건너뛰기"
+                                : "전장을 보고 무전(TAB)으로 첫 명령.  양쪽 지휘관 공통 시간",
+                planningHintStyle, new Color(0.8f, 0.88f, 0.95f));
+        }
+
         int countdownNum; // 라운드 시작 3·2·1 — 0이면 숨김
         float countdownChangedAt;  // 숫자가 바뀐 시각 — 펀치·링 게이지 기준
         float countdownGoUntil;    // "출격!" 번쩍 끝나는 시각
@@ -586,6 +605,7 @@ namespace SeoYuGi.BattleView
                     DrawAnnounce();
                 }
                 DrawCountdown();
+                DrawPlanning();
                 DrawEdgePings();
                 DrawPingWheel();
             }

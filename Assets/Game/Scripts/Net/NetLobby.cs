@@ -227,7 +227,7 @@ namespace SeoYuGi.Net
         }
 
         /// <summary>
-        /// 봇 클래스 상시 배정 — 롤식 역할 채우기(탱→서폿→딜), 팀 내 중복 없음.
+        /// 봇 클래스 상시 배정 — 롤식 역할 채우기(탱→돌격→딜), 팀 내 중복 없음.
         /// 인간 픽이 바뀔 때마다 재계산 — 봇이 빈 역할로 갈아탄다 (로비에 사전 공개).
         /// 결정적 선택 — 같은 상황이면 같은 결과라 카드가 안 튄다.
         /// </summary>
@@ -240,13 +240,13 @@ namespace SeoYuGi.Net
             {
                 var pool = new System.Collections.Generic.List<UnitClass>
                     { UnitClass.Tank, UnitClass.Balance, UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
-                bool hasTank = false, hasSupport = false;
+                bool hasTank = false, hasRusher = false;
                 for (int i = 0; i < Slots.Length; i++)
                     if (Slots[i].team == team && Slots[i].owner != SlotOwner.Bot)
                     {
                         pool.Remove(Slots[i].cls);
                         if (Slots[i].cls == UnitClass.Tank) hasTank = true;
-                        if (Slots[i].cls == UnitClass.Balance) hasSupport = true;
+                        if (Slots[i].cls == UnitClass.Balance) hasRusher = true;
                     }
 
                 for (int i = 0; i < Slots.Length; i++)
@@ -255,7 +255,7 @@ namespace SeoYuGi.Net
 
                     UnitClass want;
                     if (!hasTank && pool.Contains(UnitClass.Tank)) { want = UnitClass.Tank; hasTank = true; }
-                    else if (!hasSupport && pool.Contains(UnitClass.Balance)) { want = UnitClass.Balance; hasSupport = true; }
+                    else if (!hasRusher && pool.Contains(UnitClass.Balance)) { want = UnitClass.Balance; hasRusher = true; }
                     else
                     {
                         want = pool[0];

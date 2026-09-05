@@ -585,7 +585,7 @@ namespace SeoYuGi.Ai
                 if (!z.Capturable) continue;
                 if (anyNotOurs && ours) continue; // 먹은 거점에 눌러앉지 말 것
                 float score = -Manhattan(me.Pos, z.Cell);
-                if (TeammateNear(world, me, z.Cell, 3)) score += _cfg.CohesionBonus; // 뭉치기 — 아군이 붙은 거점을 선호 (클래스별: 서포터 높고 암살자 낮음)
+                if (TeammateNear(world, me, z.Cell, 3)) score += _cfg.CohesionBonus; // 뭉치기 — 아군이 붙은 거점을 선호 (클래스별: 돌격형 높고 암살자 낮음)
                 if (score > bestScore) { bestScore = score; goal = z; }
             }
             if (!goal.HasValue) return null;

@@ -32,7 +32,7 @@ public class UILobbyPopup : UIPopup
         ("까치",        "MARKSMAN",  new Color(0.23f, 0.51f, 0.96f)),
     };
 
-    // 역할 콜 빠른채팅 — 왕자영요식 "내가 ~할게요" (탱/서폿/딜 느낌)
+    // 역할 콜 빠른채팅 — 왕자영요식 "내가 ~할게요" (탱/돌격/딜 느낌)
     static readonly string[] QuickLines =
     {
         "내가 탱커 할게요! (너구리)",
@@ -391,7 +391,7 @@ public class UILobbyPopup : UIPopup
         RefreshBalance(slots, myTeam);
     }
 
-    /// <summary>내 팀 구성 경고 — 탱/서폿 빠짐·중복 픽 표시 (왕자영요식).
+    /// <summary>내 팀 구성 경고 — 탱/돌격형 빠짐·중복 픽 표시 (왕자영요식).
     /// 봇이 빈 역할을 자동으로 메우므로 보통은 인간끼리 겹칠 때만 뜬다.</summary>
     void RefreshBalance(NetLobby.LobbySlot[] slots, int myTeam)
     {

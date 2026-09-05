@@ -67,8 +67,8 @@ public class UIClassSelectPopup : UIPopup
         OnPicked?.Invoke(cls);
     }
 
-    /// <summary>봇 클래스 자동 밸런스 — 내 픽 기준으로 탱·서폿·딜 한 축씩 채운다 (2026-09-05 솔로 모드).
-    /// 역할: 너구리=탱 / 고라니=서폿 / 검은냥·비둘기·까치=딜. 내가 뭘 잡든 나머지 두 축을 봇이 맡는다.</summary>
+    /// <summary>봇 클래스 자동 밸런스 — 내 픽 기준으로 탱·돌격·딜 한 축씩 채운다 (2026-09-05 솔로 모드).
+    /// 역할: 너구리=탱 / 고라니=돌격형 / 검은냥·비둘기·까치=딜. 내가 뭘 잡든 나머지 두 축을 봇이 맡는다.</summary>
     readonly bool[] botManual = new bool[2]; // 봇 칩 직접 지정 여부 — true면 자동 밸런스가 안 건드린다
 
     void AutoBalanceBots()
@@ -77,17 +77,17 @@ public class UIClassSelectPopup : UIPopup
         var dps = new[] { UnitClass.Assassin, UnitClass.Grenadier, UnitClass.Sniper };
 
         // 고정 픽(나 + 수동 지정 봇)이 이미 맡은 축을 빼고, 부족한 축만 자동 봇이 채운다 (2026-09-05)
-        bool hasTank = false, hasSup = false;
+        bool hasTank = false, hasRusher = false;
         for (int i = 0; i < 3; i++)
         {
             if (i > 0 && !botManual[i - 1]) continue; // 자동 봇의 기존 픽은 무시 — 다시 계산 대상
             if (teamCls[i] == UnitClass.Tank) hasTank = true;
-            else if (teamCls[i] == UnitClass.Balance) hasSup = true;
+            else if (teamCls[i] == UnitClass.Balance) hasRusher = true;
         }
 
         var need = new List<UnitClass>();
         if (!hasTank) need.Add(UnitClass.Tank);
-        if (!hasSup) need.Add(UnitClass.Balance);
+        if (!hasRusher) need.Add(UnitClass.Balance);
         if (need.Count == 2 && UnityEngine.Random.value < 0.5f) need.Reverse(); // 역할 배정도 섞는다
 
         for (int b = 0; b < 2; b++)

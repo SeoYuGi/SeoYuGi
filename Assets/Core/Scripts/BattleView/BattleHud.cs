@@ -71,11 +71,9 @@ namespace SeoYuGi.BattleView
         /// <summary>해킹 게이지 클릭 — H키와 동일 경로. 러너가 배선.</summary>
         public event System.Action OnHackClicked;
         bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
-        // 빠른채팅 패널 치수 (좌상단). 채팅 로그가 이 패널 바로 밑에 붙는다 (2026-09-06)
+        // 빠른채팅 패널 치수 (좌상단)
         const float ChatBtnW = 96f, ChatBtnH = 26f, ChatRowH = 30f, ChatPanelW = 170f, ChatX0 = 12f, ChatToggleY = 12f;
-        float ChatPanelBottom => chatPanelOpen
-            ? ChatToggleY + ChatBtnH + 6f + SeoYuGi.Chat.QuickChat.Lines.Length * ChatRowH + 30f + 6f // 패널 + 프레임 여백
-            : ChatToggleY + ChatBtnH;
+        float bottomBarTop; // 하단바 프레임 윗변 — DrawBottomBar가 매 프레임 갱신, 채팅 로그 기준선
         float idleHintUntil; // 기본 조작 안내(타일 클릭 = 이동)는 진입 후 15초만 — 그 뒤엔 화면 중앙을 비운다
 
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
@@ -423,14 +421,96 @@ namespace SeoYuGi.BattleView
         }
 
         int countdownNum; // 라운드 시작 3·2·1 — 0이면 숨김
+        float countdownChangedAt;  // 숫자가 바뀐 시각 — 펀치·링 게이지 기준
+        float countdownGoUntil;    // "출격!" 번쩍 끝나는 시각
+        GUIStyle countStyle, countTitleStyle;
+        bool CountdownVisible => countdownNum > 0 || Time.time < countdownGoUntil;
 
-        /// <summary>라운드 시작 카운트다운 — 중앙 대형 숫자. 0 = 숨김.</summary>
-        public void SetCountdown(int num) => countdownNum = num;
+        /// <summary>라운드 시작 카운트다운 — 중앙 대형 숫자. 0 = 숨김 (마지막엔 "출격!" 0.6초).</summary>
+        public void SetCountdown(int num)
+        {
+            if (num == countdownNum) return;
+            if (num <= 0 && countdownNum > 0) countdownGoUntil = Time.time + 0.6f;
+            countdownNum = num;
+            countdownChangedAt = Time.time;
+        }
 
+        /// <summary>3·2·1 연출 (2026-09-06 "성의 없다"): 가로 어두운 띠 + ROUND 제목·규칙 + 120pt 숫자 펀치(1.6→1배) +
+        /// 1초마다 줄어드는 링 게이지 + 끝에 "출격!" 번쩍. 카운트 중엔 채팅·킬피드·공지·패널을 안 그린다 (OnGUI).</summary>
         void DrawCountdown()
         {
-            if (countdownNum <= 0) return;
-            ShadowLabel(new Rect(0, H / 2f - 90, W, 100), countdownNum.ToString(), bannerStyle, new Color(1f, 0.85f, 0.25f));
+            bool go = countdownNum <= 0 && Time.time < countdownGoUntil;
+            if (countdownNum <= 0 && !go) return;
+            if (countStyle == null)
+            {
+                countStyle = new GUIStyle(bannerStyle) { fontSize = 120, alignment = TextAnchor.MiddleCenter };
+                countTitleStyle = new GUIStyle(bannerStyle) { fontSize = 22, alignment = TextAnchor.MiddleCenter };
+            }
+            float cx = W / 2f, cy = H / 2f;
+            var gold = new Color(1f, 0.85f, 0.25f);
+            float goT = go ? Mathf.Clamp01((countdownGoUntil - Time.time) / 0.6f) : 1f; // 출격 번쩍 남은 비율 (페이드)
+
+            // ② 가로 띠 — 맵 바닥 위에서도 숫자가 뜬다
+            Fill(new Rect(0, cy - 110f, W, 220f), new Color(0f, 0f, 0f, 0.55f * goT));
+            Fill(new Rect(0, cy - 110f, W, 2f), new Color(gold.r, gold.g, gold.b, 0.6f * goT));
+            Fill(new Rect(0, cy + 108f, W, 2f), new Color(gold.r, gold.g, gold.b, 0.6f * goT));
+
+            // ④ 라운드 제목 + 규칙 한 줄
+            if (match != null)
+                ShadowLabel(new Rect(0, cy - 104f, W, 26f), $"ROUND {match.CurrentRound} / {MatchSystem.MaxRounds}",
+                    countTitleStyle, new Color(0.85f, 0.9f, 1f, goT));
+            if (!string.IsNullOrEmpty(roundRuleChip))
+                ShadowLabel(new Rect(0, cy + 78f, W, 26f), roundRuleChip, countTitleStyle, new Color(1f, 0.85f, 0.45f, goT));
+
+            string text; Color col; float k;
+            if (go)
+            {
+                text = "출격!"; col = new Color(0.45f, 1f, 0.95f, Mathf.Clamp01(goT * 2f));
+                k = 1f + 0.15f * (1f - goT); // 살짝 커지며 사라진다
+            }
+            else
+            {
+                // ① 펀치 — 바뀐 순간 1.6배에서 0.25초 만에 1배로 (이즈아웃)
+                float t = Mathf.Clamp01((Time.time - countdownChangedAt) / 0.25f);
+                k = Mathf.Lerp(1.6f, 1f, 1f - (1f - t) * (1f - t));
+                text = countdownNum.ToString(); col = gold;
+                // ⑤ 링 게이지 — 이번 1초가 얼마나 남았나
+                float frac = 1f - Mathf.Clamp01(Time.time - countdownChangedAt);
+                GUI.color = new Color(gold.r, gold.g, gold.b, 0.9f);
+                GUI.DrawTexture(new Rect(cx - 96f, cy - 96f, 192f, 192f), CountRingTex(Mathf.RoundToInt(frac * PieSteps)), ScaleMode.StretchToFill);
+                GUI.color = Color.white;
+            }
+            var m = GUI.matrix;
+            GUI.matrix = m * Matrix4x4.TRS(new Vector3(cx * (1f - k), cy * (1f - k), 0f), Quaternion.identity, new Vector3(k, k, 1f));
+            ShadowLabel(new Rect(0, cy - 70f, W, 140f), text, countStyle, col);
+            GUI.matrix = m;
+        }
+
+        // 카운트다운 링 텍스처 캐시 — PieTex(40px)는 192px로 늘리면 뭉개져서 128px 링(안쪽 구멍)을 따로 굽는다
+        static readonly Texture2D[] countRingTex = new Texture2D[PieSteps + 1];
+        static Texture2D CountRingTex(int step)
+        {
+            step = Mathf.Clamp(step, 0, PieSteps);
+            if (countRingTex[step] != null) return countRingTex[step];
+            const int N = 128; float c = (N - 1) * 0.5f, rOut = N * 0.5f - 1f, rIn = rOut - 8f;
+            float sweep = step / (float)PieSteps * Mathf.PI * 2f;
+            var tex = new Texture2D(N, N, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[N * N];
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                {
+                    float dx = x - c, dy = y - c;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float edge = Mathf.Clamp01(rOut - d) * Mathf.Clamp01(d - rIn); // 바깥·안쪽 1px 안티에일리어싱
+                    float ang = Mathf.Atan2(dx, dy);
+                    if (ang < 0f) ang += Mathf.PI * 2f;
+                    bool inside = step >= PieSteps || ang <= sweep;
+                    px[y * N + x] = new Color32(255, 255, 255, (byte)(inside ? edge * 255f : 0f));
+                }
+            tex.SetPixels32(px);
+            tex.Apply();
+            countRingTex[step] = tex;
+            return tex;
         }
 
         float threatRemain = -1f, threatUntil; // 내 칸 피격 예고 — 러너가 매 프레임 갱신, 0.15초 안 오면 꺼짐
@@ -501,10 +581,13 @@ namespace SeoYuGi.BattleView
             {
                 DrawBanner();
                 DrawBottomBar();
-                DrawChatLog();
-                DrawKillFeed();
-                DrawChatPanel();
-                DrawAnnounce();
+                if (!CountdownVisible) // 3·2·1 동안은 상단바·하단바·숫자만 — 겹침 자체를 없앤다 (2026-09-06)
+                {
+                    DrawChatLog();
+                    DrawKillFeed();
+                    DrawChatPanel();
+                    DrawAnnounce();
+                }
                 DrawCountdown();
                 DrawThreat();
                 DrawEdgePings();
@@ -755,6 +838,7 @@ namespace SeoYuGi.BattleView
             float totalW = segW + gap + 4 * slotW + 3 * gap + gap + segW;
             float x0 = W / 2f - totalW / 2f;
             float y = H - slotH - 18f;
+            bottomBarTop = y - 14f; // 채팅 로그가 이 위에 붙는다 (2026-09-06)
 
             DrawFrame(new Rect(x0 - 34, y - 14, totalW + 68, slotH + 30), texPanel); // 바 배경 — 장식 테두리가 내용 밖에 오도록 여유
 
@@ -1129,10 +1213,10 @@ namespace SeoYuGi.BattleView
                 hs[i] = Mathf.Max(26f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
                 total += hs[i];
             }
-            // 채팅 로그는 빠른채팅 패널 바로 밑, 위에서 아래로 쌓인다 (2026-09-06 "채팅 너무 위쪽, 빠른채팅 슬롯 쬐끔 밑에").
-            // 패널을 접으면 토글 버튼 밑으로 따라 올라온다. 무전창 열림/닫힘과는 무관 — 자리가 안 튄다.
-            float logX = ChatX0, logW = boxW;
-            float y = ChatPanelBottom + 10f;
+            // 채팅 로그 = 중앙 하단, 하단바 바로 위 (2026-09-06 B안): 공지 배너(화면 37% 높이)와 안 겹치고 시선이 가운데.
+            // 최대 3줄(ChatLogMax), 아래에서 위로 쌓인다. 무전창·패널 상태와 무관 — 자리가 안 튄다.
+            float logX = W / 2f - boxW / 2f, logW = boxW;
+            float y = (bottomBarTop > 0f ? bottomBarTop : H - 96f) - 12f - total;
 
             var logBox = new Rect(logX, y - 4, logW, total + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));

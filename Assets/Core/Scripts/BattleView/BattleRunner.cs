@@ -82,7 +82,10 @@ namespace SeoYuGi.BattleView
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
 
         /// <summary>지휘관 모드 — 내 팀 봇에게 내린 상시 명령. 멀티 모드에선 항상 비어 있다(= 완전 자율).</summary>
-        public CommandState Orders { get; } = new CommandState();
+        // 팀별 지휘 상태 — 지휘관 대전에선 양 팀 인간이 각자 자기 봇을 지휘한다. 호스트가 둘 다 들고 AI에 물린다.
+        readonly CommandState[] teamOrders = { new CommandState(), new CommandState() };
+        /// <summary>내 팀 지휘 상태 — 무전창·핑·퀵챗이 쓴다.</summary>
+        public CommandState Orders => teamOrders[playerTeam == 1 ? 1 : 0];
 
         /// <summary>이번 라운드 규칙. null이면 평범한 라운드 — HUD가 이걸 보고 배너를 띄운다.</summary>
         public RoundRule Rule { get; private set; }
@@ -110,6 +113,7 @@ namespace SeoYuGi.BattleView
                 voice.OnTranscript += SendFreeText; // 받아쓴 문장이 내 채팅 줄로 남는다 (SendFreeText가 표시)
             }
             radio.enabled = GameModeState.IsCommander;
+            radio.FreezeOnOpen = !NetBoot.IsOnline; // 온라인은 호스트 시계 — 무전 타임이 정지를 대신한다
             voice.enabled = GameModeState.IsCommander;
             if (!radio.enabled) radio.Close(); // 모드가 바뀌었는데 시간이 느린 채로 남지 않게
 
@@ -159,6 +163,7 @@ namespace SeoYuGi.BattleView
                 result =>
                 {
                     Orders.Apply(result); // understood=false면 기존 명령 유지 — ack만 갱신
+                    if (IsNetClient) NetSync.ClientSendOrders(result); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
                     int speaker = result.orders.Count > 0 ? result.orders[0].unitId
                                 : squad.Count > 0 ? squad[0] : playerUnitId;
                     ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "…수신 불량." : result.ack);
@@ -234,6 +239,7 @@ namespace SeoYuGi.BattleView
             }
             var built = OrderPresets.Build(p, squad, zoneCount);
             Orders.Apply(built);
+            if (IsNetClient) NetSync.ClientSendOrders(built); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
             ShowRadioLine(squad[0], Orders.LastAck); // 분대 응답도 채팅 로그에
             ShowOrderMarkers(built.orders);
         }
@@ -377,6 +383,14 @@ namespace SeoYuGi.BattleView
         readonly List<(int attackerId, Coord cell, float time)> pendingPredictedShots = new List<(int, Coord, float)>();
         bool hackReadyAnnounced; // 해킹 만충 공지 — 만충 상태로 올라가는 순간에만 1회
         bool fastForward;        // 싱글에서 내가 죽은 뒤 SPACE — 라운드 결과까지 6배속 (멀뚱히 기다리지 않게)
+
+        // 무전 타임 (지휘관 대전, 2026-09-05) — 호스트 시계로 전원이 동시에 8초 정지, 그 안에 양쪽 지휘관이 지시한다.
+        // 개인 일시정지는 상대에게 억까, 정지 없음은 타이핑하다 죽는다 → 정해진 주기에 같이 멈추는 게 유일한 공정한 답.
+        // 25초 전투 + 8초 지휘가 반복되며 '실시간 턴제'의 턴이 된다. 싱글 지휘관은 무전창 열 때 정지하므로 해당 없음.
+        const float RadioTimeFirst = 20f, RadioTimeEvery = 30f, RadioTimeLen = 8f;
+        float nextRadioTimeAt = -1f;  // 전투 시계(Battle.time) 기준 다음 무전 타임. -1 = 없음
+        bool radioTimeActive;
+        float radioTimeEndsAt;        // 실시간(unscaled) 기준 종료 시각 — 정지 중엔 전투 시계가 안 가므로
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
         void Awake()
@@ -430,8 +444,8 @@ namespace SeoYuGi.BattleView
             hud.OnChatClicked += lineId =>
             {
                 if (phase != Phase.Playing) return;
-                if (IsNetClient) NetSync.ClientSendChat(playerUnitId, lineId);
-                else quickChat.TrySend(playerUnitId, lineId, Time.time);
+                if (IsNetClient) { NetSync.ClientSendChat(playerUnitId, lineId); ApplyQuickChatOrder(lineId); }
+                else if (quickChat.TrySend(playerUnitId, lineId, Time.time)) ApplyQuickChatOrder(lineId); // 패널 클릭도 명령 (무전 타임엔 숫자키가 타이핑에 먹힌다)
             };
 
             // 카메라 셰이커 — 추적/전술 캠 위에 얹는 타격감 레이어
@@ -451,6 +465,8 @@ namespace SeoYuGi.BattleView
             NetSync.OnChatRequest += HostOnRemoteChat;
             NetSync.OnChatShow += ShowChatVisual;
             NetSync.OnPingRequest += HostOnRemotePing;
+            NetSync.OnOrdersRequest += HostOnRemoteOrders; // 지휘관 대전 — 원격 지휘관의 명령
+            NetSync.OnRadioTime += (on, secs) => { if (on) BeginRadioTime(secs); else EndRadioTime(); }; // 클라 — 호스트와 같은 순간 정지/재개
             NetLobby.OnHumansLeftGame += HostOnHumansLeft;
             NetLobby.OnHostDisconnected += ClientOnHostGone;
             NetSync.OnPingShow += ShowPingFromNet;
@@ -578,6 +594,77 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>호스트 — 원격 채팅 요청. 쿨다운은 quickChat이, 팀 배달은 OnMessage 핸들러가.</summary>
+        /// <summary>호스트 — 원격 지휘관의 무전 명령. 보낸 사람 팀의 봇만, 지명 타겟은 그 팀의 적만 인정.</summary>
+        void HostOnRemoteOrders(ulong sender, SquadOrders squad)
+        {
+            if (!NetBoot.IsHost || phase != Phase.Playing || !GameModeState.IsCommander || matchSetup?.slots == null) return;
+            int team = -1;
+            foreach (var s in matchSetup.slots)
+                if (s.owner == SlotOwner.RemoteHuman && s.ownerClientId == sender) { team = s.team; break; }
+            if (team < 0) return;
+
+            for (int i = squad.orders.Count - 1; i >= 0; i--)
+            {
+                var o = squad.orders[i];
+                if (!IsBotOfTeam(o.unitId, team)) { squad.orders.RemoveAt(i); continue; }
+                var focus = o.focusEnemyId >= 0 ? Battle.GetUnit(o.focusEnemyId) : null;
+                if (focus == null || focus.team == team) o.focusEnemyId = -1; // 남의 팀 아군을 노리라는 건 무효
+                squad.orders[i] = o;
+            }
+            teamOrders[team].Apply(squad);
+        }
+
+        // ── 무전 타임 ──────────────────────────────────────────
+        void TickRadioTime()
+        {
+            bool online = GameModeState.IsCommander && NetBoot.IsOnline && phase == Phase.Playing;
+            if (radioTimeActive)
+            {
+                float remain = radioTimeEndsAt - Time.unscaledTime;
+                if (remain <= 0f || !online) { EndRadioTime(); return; } // 호스트 종료 통보가 보통 먼저 오고, 이건 상한 (통보가 늦어도 영영 안 얼게)
+                hud.ShowAnnounce($"무전 타임 {Mathf.CeilToInt(remain)} — Enter 무전 · 숫자키/패널 프리셋",
+                    StrikeVfx.MineNeon, 0.6f);
+                return;
+            }
+            if (!online || !NetBoot.IsHost || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
+            nextRadioTimeAt = Battle.time + RadioTimeEvery;
+            BeginRadioTime(RadioTimeLen);
+            NetSync.HostSendRadioTime(true, RadioTimeLen);
+        }
+
+        void BeginRadioTime(float seconds)
+        {
+            if (radioTimeActive) return;
+            radioTimeActive = true;
+            radioTimeEndsAt = Time.unscaledTime + seconds + 0.5f; // 클라 상한 — 호스트 종료 통보가 보통 먼저 온다
+            GameFreeze.Push();
+            battleAudio.PlaySfx("S22_DetectPing", 0.9f);
+            hud.PushEvent("[무전 타임] 분대에 지시하라", StrikeVfx.MineNeon);
+        }
+
+        void EndRadioTime()
+        {
+            if (!radioTimeActive) return;
+            radioTimeActive = false;
+            GameFreeze.Pop();
+            if (NetBoot.IsOnline && NetBoot.IsHost) NetSync.HostSendRadioTime(false, 0f);
+            hud.ShowAnnounce("교신 종료 — 전투 재개", StrikeVfx.MineNeon, 1.2f);
+        }
+
+        bool IsBotOfTeam(int unitId, int team)
+        {
+            foreach (var s in matchSetup.slots)
+                if (s.unitId == unitId) return s.owner == SlotOwner.Bot && s.team == team;
+            return false;
+        }
+
+        bool TeamHasHuman(int team)
+        {
+            foreach (var s in matchSetup.slots)
+                if (s.team == team && s.IsHuman) return true;
+            return false;
+        }
+
         void HostOnRemoteChat(ulong sender, int unitId, int lineId)
         {
             if (!NetBoot.IsHost || phase != Phase.Playing) return;
@@ -602,13 +689,15 @@ namespace SeoYuGi.BattleView
                 if (drv.Team == u.team)
                     drv.CommandPing(new SeoYuGi.Prediction.Cell(cell.x, cell.y), type, Battle.time);
 
-            // 지휘관 모드 — 적 유닛 "정확히 그 칸"을 핑하면 하드 포커스 (그 적만 최우선, 6초)
-            if (GameModeState.IsCommander && unitId == playerUnitId)
+            // 지휘관 모드 — 인간 지휘관이 적 유닛 "정확히 그 칸"을 핑하면 그 팀 봇에 하드 포커스 (그 적만 최우선, 6초).
+            // 지휘관 대전에선 상대 인간의 핑도 여기로 들어와 상대 봇을 움직인다.
+            if (GameModeState.IsCommander && humanUnitIds != null && humanUnitIds.Contains(unitId))
                 foreach (var enemy in Battle.Units)
-                    if (enemy.alive && enemy.team != playerTeam && enemy.pos.Equals(cell))
+                    if (enemy.alive && enemy.team != u.team && enemy.pos.Equals(cell))
                     {
-                        Orders.SetFocus(enemy.id, Battle.time + 6f);
-                        hud.PushEvent($"[무전] {FindSlot(enemy.id).callsign} 집중 사격!", teamColors[playerTeam]);
+                        teamOrders[u.team].SetFocus(enemy.id, Battle.time + 6f);
+                        if (u.team == playerTeam)
+                            hud.PushEvent($"[무전] {FindSlot(enemy.id).callsign} 집중 사격!", teamColors[playerTeam]);
                         break;
                     }
             if (NetBoot.IsOnline && NetBoot.IsHost && NetLobby.Slots != null)
@@ -835,6 +924,7 @@ namespace SeoYuGi.BattleView
 
             if (!NetBoot.IsHost) UIManager.Instance.CloseAllPopupUI(); // 클라 — 로비 닫고 매치 화면으로
 
+            GameModeState.Current = setup.commander ? GameMode.Commander : GameMode.Multi; // 호스트 로비 토글이 정본
             matchSetup = setup;
             humanUnitIds = setup.HumanUnitIds();
             playerUnitId = NetLobby.MyUnitId();
@@ -1355,10 +1445,10 @@ namespace SeoYuGi.BattleView
                 {
                     // 예측 뇌는 전 봇 공통 (2026-09-05 연계 패스) — 아군 봇도 적을 예측 사격해
                     // "읽고 쏘는" 플레이가 화면에 등장한다. 인간 학습 데이터는 여전히 적팀만 유효하게 쌓인다.
-                    // 지휘는 내 팀 봇에게만. 적 봇은 지휘관 모드에서도 그대로 자율이다.
-                    bool commandable = GameModeState.IsCommander && s.team == playerTeam;
+                    // 지휘는 "인간 지휘관이 있는 팀"의 봇에게. 싱글 지휘관 = 내 팀만, 지휘관 대전 = 양 팀 (각자 자기 인간).
+                    bool commandable = GameModeState.IsCommander && TeamHasHuman(s.team);
                     var driver = new AiSlotDriver(s.unitId, s.cls, s.team, intentSink, predictor,
-                        commandable ? Orders : null);
+                        commandable ? teamOrders[s.team] : null);
                     driver.OnPredictedShot += (attackerId, cell) =>
                     {
                         var target = new Coord(cell.X, cell.Y);
@@ -1824,6 +1914,8 @@ namespace SeoYuGi.BattleView
             spectateUnitId = -1;
             countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
             countdownRunning = true;
+            if (radioTimeActive) EndRadioTime(); // 라운드 재조립 — 정지 잔재 제거
+            nextRadioTimeAt = RadioTimeFirst;
 
             if (NetBoot.IsOnline && NetBoot.IsHost)
                 NetSync.HostSendBeginRound(Match.CurrentRound); // 클라 — 같은 라운드 조립 신호
@@ -2124,6 +2216,8 @@ namespace SeoYuGi.BattleView
         {
             input.enabled = false; // 오버레이 중 조작·학습 오염 차단
             fastForward = false;
+            EndRadioTime(); // 무전 타임 중 끝났으면 정지 해제 (홀드 카운트 정리 후 timeScale 복원)
+            nextRadioTimeAt = -1f;
             Time.timeScale = 1f; // 빨리감기 중 끝났으면 정상 속도로
             hud.SetSkipHint(false, false);
             Debug.Log($"라운드 {Match.CurrentRound} 종료 — 팀 {winnerTeam} 승리");
@@ -2200,7 +2294,7 @@ namespace SeoYuGi.BattleView
 
         void StartNextRound()
         {
-            Orders.Clear(); // 새 라운드 = 명령 백지. 지난 판 지시가 넘어오지 않는다
+            foreach (var o in teamOrders) o.Clear(); // 새 라운드 = 양 팀 명령 백지. 지난 판 지시가 넘어오지 않는다
             predictor.SetRound(Match.CurrentRound); // R1 관찰 → R2 적용 → R3 선점
             BuildRound();
         }
@@ -2307,14 +2401,15 @@ namespace SeoYuGi.BattleView
 
             // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
             bool typing = RadioWindow.TextInputActive;
-            if (typing != typingPrev)
+            bool inputLock = typing || GameFreeze.Active; // 무전 타임 정지 중엔 이동·스킬 제출도 잠금 — 시뮬은 즉시 반영이라 정지가 곧 선공이 된다
+            if (inputLock != typingPrev)
             {
-                input.enabled = !typing; // 유닛 이동·스킬 조작 — 여기(Playing 단계)선 카운트다운 뒤라 안전
-                typingPrev = typing;
+                input.enabled = !inputLock; // 유닛 이동·스킬 조작 — 여기(Playing 단계)선 카운트다운 뒤라 안전
+                typingPrev = inputLock;
             }
 
             // 해킹 (H) — 궁게이지 만충 시, 5초간 적 예측 AI 교란 + 적 전원 위치 표시. 클라는 Pending.
-            if (!typing && Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
+            if (!inputLock && Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
                 intentSink.Submit(BattleIntent.Hack(playerUnitId));
 
             // 싱글 — 내가 죽으면 SPACE로 결과까지 빨리감기 (부활 대신, 2026-09-05). 온라인은 남들이 싸우는 중이라 불가.
@@ -2346,7 +2441,7 @@ namespace SeoYuGi.BattleView
                 for (int i = 0; i < ChatKeys.Length; i++)
                     if (Keyboard.current[ChatKeys[i]].wasPressedThisFrame)
                     {
-                        if (IsNetClient) NetSync.ClientSendChat(playerUnitId, i);
+                        if (IsNetClient) { NetSync.ClientSendChat(playerUnitId, i); ApplyQuickChatOrder(i); } // 명령은 sy_od로 별도 릴레이
                         else if (quickChat.TrySend(playerUnitId, i, Time.time))
                             ApplyQuickChatOrder(i); // 지휘관 모드 — 퀵챗이 곧 명령
                         break;
@@ -2356,6 +2451,8 @@ namespace SeoYuGi.BattleView
             // 휠클릭 핑 — 탭 = ▼(디폴트), 꾹 누르고 끌면 ▼/!/? 선택 휠 (롤식).
             // 칸은 누른 순간 기준 — 휠 조작으로 마우스가 옮겨가도 핑 위치는 안 흔들린다.
             if (!typing) UpdatePingInput();
+
+            TickRadioTime(); // 지휘관 대전 — 호스트가 주기 판단, 클라는 남은 시간 표시·상한 (양쪽 공통)
 
             // 온라인 클라이언트 — 시뮬 없음. 스냅샷이 상태를 쓰고, 시야·연출만 로컬.
             if (IsNetClient)

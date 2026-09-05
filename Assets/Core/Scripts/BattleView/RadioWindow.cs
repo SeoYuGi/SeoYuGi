@@ -17,6 +17,11 @@ namespace SeoYuGi.BattleView
     {
         public bool IsOpen { get; private set; }
 
+        /// <summary>열 때 전장을 정지시킬지. 싱글 지휘관 = true. 온라인은 호스트 시계라 정지 불가 — 러너가 false로 둔다.
+        /// 온라인의 "고민 시간"은 무전 타임(호스트가 전원 동시 정지)이 대신한다.</summary>
+        public bool FreezeOnOpen = true;
+        bool frozeOnOpen;
+
         /// <summary>텍스트 입력 중 — 게임 핫키(해킹·퀵챗·핑·카메라·이동)가 이걸 보고 잠긴다.
         /// 한글 타이핑의 물리키가 게임키와 겹치기 때문 (ㅂ/ㅈ=카메라 회전, ㅗ=해킹).</summary>
         public static bool TextInputActive { get; private set; }
@@ -55,7 +60,8 @@ namespace SeoYuGi.BattleView
         {
             if (IsOpen) return;
             IsOpen = true;
-            GameFreeze.Push(); // 완전 정지 — 치는 동안 전장이 안 흐른다
+            frozeOnOpen = FreezeOnOpen;
+            if (frozeOnOpen) GameFreeze.Push(); // 완전 정지 — 치는 동안 전장이 안 흐른다 (싱글)
             Input.imeCompositionMode = IMECompositionMode.On; // 한글 조합 — Both 입력 모드 필수
             TextInputActive = true;
             wantFocus = true;
@@ -65,7 +71,7 @@ namespace SeoYuGi.BattleView
         {
             if (!IsOpen) return;
             IsOpen = false;
-            GameFreeze.Pop();
+            if (frozeOnOpen) GameFreeze.Pop();
             Input.imeCompositionMode = IMECompositionMode.Auto;
             TextInputActive = false;
         }

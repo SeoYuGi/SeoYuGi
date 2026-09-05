@@ -127,6 +127,7 @@ public class UILobbyPopup : UIPopup
         OnEscape = Leave; // ESC = 나가기 (뒤로)
 
         CreateTeamSwapButton(); // 상대팀 슬롯은 숨겨져 있어 클릭 이동이 불가 — 버튼으로 (2026-09-05 "상대팀으로도")
+        CreateCommanderToggle(); // 지휘관 대전 — 유저1+봇2 vs 유저1+봇2, 각자 자기 봇을 무전 지휘 (2026-09-05)
 
         codeText = transform.Find("CodeText")?.GetComponent<Text>();
         statusText = transform.Find("StatusText")?.GetComponent<Text>();
@@ -283,6 +284,32 @@ public class UILobbyPopup : UIPopup
         });
     }
 
+    Text commanderLabel;
+
+    /// <summary>지휘관 대전 토글 — 호스트만 바꾸고, 상태는 NetLobby.Commander로 전원 동기화. 팀 변경 버튼 위에.</summary>
+    void CreateCommanderToggle()
+    {
+        var template = Get<GameObject>((int)Buttons.BtnLeave);
+        var go = Instantiate(template, template.transform.parent);
+        go.name = "BtnCommander";
+        var rt = go.GetComponent<RectTransform>();
+        var src = template.GetComponent<RectTransform>();
+        rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, (src.sizeDelta.y + 14f) * 2f);
+        commanderLabel = go.GetComponentInChildren<Text>();
+        BindEvent(go, _ =>
+        {
+            if (!NetBoot.IsHost) { if (statusText != null) statusText.text = "모드는 호스트가 정합니다"; return; }
+            NetLobby.HostSetCommander(!NetLobby.Commander);
+        });
+        RefreshCommanderLabel();
+    }
+
+    void RefreshCommanderLabel()
+    {
+        if (commanderLabel != null)
+            commanderLabel.text = NetLobby.Commander ? "지휘관 대전: ON" : "지휘관 대전: OFF";
+    }
+
     /// <summary>클라 대기 중 안내 (관전 동기화 전 단계 등).</summary>
     public void SetStatus(string text)
     {
@@ -291,6 +318,7 @@ public class UILobbyPopup : UIPopup
 
     void Refresh()
     {
+        RefreshCommanderLabel();
         if (codeText != null)
             codeText.text = string.IsNullOrEmpty(NetBoot.JoinCode) ? "" : $"조인 코드: {NetBoot.JoinCode}";
 

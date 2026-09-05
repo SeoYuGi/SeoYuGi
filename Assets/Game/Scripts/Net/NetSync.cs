@@ -30,6 +30,8 @@ namespace SeoYuGi.Net
         const string MsgKill = "sy_kl";
         const string MsgPingReq = "sy_pq";  // 클라 → 호스트: 휠클릭 핑 요청
         const string MsgPingShow = "sy_ps"; // 호스트 → 같은 팀 클라: 핑 표시
+        const string MsgOrders = "sy_od";   // 클라 → 호스트: 지휘관 무전 명령 묶음 (SquadOrders) — 지휘관 대전 (2026-09-05)
+        const string MsgRadioTime = "sy_rt"; // 호스트 → 전원: 무전 타임 시작/종료 (전원 동시 정지)
         const float SnapInterval = 1f / 12f;
 
         // ── 클라 수신 이벤트 (러너가 구독) ─────────────────
@@ -52,6 +54,8 @@ namespace SeoYuGi.Net
         public static event Action<ulong, BattleIntent> OnIntentRequest; // sender, intent — 소유권 검증은 러너
         public static event Action<ulong, int, int> OnChatRequest;       // sender, unitId, lineId
         public static event Action<ulong, int, int, int, int> OnPingRequest; // sender, unitId, x, y, type
+        public static event Action<ulong, SquadOrders> OnOrdersRequest;   // sender, orders — 팀·봇 검증은 러너
+        public static event Action<bool, float> OnRadioTime;               // 클라: (시작?, 길이 초) — 무전 타임 동기 정지
         public static event Action<ulong> OnReadyRequest;                // 호스트: sender 클라가 SPACE 동의
         public static event Action<int, int> OnReadyState;               // 클라: (준비 인원, 전체 인원)
 
@@ -93,6 +97,70 @@ namespace SeoYuGi.Net
             mm.RegisterNamedMessageHandler(MsgKill, OnKillMsg);
             mm.RegisterNamedMessageHandler(MsgPingReq, OnPingReqMsg);
             mm.RegisterNamedMessageHandler(MsgPingShow, OnPingShowMsg);
+            mm.RegisterNamedMessageHandler(MsgOrders, OnOrdersMsg);
+            mm.RegisterNamedMessageHandler(MsgRadioTime, OnRadioTimeMsg);
+        }
+
+        /// <summary>호스트 — 무전 타임 시작(on, 초)/종료(off). 전원이 같은 순간 얼고 풀린다.</summary>
+        public static void HostSendRadioTime(bool on, float seconds)
+        {
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe((byte)(on ? 1 : 0));
+            w.WriteValueSafe(seconds);
+            NetworkManager.Singleton.CustomMessagingManager.SendNamedMessageToAll(MsgRadioTime, w);
+        }
+
+        static void OnRadioTimeMsg(ulong sender, FastBufferReader r)
+        {
+            if (NetworkManager.Singleton.IsHost || sender != NetworkManager.ServerClientId) return;
+            r.ReadValueSafe(out byte on);
+            r.ReadValueSafe(out float seconds);
+            OnRadioTime?.Invoke(on != 0, seconds);
+        }
+
+        /// <summary>클라(원격 지휘관) — 무전 명령 묶음을 호스트로. LLM 해석은 클라 로컬에서 끝났고, 결과만 보낸다.
+        /// 호스트는 보낸 사람 팀의 봇에 한해 적용한다.</summary>
+        public static void ClientSendOrders(SquadOrders squad)
+        {
+            using var w = new FastBufferWriter(1024, Allocator.Temp, 8192);
+            w.WriteValueSafe((byte)(squad.understood ? 1 : 0));
+            w.WriteValueSafe(squad.ack ?? "");
+            w.WriteValueSafe(squad.orders.Count);
+            foreach (var o in squad.orders)
+            {
+                w.WriteValueSafe(o.unitId);
+                w.WriteValueSafe((byte)o.goal);
+                w.WriteValueSafe(o.zoneIndex);
+                w.WriteValueSafe((byte)o.stance);
+                w.WriteValueSafe(o.focusEnemyId);
+                w.WriteValueSafe((byte)(o.persistent ? 1 : 0));
+            }
+            NetworkManager.Singleton.CustomMessagingManager
+                .SendNamedMessage(MsgOrders, NetworkManager.ServerClientId, w);
+        }
+
+        static void OnOrdersMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out byte understood);
+            r.ReadValueSafe(out string ack);
+            r.ReadValueSafe(out int count);
+            var squad = new SquadOrders { understood = understood != 0, ack = ack };
+            for (int i = 0; i < count && i < 8; i++)
+            {
+                var o = new UnitOrder();
+                r.ReadValueSafe(out o.unitId);
+                r.ReadValueSafe(out byte goal);
+                o.goal = (OrderGoal)goal;
+                r.ReadValueSafe(out o.zoneIndex);
+                r.ReadValueSafe(out byte stance);
+                o.stance = (OrderStance)stance;
+                r.ReadValueSafe(out o.focusEnemyId);
+                r.ReadValueSafe(out byte persistent);
+                o.persistent = persistent != 0;
+                squad.orders.Add(o);
+            }
+            OnOrdersRequest?.Invoke(sender, squad);
         }
 
         /// <summary>호스트 — 스킬 시전 릴레이 (targeted). 즉발기는 예고가 없어 이게 유일한 통보.</summary>

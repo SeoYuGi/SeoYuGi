@@ -42,6 +42,8 @@ namespace SeoYuGi.Net
         }
 
         public static LobbySlot[] Slots { get; private set; }
+        /// <summary>지휘관 대전 토글 — 호스트가 로비에서 정하고 슬롯 상태와 함께 브로드캐스트.</summary>
+        public static bool Commander { get; private set; }
         /// <summary>클라 수신 매치 구성 — 시작 메시지 도착 시 채워짐.</summary>
         public static MatchSetup ReceivedSetup { get; private set; }
 
@@ -61,6 +63,7 @@ namespace SeoYuGi.Net
 
             if (nm.IsHost)
             {
+                Commander = false;
                 Slots = new LobbySlot[Template.Length];
                 for (int i = 0; i < Template.Length; i++)
                     Slots[i] = new LobbySlot
@@ -173,6 +176,16 @@ namespace SeoYuGi.Net
             }
         }
 
+        /// <summary>호스트 전용 — 지휘관 대전 켜기/끄기. 전원에게 슬롯 상태와 함께 전파.</summary>
+        public static void HostSetCommander(bool on)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsHost) return;
+            Commander = on;
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
         /// <summary>호스트 전용 — 매치 시작. mapIndex·시드는 호스트가 확정.
         /// 봇 클래스는 로비에서 이미 배정·공개된 그대로 간다.</summary>
         public static void HostStart(int mapIndex, int enemyRollSeed)
@@ -191,11 +204,12 @@ namespace SeoYuGi.Net
                     owner = Slots[i].owner,
                     ownerClientId = Slots[i].clientId
                 };
-            var setup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = enemyRollSeed, slots = slots };
+            var setup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = enemyRollSeed, commander = Commander, slots = slots };
 
             using var w = new FastBufferWriter(1024, Allocator.Temp);
             w.WriteValueSafe(mapIndex);
             w.WriteValueSafe(enemyRollSeed);
+            w.WriteValueSafe((byte)(Commander ? 1 : 0));
             w.WriteValueSafe(slots.Length);
             foreach (var s in slots)
             {
@@ -388,6 +402,7 @@ namespace SeoYuGi.Net
                 w.WriteValueSafe((byte)s.owner);
                 w.WriteValueSafe(s.clientId);
             }
+            w.WriteValueSafe((byte)(Commander ? 1 : 0));
             nm.CustomMessagingManager.SendNamedMessageToAll(MsgLobby, w);
         }
 
@@ -408,6 +423,8 @@ namespace SeoYuGi.Net
                 slots[i].owner = (SlotOwner)owner;
                 r.ReadValueSafe(out slots[i].clientId);
             }
+            r.ReadValueSafe(out byte commander);
+            Commander = commander != 0;
             Slots = slots;
             OnChanged?.Invoke();
         }
@@ -455,6 +472,7 @@ namespace SeoYuGi.Net
 
             r.ReadValueSafe(out int mapIndex);
             r.ReadValueSafe(out int seed);
+            r.ReadValueSafe(out byte commander);
             r.ReadValueSafe(out int count);
             var slots = new SlotConfig[count];
             for (int i = 0; i < count; i++)
@@ -468,7 +486,7 @@ namespace SeoYuGi.Net
                 r.ReadValueSafe(out slots[i].ownerClientId);
                 r.ReadValueSafe(out slots[i].callsign);
             }
-            ReceivedSetup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = seed, slots = slots };
+            ReceivedSetup = new MatchSetup { mapIndex = mapIndex, enemyRollSeed = seed, commander = commander != 0, slots = slots };
             OnMatchStart?.Invoke();
         }
 

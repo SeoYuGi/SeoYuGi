@@ -28,6 +28,7 @@ namespace SeoYuGi.Battle
     {
         public int mapIndex;
         public int enemyRollSeed; // 적팀 클래스 롤 재현용
+        public bool commander;    // 지휘관 대전 — 인간이 있는 팀의 봇은 그 인간의 무전 지휘를 받는다 (2026-09-05)
         public SlotConfig[] slots;
 
         /// <summary>인간 조종 슬롯의 unitId 집합 — Predictor 학습 대상.</summary>

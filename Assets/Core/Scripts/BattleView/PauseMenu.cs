@@ -23,6 +23,11 @@ namespace SeoYuGi.BattleView
         /// <summary>설정에서 조절할 음량 — 러너가 BattleAudio를 물려준다.</summary>
         public BattleAudio Audio;
 
+        /// <summary>메인으로 나가기 — 러너가 전투 정리·타이틀 복귀를 맡는다 (2026-09-06).</summary>
+        public Action OnQuitToTitle;
+        /// <summary>온라인 대전 중인가 — 나가기 버튼에 몰수패 경고를 붙인다.</summary>
+        public Func<bool> IsOnlineMatch;
+
         bool inSettings;
         float restoreScale = 1f;
         GUIStyle titleStyle, itemStyle, labelStyle, hintStyle;
@@ -104,7 +109,7 @@ namespace SeoYuGi.BattleView
             EnsureStyles();
 
             const float W = 420f, PadX = 30f;
-            float H = inSettings ? 400f : 340f;
+            float H = inSettings ? 400f : 404f; // 메뉴 4줄 (메인으로 나가기 추가, 2026-09-06)
             var box = new Rect((Screen.width - W) * 0.5f, (Screen.height - H) * 0.5f, W, H);
 
             var prev = GUI.color;
@@ -130,6 +135,13 @@ namespace SeoYuGi.BattleView
             if (GUI.Button(new Rect(box.x + padX, y, w, 56f), "계속하기", itemStyle)) Close();
             y += 64f;
             if (GUI.Button(new Rect(box.x + padX, y, w, 56f), "설정", itemStyle)) inSettings = true;
+            y += 64f;
+            bool online = IsOnlineMatch != null && IsOnlineMatch();
+            if (GUI.Button(new Rect(box.x + padX, y, w, 56f), online ? "메인으로 나가기 (몰수패)" : "메인으로 나가기", itemStyle))
+            {
+                Close();
+                OnQuitToTitle?.Invoke();
+            }
             y += 64f;
             if (GUI.Button(new Rect(box.x + padX, y, w, 56f), "게임 종료", itemStyle)) Quit();
 

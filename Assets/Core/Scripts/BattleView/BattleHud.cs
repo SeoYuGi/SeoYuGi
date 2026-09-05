@@ -421,6 +421,7 @@ namespace SeoYuGi.BattleView
         public void Hide()
         {
             battle = null; // OnGUI 조기 리턴
+            Minimal = false; // 훈련장 플래그가 다음 매치에 새지 않게
             overlay = Overlay.None;
             subtitleText = null;
             countdownNum = 0;
@@ -546,6 +547,10 @@ namespace SeoYuGi.BattleView
             if (chatLog.Count > ChatLogMax) chatLog.RemoveAt(0);
         }
 
+        /// <summary>훈련장 — 하단 바 + 힌트 한 줄만. 타이머·거점·스코어·킬피드·채팅·공지 전부 안 그린다 (2026-09-06).</summary>
+        public bool Minimal;
+        public string MinimalHint = "";
+
         void OnGUI()
         {
             BattleHudActive = battle != null && overlay == Overlay.None;
@@ -554,6 +559,16 @@ namespace SeoYuGi.BattleView
             float s = UiScale;
             PixelPerHud = s;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(s, s, 1f));
+
+            if (Minimal)
+            {
+                DrawBottomBar();
+                if (!string.IsNullOrEmpty(MinimalHint))
+                    ShadowLabel(new Rect(0, H - 64f - 18f - 44f, W, 20f), MinimalHint, subStyle, new Color(0.75f, 0.8f, 0.88f));
+                DrawSubtitle(); // 행동 거부 안내 등 한 줄짜리는 남긴다
+                GUI.matrix = Matrix4x4.identity;
+                return;
+            }
 
             var baseMtx = GUI.matrix; // 상단바만 1.3배 — 버튼이 없어 클릭 좌표 무관
             GUI.matrix = baseMtx * Matrix4x4.TRS(new Vector3(W / 2f * (1f - TopScale), 0f, 0f), Quaternion.identity, new Vector3(TopScale, TopScale, 1f));

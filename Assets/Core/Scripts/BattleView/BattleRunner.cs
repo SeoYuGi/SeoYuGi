@@ -125,6 +125,8 @@ namespace SeoYuGi.BattleView
                 pauseMenu.CanOpen = () =>
                     (input == null || input.CurrentAim == UnitMoveInput.AimMode.None) &&
                     (radio == null || !radio.IsOpen);
+                pauseMenu.OnQuitToTitle = QuitToTitle;
+                pauseMenu.IsOnlineMatch = () => NetBoot.IsOnline && phase != Phase.ClassSelect;
             }
         }
 
@@ -1135,32 +1137,71 @@ namespace SeoYuGi.BattleView
             ShowPing(unitId, new Coord(x, y), type); // 호스트 화면 표시 + 팀 배달 (발신 클라 포함)
         }
 
-        /// <summary>호스트 — 인간 이탈: 전투 중이면 그 유닛에 봇 드라이버를 즉시 승계 (2026-09-05).</summary>
+        /// <summary>호스트 — 상대 이탈. 1:1 고정이라 봇 승계 대신 몰수승 (2026-09-06). 매치엔드 중이면 R을 메인 복귀로 바꾼다.</summary>
         void HostOnHumansLeft(int[] unitIds)
         {
-            if (!NetBoot.IsHost || phase != Phase.Playing || matchSetup == null) return;
-            foreach (var uid in unitIds)
-            {
-                bool hasDriver = false;
-                foreach (var d in aiDrivers) if (d.UnitId == uid) { hasDriver = true; break; }
-                if (hasDriver) continue;
-                foreach (var slot in matchSetup.slots)
-                    if (slot.unitId == uid)
-                    {
-                        aiDrivers.Add(new AiSlotDriver(uid, slot.cls, slot.team, intentSink, predictor, null, slot.team != playerTeam));
-                        hud.PushEvent($"{slot.callsign} 이탈. 봇이 대신합니다", new Color(0.7f, 0.75f, 0.85f));
-                        break;
-                    }
-            }
+            if (!NetBoot.IsHost || matchSetup == null) return;
+            if (phase == Phase.Playing || phase == Phase.Briefing) EndMatchByForfeit();
+            else if (phase == Phase.MatchOver) { forfeitEnd = true; hud.ShowSubtitle("상대 이탈. R: 메인으로", 4f); }
         }
 
-        /// <summary>클라 — 호스트가 방을 파괴/이탈: 정리하고 타이틀로 (2026-09-05 "같이 나가지게").</summary>
+        /// <summary>클라 — 호스트 이탈. 전투·브리핑 중이면 몰수승, 그 외엔 타이틀 (2026-09-06).</summary>
         void ClientOnHostGone()
         {
             NetBoot.Shutdown();
+            if (phase == Phase.Playing || phase == Phase.Briefing) { EndMatchByForfeit(); return; }
+            if (phase == Phase.MatchOver) { forfeitEnd = true; hud.ShowSubtitle("상대 이탈. R: 메인으로", 4f); return; }
             hud.Hide();
             UIManager.Instance.CloseAllPopupUI();
             ShowTitle();
+        }
+
+        bool forfeitEnd; // 몰수승으로 끝난 매치 — R은 새 매치가 아니라 메인으로 (상대가 없다)
+
+        /// <summary>전투 정리 공통 — 정지 홀드·배속·가이드·무전·루프 사운드 잔재를 걷는다.</summary>
+        void TearDownBattleState()
+        {
+            if (radio != null && radio.IsOpen) radio.Close();
+            EndRadioTime();
+            GuideSpotlight.Clear();
+            fastForward = false;
+            Time.timeScale = 1f;
+            input.enabled = false;
+            battleAudio.SetCaptureLoop(false);
+            battleAudio.SetTypingLoop(false);
+            nextRadioTimeAt = -1f;
+        }
+
+        /// <summary>ESC 메뉴 "메인으로 나가기" (2026-09-06). 온라인이면 접속을 끊고, 상대는 이탈 콜백으로 몰수승을 받는다.</summary>
+        void QuitToTitle()
+        {
+            TearDownBattleState();
+            Guide.EndTutorial();
+            GameModeState.Training = false;
+            foreach (var o in teamOrders) o.Clear();
+            ClearRoundObjects();
+            aiDrivers.Clear();
+            Move = null; Combat = null; Round = null; Battle = null; // Update 조기 리턴
+            Match = new MatchSystem(); // 다음 판이 이번 판 라운드 수를 이어받지 않게
+            forfeitEnd = false;
+            if (NetBoot.IsOnline) NetBoot.Shutdown();
+            hud.Hide();
+            UIManager.Instance.CloseAllPopupUI();
+            ShowTitle();
+        }
+
+        /// <summary>상대 이탈 — 1:1 고정이라 남은 사람은 나뿐. 즉시 몰수승 매치엔드 (2026-09-06).</summary>
+        void EndMatchByForfeit()
+        {
+            TearDownBattleState();
+            Match.Forfeit(playerTeam);
+            phase = Phase.MatchOver;
+            forfeitEnd = true;
+            ResetReadyGate();
+            hud.SetMatchEndReason("상대 이탈. 몰수승. R: 메인으로");
+            hud.SetMatchStats(BuildMatchStats());
+            hud.ShowMatchEnd();
+            battleAudio.PlayBgm("B4_Victory", loop: false);
         }
 
         // 휠 홀드 상태 — 누른 순간의 칸·스크린 좌표 고정, 끌기 방향으로 종류 선택
@@ -2484,7 +2525,8 @@ namespace SeoYuGi.BattleView
             {
                 trainingDummyHome = SpawnOf(TrainingDummyId);
                 trainingLastHitAt = Time.time;
-                hud.ShowAnnounce("훈련장. F1~F5 캐릭터 교체 / 허수아비는 죽지 않음 / ESC 메뉴로 나가기", Color.white, 6f);
+                hud.Minimal = true; // 스킬 연습장 — 하단 바 외 전부 제거 (2026-09-06)
+                hud.MinimalHint = "F1~F5: 캐릭터 교체    ESC: 메뉴";
             }
             else if (Guide.Wanted)
             {
@@ -2506,7 +2548,7 @@ namespace SeoYuGi.BattleView
             lastKillerId = -1; lastCapturerId = -1;
             if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); matchDamage.Clear(); matchCapture.Clear(); } // 새 매치 — 누적도 백지
             spectateUnitId = -1;
-            countdownUntil = Time.time + (Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로)
+            countdownUntil = Time.time + (GameModeState.Training ? 0f : Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로). 훈련장은 카운트다운 없음 (2026-09-06)
             countdownRunning = true;
             contestedMaskPrev = 0;
             nextEventBriefAt = 0f;
@@ -3078,6 +3120,8 @@ namespace SeoYuGi.BattleView
             }
             if (phase == Phase.MatchOver)
             {
+                // 몰수승 — 상대가 없어 준비 게이트를 못 넘는다. R = 메인으로 (2026-09-06)
+                if (forfeitEnd && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { QuitToTitle(); return; }
                 // R = 새 매치 동의 (SPACE 동의처럼 전원 관문 — 2026-09-05). 솔로는 1/1이라 즉시.
                 if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame && !localReady)
                 {

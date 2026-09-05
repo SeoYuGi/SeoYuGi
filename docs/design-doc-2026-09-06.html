@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeoYuGi 총정리 기획서</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #141b24; --panel2: #1a2330; --line: #263241;
+    --text: #dce4ee; --muted: #8b9bb0; --accent: #5ee6dc; --warn: #ffc857; --danger: #ff6b57; --ok: #6fe39a;
+    --team0: #4fc3f7; --team1: #ff8a65;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; font-size: 15px; line-height: 1.6; }
+  a { color: var(--accent); text-decoration: none; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 20px 16px; }
+  nav h1 { font-size: 18px; margin: 0 0 4px; color: #fff; }
+  nav .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  nav ol { list-style: none; padding: 0; margin: 0; }
+  nav li { margin: 2px 0; }
+  nav li a { display: block; padding: 5px 8px; border-radius: 6px; color: var(--text); font-size: 13.5px; }
+  nav li a:hover { background: var(--panel2); color: var(--accent); }
+  nav li.sub a { padding-left: 20px; font-size: 12.5px; color: var(--muted); }
+  main { padding: 36px 48px 80px; max-width: 1150px; }
+  h2 { font-size: 24px; margin: 48px 0 12px; padding-bottom: 8px; border-bottom: 2px solid var(--line); color: #fff; }
+  h2 .num { color: var(--accent); margin-right: 10px; font-weight: 600; }
+  h3 { font-size: 17px; margin: 28px 0 8px; color: var(--accent); }
+  h4 { font-size: 15px; margin: 18px 0 6px; color: #fff; }
+  p { margin: 6px 0 10px; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; vertical-align: top; text-align: left; }
+  th { background: var(--panel2); color: #fff; font-weight: 600; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  .wrap { overflow-x: auto; }
+  code, kbd { font-family: "Cascadia Code", Consolas, monospace; font-size: 12.5px; background: var(--panel2); padding: 1px 6px; border-radius: 4px; color: #cfe6ff; }
+  kbd { border: 1px solid #3a4a5e; border-bottom-width: 2px; color: #fff; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 16px; margin: 12px 0 16px; }
+  .box.warn { border-left-color: var(--warn); }
+  .box.danger { border-left-color: var(--danger); }
+  .box.ok { border-left-color: var(--ok); }
+  .box .t { font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 10px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); margin-right: 4px; vertical-align: middle; }
+  .tag.ongui { color: var(--warn); border-color: rgba(255,200,87,0.4); }
+  .tag.ugui { color: var(--ok); border-color: rgba(111,227,154,0.4); }
+  .tag.world { color: #b9a7ff; border-color: rgba(185,167,255,0.4); }
+  .tag.t0 { color: var(--team0); } .tag.t1 { color: var(--team1); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+  .card h4 { margin-top: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .check li { list-style: none; position: relative; padding-left: 24px; }
+  .check li::before { content: ""; position: absolute; left: 0; top: 7px; width: 13px; height: 13px; border: 1.5px solid var(--muted); border-radius: 3px; }
+  .lead { font-size: 16px; color: #c8d3e0; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } nav { position: static; height: auto; } main { padding: 20px; } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <h1>SeoYuGi 총정리 기획서</h1>
+  <div class="sub">코드 기준 스냅샷, 2026-09-06<br>대상 커밋 a5b3520 (main)</div>
+  <ol>
+    <li><a href="#s0">0. 문서 목적과 읽는 법</a></li>
+    <li><a href="#s1">1. 게임 개요</a></li>
+    <li><a href="#s2">2. 모드와 전체 흐름</a></li>
+    <li><a href="#s3">3. 매치와 라운드 규칙</a></li>
+    <li class="sub"><a href="#s3-zone">거점 점거</a></li>
+    <li class="sub"><a href="#s3-rule">라운드 변형 규칙 6종</a></li>
+    <li><a href="#s4">4. 맵 6장</a></li>
+    <li><a href="#s5">5. 이동과 지형</a></li>
+    <li><a href="#s6">6. 전투 공통 규칙</a></li>
+    <li><a href="#s7">7. 클래스 5종과 스킬</a></li>
+    <li><a href="#s8">8. 시야, 힐팩, 시야해킹</a></li>
+    <li><a href="#s9">9. 지휘관 모드 (LLM 무전)</a></li>
+    <li><a href="#s10">10. 봇 AI</a></li>
+    <li><a href="#s11">11. 온라인 멀티</a></li>
+    <li><a href="#s12">12. 조작 전체 표</a></li>
+    <li><a href="#s13">13. 카메라, 연출, 사운드</a></li>
+    <li><a href="#s14">14. UI 인벤토리 (교체 대상)</a></li>
+    <li><a href="#s15">15. 확인 요망 (놓친 부분 후보)</a></li>
+    <li><a href="#s16">16. 코드 지도와 테스트</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<h2 id="s0"><span class="num">0</span>문서 목적과 읽는 법</h2>
+<p class="lead">이 문서는 2026-09-06 현재 <b>실제로 코드에 구현되어 동작하는 것</b>만 모아 정리한 총정리 기획서다. 수치는 전부 코드 상수와 데이터 테이블에서 옮겼고, 주석이나 옛 기획서와 어긋나는 곳은 코드 값을 기준으로 삼았다. 기획 변경은 더 없고 UI 작업만 남았다는 전제로, 14장(UI 인벤토리)과 15장(확인 요망)을 UI 작업 전에 먼저 훑어보면 된다.</p>
+<div class="box">
+  <div class="t">표기 규칙</div>
+  <ul>
+    <li><span class="tag t0">동물팀</span> = 팀 0 (틸/파랑 계열). 호스트, 싱글 플레이어가 속한다.</li>
+    <li><span class="tag t1">기계팀</span> = 팀 1 (주황/빨강 계열). 같은 동물 모델을 은색 금속 재질로 바꾼 "기계 동물".</li>
+    <li>거리 표기: <b>체비쇼프</b> = 대각 포함 정사각 반경. <b>맨해튼</b> = 십자 거리(다이아 모양).</li>
+    <li><span class="tag ongui">OnGUI</span> = 코드 즉시 드로잉 임시 UI. <span class="tag ugui">uGUI</span> = 프리팹 기반 UI. <span class="tag world">월드</span> = 3D 공간 오브젝트.</li>
+  </ul>
+</div>
+
+<h2 id="s1"><span class="num">1</span>게임 개요</h2>
+<table>
+  <tr><th style="width:160px">한 줄 정의</th><td>2026년 서울 뒷골목에서 길동물 분대와 도시관리 AI의 기계 동물 분대가 거점을 두고 싸우는 <b>격자 실시간 전술 대전</b>. 3v3, 내 유닛 1기 직접 조종, 나머지는 봇 또는 다른 사람.</td></tr>
+  <tr><th>키워드</th><td><b>2026 / 영역 / 예측.</b> 영역은 거점 점거, 예측은 모든 공격이 "예고 후 판정"이라 상대의 예고를 읽고 자리를 옮기는 것으로 구현된다. AI 학습 서사는 폐기됐고, AI 활용은 지휘관 모드의 런타임 LLM 무전이 담당한다.</td></tr>
+  <tr><th>핵심 루프</th><td>이동 게이지로 자리를 잡는다 → 예고를 깔고 상대 예고를 피한다 → 거점 위에 서서 게이지를 채운다 → 무전으로 분대를 움직인다. 라운드 120초, 3판 2선승.</td></tr>
+  <tr><th>승리 조건</th><td>라운드: 상대 전멸 즉시 승리, 또는 활성 거점 전부 독점 즉시 승리. 시간 초과 시 거점 수 → 생존 수 → 그래도 동률이면 추가시간(다음 킬 또는 다음 탈환이 승부).</td></tr>
+  <tr><th>부활</th><td>없음. 죽으면 라운드 끝까지 관전(안개 해제). 지휘관 모드에선 관전 중에도 무전 지휘가 가능하다.</td></tr>
+  <tr><th>플랫폼 / 엔진</th><td>Unity URP, PC. 입력은 신 Input System. 네트워크는 Netcode for GameObjects + UGS 세션(퀵조인) + Relay.</td></tr>
+</table>
+
+<h2 id="s2"><span class="num">2</span>모드와 전체 흐름</h2>
+<h3>2.1 타이틀에서 갈 수 있는 곳</h3>
+<table>
+  <tr><th>입구</th><th>내부 모드</th><th>구성</th><th>비고</th></tr>
+  <tr><td><b>싱글 모드</b> (그림 버튼 1)</td><td><code>GameMode.Commander</code></td><td>나 + 내 팀 봇 2 vs 적 봇 3. 무전 지휘 가능.</td><td>버튼 문구는 "싱글 모드"지만 내부는 지휘관 모드다. 매칭 없이 바로 픽창.</td></tr>
+  <tr><td><b>멀티</b> (그림 버튼 2)</td><td><code>GameMode.Multi</code>, 로비 토글로 Commander</td><td>1:1 고정. 사람 1 + 봇 2 vs 사람 1 + 봇 2. 호스트 = 동물팀, 합류자 = 기계팀.</td><td>봇전 폴백 없음. 매칭 실패 시 타이틀로. 로비의 "지휘관 대전" 토글을 켜면 양쪽이 각자 자기 봇을 무전 지휘.</td></tr>
+  <tr><td><b>설정</b> (그림 버튼 3)</td><td></td><td>일시정지 메뉴의 설정 화면을 그대로 띄움(배경음/효과음/음성 볼륨).</td><td>전용 설정 화면 없음.</td></tr>
+  <tr><td><b>종료</b> (그림 버튼 4)</td><td></td><td>앱 종료.</td><td></td></tr>
+  <tr><td><b>튜토리얼</b> (우하단 작은 판)</td><td>Commander + Guide</td><td>싱글 지휘관 봇전에 가이드 3단계를 강제로 붙임. 라운드 규칙 변형은 꺼짐.</td><td>첫 판이면 자동으로도 가이드가 붙는다(PlayerPrefs <code>guide_done</code>).</td></tr>
+  <tr><td><b>훈련장</b> (우하단 작은 판)</td><td>Multi + Training 플래그</td><td>가장 작은 맵(막다른 골목), 나 1기 + 죽지 않는 허수아비 1기. 승패, 시간, 안개, 규칙 없음.</td><td><kbd>F1</kbd>~<kbd>F5</kbd>로 캐릭터 즉시 교체. 허수아비는 밀려난 뒤 3초 안 맞으면 제자리 복귀.</td></tr>
+  <tr><td><b>닉네임</b> (좌하단 입력칸)</td><td></td><td>6자 제한, PlayerPrefs 저장. 로비 콜사인과 킬피드에 쓰인다.</td><td></td></tr>
+</table>
+
+<h3>2.2 매치 흐름</h3>
+<ol>
+  <li><b>맵 랜덤 확정</b>. 6장 중 하나. 맵 선택 화면은 제거됨.</li>
+  <li><b>캐릭터 선택</b> (30초 제한, 종료 시 현재 선택으로 자동 출격). 싱글은 나 → 팀원1 → 팀원2 순으로 3픽. 봇 클래스는 내 픽 기준으로 탱/돌격/딜 축을 자동 보정. <b>AI 난이도 상/중/하</b>는 적팀 봇에게만 적용된다. 적팀 조합은 시드 롤(중복 없음)이며 비공개.</li>
+  <li><b>라운드 시작</b>: 3초 카운트다운(첫 판 가이드는 5.5초). 지휘관 모드면 분대원 둘이 잡담 한 줄씩. 규칙이 있으면 분대가 규칙에 반응해 스스로 초기 명령을 잡는다.</li>
+  <li><b>전투</b> 120초(단축 작전 규칙이면 90초).</li>
+  <li><b>라운드 종료 연출</b>: 결정타 주인공(마지막 처치자 또는 점령자)에게 킬캠 클로즈업 + 0.25배속 2.1초 + 사유 대문짝 + 히어로 카드.</li>
+  <li><b>라운드 결과 화면</b>: 거점 소유 A/B/C, 양 팀 생존 수, 팀별 K/D 전적, 종료 사유. <kbd>SPACE</kbd> 동의 게이트(멀티는 전원 준비 시 진행).</li>
+  <li>2라운드마다 <b>맵 로테이션</b>(R1, R2는 같은 맵, R3는 다음 맵). 매치 승자가 나오면 <b>매치엔드</b> 2페이지: ① 초상 통계 스트립(콜사인, K/D) ② MVP 시네마틱(킬/화력/점령 다부문). <kbd>R</kbd> 동의 시 새 매치(싱글은 픽창, 멀티는 로비로).</li>
+</ol>
+
+<h3>2.3 첫 판 가이드 (튜토리얼) 3단계</h3>
+<table>
+  <tr><th>단계</th><th>내용</th><th>끝나는 조건</th><th>모드</th></tr>
+  <tr><td>① 거점</td><td>카운트다운 정지 중 거점마다 링 웨이브 + "거점을 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다" 공지.</td><td>카운트다운 종료</td><td>모든 모드(첫 판 또는 튜토리얼)</td></tr>
+  <tr><td>② 조작</td><td>내 유닛 위에 1.5초마다 힌트 플로팅 텍스트. "파란 칸 클릭 = 이동" → 한 번 움직이면 끝. 적이 보이면 "A → 적 칸 = 공격" → 한 번 쏘면 끝. 스포트라이트로 화면을 어둡게 하고 봐야 할 곳만 뚫어 보여준다.</td><td>이동 1회, 공격 1회</td><td>싱글 지휘관만</td></tr>
+  <tr><td>③ 지휘</td><td>전투 20초에 14초짜리 가이드 무전 타임. 전장 정지 + 무전창 자동 오픈 + 예시 문장 5개가 3초마다 회전.</td><td>무전 타임 종료 → 가이드 완료 저장</td><td>싱글 지휘관만 (온라인은 첫 무전 타임에 예시만)</td></tr>
+</table>
+
+<h2 id="s3"><span class="num">3</span>매치와 라운드 규칙</h2>
+<table>
+  <tr><th style="width:220px">항목</th><th>값</th><th>출처</th></tr>
+  <tr><td>매치 구성</td><td>최대 3라운드, 2선승</td><td><code>MatchSystem</code></td></tr>
+  <tr><td>라운드 제한시간</td><td>120초 (단축 작전 규칙 시 -30초)</td><td><code>RoundConfig.roundSeconds</code></td></tr>
+  <tr><td>맵 로테이션</td><td>2라운드마다 다음 맵 (인덱스 +1, 6장 순환)</td><td><code>BattleRunner.RoundsPerMap</code></td></tr>
+  <tr><td>시간 초과 판정 순서</td><td>활성 거점 소유 수 → 생존 수 → 추가시간</td><td><code>RoundSystem.CheckWin</code></td></tr>
+  <tr><td>추가시간</td><td>거점 수와 생존 수가 모두 같을 때만. 다음 킬 또는 다음 거점 점령이 곧 승부. 무한 연장 없음.</td><td></td></tr>
+  <tr><td>종료 사유 7종</td><td>전멸 / 거점 전체 장악 / 시간 종료 거점 우세 / 시간 종료 생존 우세 / 추가시간 킬 / 추가시간 탈환 (+ 없음)</td><td><code>RoundSystem.EndReason</code></td></tr>
+  <tr><td>팀킬</td><td>없음. 아군 예고는 아군을 통과한다. 예외: 낚아채기는 아군도 끌어온다(피해 없음, 구출용).</td><td></td></tr>
+</table>
+
+<h3 id="s3-zone">3.1 거점 점거 (탱고파이브식)</h3>
+<table>
+  <tr><th style="width:220px">항목</th><th>값</th></tr>
+  <tr><td>거점 형태</td><td>다중 칸 패치(3×3 ~ 5×5, 한강 둔치 A/C는 4×4 등). 맵당 1개 또는 3개. 소유 없음 = 중립.</td></tr>
+  <tr><td>점거 완료 시간</td><td>5초</td></tr>
+  <tr><td>인원 보너스</td><td>패치 위 아군 1기 추가마다 속도 +50% (2기 1.5배, 3기 2배). 중화에도 같은 배율.</td></tr>
+  <tr><td>경합</td><td>양 팀이 동시에 밟으면 게이지 <b>완전 동결</b>. 인원 우위로 밀리지 않는다(데스볼 방지, 반려된 안).</td></tr>
+  <tr><td>감쇠</td><td>비우면 4초에 풀 게이지가 다 빠진다. 주인이 서 있어도 적 잔여 게이지는 빠진다.</td></tr>
+  <tr><td>중화 후 이월</td><td>적 잔여 게이지를 0으로 깎은 뒤 남은 시간만큼 내 게이지로 넘어간다.</td></tr>
+  <tr><td>점령 시 연출</td><td>거점 글자 색 변경, 바닥 원판 게이지 + 상단 칩 파이, 팀 색 테두리 띠, 큰 중앙 공지, 보이스("Voice_ZoneCaptured / ZoneLost"), SFX. 경합 진입 순간 1회 S33.</td></tr>
+  <tr><td>1거점 맵</td><td>첫 점거가 곧 거점 독점이라 라운드 종료.</td></tr>
+</table>
+
+<h3 id="s3-rule">3.2 라운드 변형 규칙 6종</h3>
+<p>매 라운드 시드 추첨. 뽑힐 확률 R1 50%, R2 이후 80%. 튜토리얼과 훈련장은 규칙 없음. 규칙은 상단 상시 칩(제목 + 설명 한 줄)으로만 보이고 시작 자막은 은퇴했다. 지휘관 모드면 분대가 규칙에 반응해 먼저 무전을 하고 초기 명령을 잡는다.</p>
+<table>
+  <tr><th>규칙</th><th>인게임 제목</th><th>효과</th><th>비고</th></tr>
+  <tr><td>ZoneLockdown</td><td>거점 봉쇄</td><td>거점 하나만 열림. 열린 거점이 점령되면 잠긴 것 중 다음이 풀린다. 봉쇄 거점은 밟아도 무반응, 승리 판정에서도 빠짐.</td><td>거점 2개 이상 맵만 후보. 시작 거점은 랜덤.</td></tr>
+  <tr><td>HighlandPower</td><td>고지 장악</td><td>고지대에서 쏜 공격 피해 2배. 시전 시점 기준으로 굳힌다.</td><td></td></tr>
+  <tr><td>SwiftFoot</td><td>경보 해제</td><td>이동 게이지 상한과 최대 거리 1.5배.</td><td></td></tr>
+  <tr><td>ShortFuse</td><td>단축 작전</td><td>제한시간 30초 단축(90초).</td><td></td></tr>
+  <tr><td>NoTakeback</td><td>탈환 불가</td><td>한 번 주인이 생긴 거점은 굳는다.</td><td>먹을 거점이 없어지면 봇은 전멸 사냥 모드로 전환.</td></tr>
+  <tr><td>HalfCooldown</td><td>스킬 난장판</td><td>스킬 쿨타임 절반. 평타 쿨은 그대로.</td><td>2026-09-06 추가.</td></tr>
+</table>
+
+<h2 id="s4"><span class="num">4</span>맵 6장</h2>
+<p>ASCII 레이아웃으로 정의(<code>BattleMaps.cs</code>). 공통 불변: 홀수 W×H, 지형과 거점 180도 점대칭, 가운데 거점은 정중앙, 팀 0 스폰(1~3)은 아래 행, 팀 1 스폰(4~6)은 위 행, 모든 바닥 연결, 거점 패치 입구 4개 이상. 테스트가 검증한다. 맵 꾸미기(<code>MapDressing</code>)는 맵 이름 시드로 벽 위에 쓰레기통/덤불/바리케이드 GLB를 얹고, 모서리 밖에 가로등, 바닥에 골목 아스팔트 배경판, 실루엣 발광 테두리를 깐다.</p>
+<table>
+  <tr><th>#</th><th>이름</th><th>크기</th><th>거점</th><th>지형 특징</th><th>전술 문법</th></tr>
+  <tr><td>0</td><td>막다른 골목</td><td class="num">9×9</td><td>1 (A 3×3 중앙)</td><td>팔각 투기장, 벽 6, 구덩이 모서리, 힐팩 2</td><td>숨을 데 없는 난투. 첫 점거가 곧 라운드. 훈련장 맵.</td></tr>
+  <tr><td>1</td><td>옥상 종주</td><td class="num">17×15</td><td>3 (A/C 3×3 고지 링 중정, B 3×3 골짜기)</td><td>고지대 링 다수, 구덩이, 벽 캣워크, 힐팩 2</td><td>고지대 사수 vs 골짜기 돌파.</td></tr>
+  <tr><td>2</td><td>뒷골목 미로</td><td class="num">21×13</td><td>3 (A/C 3×3, B 5×5)</td><td>벽 많음, 시선 단절, 힐팩 2</td><td>근접 난전. 어쌔신과 탱커의 맵.</td></tr>
+  <tr><td>3</td><td>공사장 섬</td><td class="num">15×13</td><td>3 (A/C 4×4, B 3×3 섬)</td><td>B 주변 구덩이 해자, 고지대 2, 힐팩 2</td><td>구덩이 너머 저격 가능. 도넛 동선.</td></tr>
+  <tr><td>4</td><td>청계 물류단지</td><td class="num">29×15</td><td>3 (A/C 3×3, B 5×5)</td><td>컨테이너 레인 벽, 하역장 고지대 구역, 힐팩 4</td><td>초대형 평행사변형, 로테이션 싸움.</td></tr>
+  <tr><td>5</td><td>한강 둔치</td><td class="num">41×21</td><td>3 (A/C 4×4, B 3×3 중앙 섬)</td><td>강(구덩이)이 관통, 다리 2 + 징검다리, 고지대 4, 힐팩 4</td><td>도하 지점 통제. 가장 큰 맵.</td></tr>
+</table>
+<p class="small muted">참고: <code>docs/map-workbench.html</code>은 맵 ASCII를 그려보는 작업용 도구다.</p>
+
+<h2 id="s5"><span class="num">5</span>이동과 지형</h2>
+<h3>5.1 실시간 이동 게이지 (탱고파이브식)</h3>
+<ul>
+  <li>유닛마다 <b>이동 게이지</b>(0 ~ freeRange)가 초당 회복된다. 회복 지연(regenDelay)은 전 클래스 0초.</li>
+  <li><b>파랑 이동</b>: 진입 비용 합이 현재 게이지 이내. 게이지만 소모, 즉시 다음 행동 가능.</li>
+  <li><b>노랑 이동</b>: 게이지 초과 ~ maxRange. 게이지 0 + 노랑 쿨타임(이동 불가). 쿨 종료 시 풀 게이지로 복귀.</li>
+  <li>진입 비용: 평지 1, 고지대 2. 경로는 BFS(십자 이동), 다른 유닛 칸은 막힘.</li>
+  <li><b>시전 중 이동 금지</b>: 내 예고(평타 포함)가 판정 대기 중이면 이동 범위가 안 뜨고 이동이 거부된다.</li>
+  <li>스턴 중, 비행 중(낚아채기 시전) 이동 불가.</li>
+  <li>이동 범위 표시: 파랑/노랑 네온 테두리 두 겹, 호버 칸에 발자국 아이콘. 이동 경로가 힐팩을 지나면 멈추지 않아도 먹는다.</li>
+</ul>
+<table>
+  <tr><th>클래스</th><th>freeRange (파랑 상한)</th><th>maxRange (클릭 최대)</th><th>게이지 회복 /초</th><th>노랑 쿨타임</th></tr>
+  <tr><td>너구리 (Tank)</td><td class="num">1</td><td class="num">3</td><td class="num">0.60</td><td class="num">1.5s</td></tr>
+  <tr><td>고라니 (Balance)</td><td class="num">2</td><td class="num">4</td><td class="num">0.80</td><td class="num">1.3s</td></tr>
+  <tr><td>검은 고양이 (Assassin)</td><td class="num">3</td><td class="num">5</td><td class="num">1.10</td><td class="num">1.1s</td></tr>
+  <tr><td>비둘기 (Grenadier)</td><td class="num">2</td><td class="num">4</td><td class="num">0.80</td><td class="num">1.3s</td></tr>
+  <tr><td>까치 (Sniper)</td><td class="num">1</td><td class="num">3</td><td class="num">0.60</td><td class="num">1.4s</td></tr>
+</table>
+<p class="small muted">노랑 쿨타임은 가장 짧은 적 예고(1.6초)보다 짧게 유지한다는 원칙. 둔화(파열탄) 중엔 게이지 상한과 최대 거리가 절반.</p>
+
+<h3>5.2 지형 4종</h3>
+<table>
+  <tr><th>지형</th><th>문자</th><th>이동</th><th>시야 / 사격</th><th>비고</th></tr>
+  <tr><td>바닥</td><td><code>.</code></td><td>비용 1</td><td>통과</td><td></td></tr>
+  <tr><td>벽(크레이트)</td><td><code>#</code></td><td>불가</td><td>시선 차단, 직선 탄 차단</td><td>엄폐 판정의 기준. 위에 소품 GLB.</td></tr>
+  <tr><td>고지대</td><td><code>^</code></td><td>비용 2, 위에서 이동 최대거리 +1</td><td>시야 +2, 평타 사거리 +2, 사거리형 스킬 +2, 저격은 벽 무시</td><td><b>항상 적에게 노출</b>. 밀쳐 올릴 수 없음(단면 충돌 = 벽꿍). 밀려 떨어지면 낙하 피해 1.</td></tr>
+  <tr><td>구덩이</td><td><code>_</code></td><td>불가</td><td>시야와 저격 통과</td><td>타일 렌더 없음. 맵 실루엣용. 밀려 들어가면 벽꿍 취급.</td></tr>
+</table>
+
+<h2 id="s6"><span class="num">6</span>전투 공통 규칙</h2>
+<table>
+  <tr><th style="width:230px">항목</th><th>값</th></tr>
+  <tr><td>공격 판정 방식</td><td><b>예고 후 판정</b>. 즉발은 이동기(돌파, 그림자 도약, 넉백샷)만. 판정 순서 = 설치 순서.</td></tr>
+  <tr><td>일반공격(평타)</td><td>예고 1.7초, 쿨다운 2초, 피해 1 (까치 2). 클래스별 모양 안 1칸 지정. 벽/구덩이 칸 지정 불가.</td></tr>
+  <tr><td>평타 모양</td><td>너구리/고라니/검은냥 5×5(체비쇼프 2). 비둘기 반경 3 원형(모서리 4칸 제외). 까치 7×7(체비쇼프 3). 고지대 위 +2.</td></tr>
+  <tr><td>탄도 요격</td><td>직선 탄(평타, 넉백샷, 조준 사격)은 공격선 중간 칸에 적이 서 있으면 그 몸에 먼저 맞는다. 요격된 탄은 빗나가지 않는다. "차단!" 표시.</td></tr>
+  <tr><td>돌진 스킬 경로 히트박스</td><td>방패 밀어붙이기와 던져버리기는 시전자에서 목표 칸까지의 경로 전체가 히트박스. 회피 판정 없음. 판정 후 시전자가 목표 칸까지 실제 돌진.</td></tr>
+  <tr><td>빗나감 (회피) 판정</td><td>결정적 해시 주사위. <b>엄폐</b>: 피격자 인접 벽이 공격 방향 정면이면 최대 50%, 측면일수록 감소, 등지면 0. 근접(체비쇼프 2 이내)은 엄폐 면제. <b>은신</b>: 공격 팀 시야 밖이면 50%. 빗나가도 밀침과 끌기 등 <b>이동 성분은 적용</b>(피해만 무효, 벽꿍 추가 피해 없음).</td></tr>
+  <tr><td>밀침</td><td>벽/경계/구덩이/오르막 고지대에 부딪히면 정지 + 벽꿍 추가 피해(스킬별). 유닛에 막히면 정지, 추가 피해 없음. 고지대에서 떨어지면 칸마다 낙하 피해 1.</td></tr>
+  <tr><td>스턴</td><td>이동과 행동 불가. <b>스턴 콤보</b>: 스턴 중인 적을 때리면 피해 +1 ("비명 → 집중 타격" 연계 보상).</td></tr>
+  <tr><td>둔화</td><td>파열탄 피격 시 3초. 이동 범위와 게이지 절반. 행동은 가능.</td></tr>
+  <tr><td>비행</td><td>낚아채기 시전자가 예고 1초 동안 비행. 무적 + 이동/행동 불가. 비행 중인 대상은 맞지 않는다.</td></tr>
+  <tr><td>연계: 도약 → 발톱</td><td>그림자 도약 후 1초 안에 발톱을 쓰면 예고가 0.33배(2.4초 → 0.8초). 한 번만 소모.</td></tr>
+  <tr><td>도약 버프</td><td>그림자 도약 후 3초간 평타 +1.</td></tr>
+  <tr><td>행동 거부 사유</td><td>Dead / BadTarget(사거리 밖, 벽, 잘못된 지정) / Cooldown / Locked(스턴, 비행). 거부 시 버저 SFX(0.5초에 1회).</td></tr>
+  <tr><td>예고 표시</td><td>적 예고 = 빨강, 내 예고 = 흰색. 시전자에서 조준 칸까지 공격선, 예고 칸에 스킬 아이콘, 밀침 계열은 대상이 밀려날 칸까지 바닥 화살표(칸당 1개, 가장 빠른 예고 기준). 내 칸을 노리는 예고만 펄스 + 유닛 주위 빨간 링 + 머리 위 "!" + 상단 붉은 배너 + 비네트 맥동.</td></tr>
+  <tr><td>조준 미리보기</td><td>사거리 흰 윤곽선, 판정 칸 밝은 윤곽, 커서 칸에 공격/스킬 아이콘, 밀침 도착 칸 화살표(코어 <code>PreviewPush</code>와 동일 계산). 조준 중에도 이동 가능(단, 예고를 걸면 발이 묶임).</td></tr>
+</table>
+
+<h2 id="s7"><span class="num">7</span>클래스 5종과 스킬</h2>
+<p>캐릭터 기획 v1.7 기반. 각 클래스는 스킬 2개(<kbd>S</kbd> 짧은 쿨, <kbd>D</kbd> 긴 쿨 고위력). 카드 UI 수치는 <code>ClassCatalog</code>에서 자동 반영된다. 봇 콜사인은 별명(너굴/라니/깜냥/둘기/까돌), 기계팀은 별명 + "봇". 내 유닛 이름표는 종 이름(너구리 등) 또는 기계 역할명(방패/돌격/은신/포격/저격). 같은 팀 중복 클래스는 ①② 접미.</p>
+
+<div class="wrap"><table>
+  <tr><th>클래스</th><th>역할 (카드)</th><th>HP</th><th>시야</th><th>평타</th><th>카드 색</th><th>성격 (무전)</th></tr>
+  <tr><td>너구리 Tank</td><td>탱커</td><td class="num">15</td><td class="num">3</td><td>5×5, 피해 1</td><td>주황</td><td>멍청하고 우직, 말 더듬음, 무조건 복종</td></tr>
+  <tr><td>고라니 Balance</td><td>브루저 (돌격형)</td><td class="num">10</td><td class="num">4</td><td>5×5, 피해 1</td><td>보라</td><td>막가파 "끼에엑". 프리셋 명령 30% 불복종 후 돌격</td></tr>
+  <tr><td>검은 고양이 Assassin</td><td>암살자</td><td class="num">8</td><td class="num">4</td><td>5×5, 피해 1</td><td>시안</td><td>충직 차분, "네." "확인." 수준</td></tr>
+  <tr><td>비둘기 Grenadier</td><td>서포터</td><td class="num">8</td><td class="num">4</td><td>반경 3 원형, 피해 1</td><td>초록</td><td>성격 드러움 "구구". 60% 툴툴대지만 따름</td></tr>
+  <tr><td>까치 Sniper</td><td>저격수</td><td class="num">5</td><td class="num">5</td><td>7×7, <b>피해 2</b></td><td>파랑</td><td>영리 침착, 명백히 틀린 명령에만 반문</td></tr>
+</table></div>
+
+<h3>7.1 스킬 표 (코드 실값)</h3>
+<div class="wrap"><table>
+  <tr><th>클래스</th><th>키</th><th>스킬</th><th>예고</th><th>피해</th><th>사거리 / 지정</th><th>쿨</th><th>효과</th></tr>
+  <tr><td rowspan="2">너구리</td><td>S</td><td>방패 밀어붙이기</td><td class="num">2.0s</td><td class="num">1</td><td>체비쇼프 2 안 1칸</td><td class="num">6s</td><td>경로 전체 히트. 대상 2칸 밀침, 벽꿍 +1. 판정 후 시전자가 목표 칸까지 돌진. 회피 불가.</td></tr>
+  <tr><td>D</td><td>던져버리기</td><td class="num">2.0s</td><td class="num">2</td><td>체비쇼프 2 안 1칸</td><td class="num">8s</td><td>경로 전체 히트. 대상 5칸 투척, 벽꿍 +1. 시전자 돌진. 회피 불가.</td></tr>
+  <tr><td rowspan="2">고라니</td><td>S</td><td>돌파</td><td>즉발</td><td class="num">1</td><td>직선 또는 정대각 3칸 (고지대 +2)</td><td class="num">6s</td><td>벽만 못 뚫고 유닛은 통과. 경로 적마다 피해 + 1칸 밀침 + 0.8초 스턴. 가장 먼 빈 칸에 착지. 헛돌파 허용.</td></tr>
+  <tr><td>D</td><td>비명 교란</td><td class="num">1.6s</td><td class="num">0</td><td>자기 중심 체비쇼프 2 (5×5, 벽 제외)</td><td class="num">8s</td><td>판정 시 범위 내 적 전원 1초 스턴.</td></tr>
+  <tr><td rowspan="2">검은 고양이</td><td>S</td><td>그림자 도약</td><td>즉발</td><td class="num">0</td><td>체비쇼프 3 안 빈 칸 (고지대 +2)</td><td class="num">6s</td><td>벽 무시 순간이동. 3초간 평타 +1. 1초 연계 창(발톱 예고 0.8초). 적 시야 밖이면 잔상 없음.</td></tr>
+  <tr><td>D</td><td>발톱 쥐어짜기</td><td class="num">2.4s</td><td class="num">3</td><td>체비쇼프 2 안 1칸</td><td class="num">10s</td><td>순수 피해. 연계 시 예고 0.8초.</td></tr>
+  <tr><td rowspan="2">비둘기</td><td>S</td><td>파열탄</td><td class="num">2.4s</td><td class="num">1</td><td>체비쇼프 3 안 1칸 지정 (고지대 +2), 자기 칸 포함 가능</td><td class="num">6s</td><td>십자 5칸. 적중한 적 3초 둔화. 자폭 피해 없음.</td></tr>
+  <tr><td>D</td><td>낚아채기</td><td class="num">1.0s (비행)</td><td class="num">1</td><td>맨해튼 5 안 1칸 (고지대 +2)</td><td class="num">10s</td><td>유닛 잠금(예고 중 움직여도 따라감). 대상을 시전자 앞칸으로 끌어온다(앞칸 막히면 주변 8칸 중 가까운 곳). 아군도 끌어옴(피해 없음). 시전자는 비행 중 무적. 고지에서 끌어내리면 낙하.</td></tr>
+  <tr><td rowspan="2">까치</td><td>S</td><td>넉백샷</td><td>즉발</td><td class="num">1</td><td>체비쇼프 2 안 1칸</td><td class="num">7s</td><td>즉발 피해 + 본인이 반대 방향 2칸 후퇴(벽 막힘, 낙하 자기 부담). 허공 발사 허용 = 기동기로 사용 가능.</td></tr>
+  <tr><td>D</td><td>조준 사격</td><td class="num">2.4s</td><td class="num">4</td><td>다이아(맨해튼 5) + 십자 끝 6칸 (고지대 +2)</td><td class="num">10s</td><td>벽 시야선 필요. 고지대 사수는 벽을 넘겨 쏜다. 요격 규칙 적용.</td></tr>
+</table></div>
+<div class="box warn">
+  <div class="t">데이터에만 남아 있는 것</div>
+  <p><code>SkillKind.BombDeliver</code>(폭탄 배달: 맨해튼 4, 1초 비행 후 십자 5칸 피해 2)는 구현과 아이콘(<code>Icon_Skill_BombDeliver</code>)이 있지만 <b>어느 클래스도 쓰지 않는다</b>. 비둘기가 낚아채기로 교체됐다. 카드/HUD에 노출되지 않으므로 방치해도 되지만, 정리 대상이다.</p>
+</div>
+
+<h3>7.2 고지대 보너스 정리</h3>
+<table>
+  <tr><th>항목</th><th>고지대 위 효과</th><th>적용 대상</th></tr>
+  <tr><td>시야</td><td>+2</td><td>전 클래스</td></tr>
+  <tr><td>평타 사거리</td><td>+2 (모양 유지, 반경만 증가)</td><td>전 클래스</td></tr>
+  <tr><td>스킬 사거리</td><td>+2</td><td>돌파, 그림자 도약, 파열탄, 낚아채기, 조준 사격</td></tr>
+  <tr><td>스킬 사거리</td><td>없음</td><td>인접형: 방패 밀어붙이기, 던져버리기, 발톱, 비명, 넉백샷</td></tr>
+  <tr><td>이동 최대거리</td><td>+1</td><td>전 클래스</td></tr>
+  <tr><td>조준 사격 시야선</td><td>벽 무시</td><td>까치</td></tr>
+  <tr><td>노출</td><td>항상 적에게 보임</td><td>전 클래스 ("다 보는 대신 다 보인다")</td></tr>
+  <tr><td>고지 장악 규칙</td><td>피해 2배</td><td>해당 라운드만</td></tr>
+</table>
+
+<h2 id="s8"><span class="num">8</span>시야, 힐팩, 시야해킹</h2>
+<h3>8.1 팀 공유 시야</h3>
+<ul>
+  <li>팀원 시야의 합집합. 반경 = 클래스 sightRange(체비쇼프), 고지대 +2. 벽이 시선 차단(격자 브레젠험, 끝점 벽은 보임).</li>
+  <li><b>고스트 마커</b>: 시야에서 사라진 적의 마지막 목격 위치.</li>
+  <li>안개는 밝은 청색 반투명 구름 시트(의도된 아트, 어둡게 죽이지 말 것) + 타일 틴트. 시야 경계 칸은 절반 알파.</li>
+  <li>안개가 걷히는 경우: 시야해킹 중, 관전 중(내 유닛 사망), 훈련장.</li>
+  <li>적 예고와 타격 VFX는 시야 안에서만 보인다(같은 <code>playerVisibleFn</code> 기준). 적 발견/소실 SFX.</li>
+</ul>
+
+<h3>8.2 힐팩 (오버워치식)</h3>
+<table>
+  <tr><th>회복량</th><td>2</td></tr>
+  <tr><th>리스폰</th><td>10초, 같은 자리. 카운트다운 표시.</td></tr>
+  <tr><th>규칙</th><td>밟거나 지나가면 즉시 회복 후 소멸. 풀피 유닛은 소모하지 않는다(아끼기). 봇은 손상 HP와 거리 문턱을 넘을 때만 노린다.</td></tr>
+</table>
+
+<h3>8.3 시야해킹 (궁게이지 필살기, <kbd>H</kbd>)</h3>
+<table>
+  <tr><th style="width:220px">충전</th><td>유닛별 게이지. 기본 초당 1.2% + 적중 피해 1당 12%. <b>매치 단위로 유지</b>(라운드를 넘김), 발동 시 0.</td></tr>
+  <tr><th>발동 효과 (5초)</th><td>① 적 전원 위치 노출(안개 전부 해제) ② 발동 순간 적 전원 1.5초 스턴 ③ 적 봇의 예측기 5초 교란(디코이 주입) ④ 퀵챗 "시야해킹 간다!" 자동 전송.</td></tr>
+  <tr><th>연출</th><td>시안 링 3연발, 화면 글리치, HUD 게이지 맥동, 만충 순간 중앙 공지 + SFX(S28, S22).</td></tr>
+  <tr><th>UI</th><td>하단 바 우측 세그먼트. 게이지 클릭 = H키. 멀티 클라는 호스트 스냅샷 값을 표시.</td></tr>
+</table>
+
+<h2 id="s9"><span class="num">9</span>지휘관 모드 (LLM 무전)</h2>
+<p class="lead">플레이어는 자기 유닛 1기를 그대로 조종하면서 팀원 봇 2기에게 <b>무전</b>으로 방향성을 준다. LLM은 자연어를 봇 파라미터(목적지, 자세, 집중 타겟)로 번역만 하고, 경로/조준/스킬/회피는 기존 봇 AI가 한다. 프리셋과 퀵챗은 LLM을 거치지 않아 오프라인에서도 모드 전체가 성립한다.</p>
+
+<h3>9.1 명령 모델</h3>
+<table>
+  <tr><th>필드</th><th>값</th><th>의미</th></tr>
+  <tr><td>goal</td><td>Free / Zone(zoneIndex) / Highland / Regroup / Fallback</td><td>자율 / 지정 거점 / 가까운 고지대 선점 / 지휘관 곁으로 / 아군 스폰 쪽으로 후퇴</td></tr>
+  <tr><td>stance</td><td>Normal / Aggressive / Evasive</td><td>평소 / 적을 찾아가 쿨 돌면 바로 쏨 / 먼저 쏘지 않고 임무 우선</td></tr>
+  <tr><td>focusEnemyId</td><td>적 unitId 또는 -1</td><td>우선 노릴 적. 시야 규칙은 그대로(보여야 쏜다).</td></tr>
+  <tr><td>persistent</td><td>bool</td><td>false = 이번 라운드만(라운드 시작 시 백지). true = "매치 내내" 명령, 라운드를 넘긴다.</td></tr>
+</table>
+<p>명령은 유닛별 상시 명령으로 저장되고 다음 명령이 오거나 라운드가 끝날 때까지 유지된다. 이해 못 한 명령(<code>understood=false</code>)은 기존 명령을 건드리지 않는다.</p>
+
+<h3>9.2 입력 경로 3가지</h3>
+<table>
+  <tr><th>경로</th><th>조작</th><th>LLM</th><th>동작</th><th>제한</th></tr>
+  <tr><td>퀵챗 프리셋</td><td><kbd>1</kbd>~<kbd>7</kbd> 또는 좌상단 패널 문구 클릭</td><td>없음</td><td>채팅 문구 + 즉시 명령. 응답은 성격 표에서 말투/복종 주사위.</td><td>프리셋 2초 간격. 퀵챗 자체 2초 쿨.</td></tr>
+  <tr><td>자유 무전 (텍스트)</td><td><kbd>TAB</kbd> 또는 <kbd>Enter</kbd>로 채팅바, <kbd>Enter</kbd> 발신</td><td>gpt-4.1-mini, JSON 강제, 10초 타임아웃</td><td>전장 브리프(시간, 스코어, 규칙, 분대 HP/위치/현재 명령/성격, 적 편성, 거점 소유/점거 상태)를 시스템 프롬프트로 주고 명령 JSON을 받는다.</td><td>2.5초 간격. 응답 대기 중 재발신 잠금. 발신 즉시 창 닫힘.</td></tr>
+  <tr><td>자유 무전 (음성)</td><td><kbd>V</kbd> 꾹 (push-to-talk, 최대 10초)</td><td>whisper-1(ko) → 같은 텍스트 경로</td><td>누르는 동안 전장 완전 정지. 0.4초 미만은 버림.</td><td>키 없음, 마이크 없음이면 무반응.</td></tr>
+</table>
+
+<h4>퀵챗 1~7 문구와 명령 매핑</h4>
+<table>
+  <tr><th>키</th><th>문구</th><th>지휘관 모드 명령</th></tr>
+  <tr><td>1</td><td>킬 먼저!</td><td>전원 Aggressive (목적지 유지)</td></tr>
+  <tr><td>2</td><td>거점부터!</td><td>거점별 분산, Evasive</td></tr>
+  <tr><td>3 / 4 / 5</td><td>A / B / C 거점으로!</td><td>전원 지정 거점 집결 (맵에 없는 거점이면 채팅만)</td></tr>
+  <tr><td>6</td><td>지원 요청!</td><td>전원 지휘관 곁으로 (Regroup)</td></tr>
+  <tr><td>7</td><td>후퇴!</td><td>전원 Fallback + Evasive</td></tr>
+</table>
+<p class="small muted">멀티 모드(비지휘관)에서는 퀵챗이 채팅으로만 나간다. 적팀 무전은 들리지 않는다. <code>OrderPresets</code>에는 "흩어져", "고지대를 먹어", "교전하지 마" 등 8종 프리셋 빌더가 더 있지만 현재 UI에 노출된 것은 위 7개 퀵챗이다.</p>
+
+<h3>9.3 무전 타임 (실시간 턴제의 턴)</h3>
+<ul>
+  <li>전투 시계 <b>20초에 첫 무전 타임</b>, 이후 <b>30초마다 8초</b> 전원 동시 정지. 싱글도 동일(2026-09-06부터 무전창 열 때 정지는 폐지).</li>
+  <li>정지 중 이동/스킬/해킹 제출 잠금. 무전, 프리셋, 핑만 허용. 전투 중에도 무전은 막지 않는다.</li>
+  <li>무전 타임 시작 시 분대원 한 명이 상황 브리핑(LLM, 12초 쿨). 종료 시 "교신 종료. 전투 재개" 공지.</li>
+  <li>멀티는 호스트 시계로 동기화(<code>sy_rt</code> 릴레이). 첫 판 가이드는 첫 무전 타임을 14초 가이드 무전으로 대체.</li>
+</ul>
+
+<h3>9.4 분대가 먼저 말하는 것 (LLM, 실패 시 침묵 또는 표 폴백)</h3>
+<table>
+  <tr><th>종류</th><th>트리거</th><th>폴백</th><th>쿨</th></tr>
+  <tr><td>카운트다운 잡담</td><td>라운드 시작 3초, 분대원 둘이 한 마디씩 주고받음(규칙, 스코어, 성격 반영)</td><td>성격 표의 고정 잡담</td><td>라운드마다 1회</td></tr>
+  <tr><td>상황 브리핑</td><td>무전 타임 시작, 싱글에서 무전창 열 때</td><td>침묵</td><td>12초</td></tr>
+  <tr><td>사건 브리핑</td><td>거점 상실, 아군 HP 1, 아군 거점에 적 침입, 지휘관 전사</td><td>침묵</td><td>20초</td></tr>
+  <tr><td>규칙 반응</td><td>라운드 규칙이 있으면 "B 봉쇄 확인. A부터 갑니다" 식 대사 + 실제 초기 명령</td><td>LLM 아님, 고정 표</td><td>라운드 시작</td></tr>
+  <tr><td>기계팀 모방 대사</td><td>플레이어가 기계팀이면 "스캔 완료. 상대 X 패턴 모방 개시"</td><td>고정</td><td>라운드 시작</td></tr>
+</table>
+
+<h3>9.5 성격과 복종</h3>
+<ul>
+  <li>LLM 응답에 <code>compliance</code>: obey / question(되묻고 명령 비움) / refuse(명백한 자살행위만, 대안 제시). 거부와 반문은 기존 명령 유지.</li>
+  <li>복합 명령("너굴은 까돌봇 잡고, 나머지는 날 따라와")은 분대원별 명령 + 분대원별 응답(acks, 최대 3).</li>
+  <li>호칭 유동 인식: 별명, 동물 이름, 기계 이름, 클래스명, 역할, "상대 지휘관" 전부.</li>
+  <li>프리셋 경로의 복종 주사위: 고라니 30% 거부(그 유닛만 자율 + 돌격), 비둘기 60% 툴툴(명령은 그대로).</li>
+  <li>명령을 받은 봇 머리 위에 플로팅 텍스트("B 거점으로!", "집결!", "까돌봇 노려!" 등)로 복종을 가시화.</li>
+</ul>
+
+<h3>9.6 핑 지휘</h3>
+<ul>
+  <li>휠클릭 탭 = ▼(집결), 휠 꾹 누르고 끌기 = ▼ / ! / ? 선택 휠. 핑 칸은 누른 순간 기준.</li>
+  <li>같은 팀 봇이 6초간 복종: ▼ = 그 칸으로 집결, ! = 근처 적 집중 타겟. ? = 정보 공유만.</li>
+  <li>지휘관이 적 유닛이 서 있는 <b>정확히 그 칸</b>을 핑하면 팀 봇 전체가 그 적을 6초 하드 포커스.</li>
+  <li>멀티는 같은 팀 사람에게만 배달. 적팀 핑은 보이지 않는다.</li>
+</ul>
+
+<h3>9.7 API 키와 폴백</h3>
+<div class="box ok">
+  <div class="t">폴백 3중 (완성도 보험)</div>
+  <ol>
+    <li><b>키 없음</b>: 무전창이 "자유 무전 오프라인. API 키 없음. 퀵챗(숫자키)은 동작한다"로 입력줄을 잠근다. 브리핑/잡담은 표 폴백 또는 침묵.</li>
+    <li><b>타임아웃, 네트워크, HTTP 오류</b>: NotUnderstood. 401/429/0 코드별 문구를 응답으로 보여 현장에서 원인 판별 가능.</li>
+    <li><b>JSON 파싱 실패, 이상값</b>: NotUnderstood. 없는 유닛, 적 유닛 명령, 범위 밖 zoneIndex는 버린다.</li>
+  </ol>
+  <p class="small">키 출처: <code>StreamingAssets/radio_key.txt</code>(빌드 포함, 캡 걸린 시연용) 우선, 없으면 환경변수 <code>OPENAI_API_KEY</code>. 레포는 프라이빗이라 키 파일 커밋 허용, 심사 후 폐기.</p>
+</div>
+
+<h2 id="s10"><span class="num">10</span>봇 AI</h2>
+<p>적팀 3기와 아군 봇 2기가 같은 <code>AiBrain</code>을 쓴다. 차이는 적팀 뇌만 <code>Predictor</code>를 받아 <b>예측 사격</b>을 한다는 것. 클라이언트는 AI를 돌리지 않는다(호스트 권위).</p>
+<h3>10.1 판단 우선순위</h3>
+<ol>
+  <li><b>회피</b>: 내 칸에 곧 떨어지는 적 예고. 반응 하한 0.15초, 클래스별 확률, 성공 후 쿨타임(무한 옆걸음 금지). R1은 확률 ×0.6(살짝 바보 기준선).</li>
+  <li>해킹 게이지 만충 시 발동.</li>
+  <li><b>1.5) 개막 카운터</b>: 러시 습관 감지 시 시작 6초 안에 반복 진입로에 선제 설치(R2 이상).</li>
+  <li><b>공격/스킬</b>: AttackInterval 페이싱, ±30% 지터. 조준은 <b>반응 지연</b>(AimReactionDelay 0.5초, 난이도별 0.3~0.8)을 먹인 칸. 적팀은 예측기 top-1 칸에 예고를 깔 수 있음("예측 사격", 보라 기둥 연출). 지휘 Evasive면 먼저 쏘지 않음.</li>
+  <li><b>패배 긴급</b>: 적이 거점을 더 쥐면 대치/고지 사수/힐팩 다 접고 거점으로.</li>
+  <li>3.1) 거리 유지(원거리 KeepDistance) → 3.2) 근접 대치 자리 사수 → 3.5) 습성 카운터 포지셔닝(R2+) → 3.6) 핑 집결 → 3.7) 힐팩 추구.</li>
+  <li><b>지휘 명령</b>이 있으면 거점 자동 선택 대신 명령 목적지로(BFS 경로, 위협 회피는 그대로).</li>
+  <li><b>거점 이동</b>: 미소유/열세 거점으로. 아군이 붙은 거점 선호(CohesionBonus). 먹을 거점이 없으면(전부 봉쇄/굳음) 가장 가까운 적 <b>사냥</b>.</li>
+  <li>프리징 워치독: 3초 무행동 + 거점/고지대 밖 + 적 비인접이면 강제로 거점 한 걸음. 1.2초 무행동이면 배회.</li>
+</ol>
+<h3>10.2 클래스 성향</h3>
+<table>
+  <tr><th>클래스</th><th>회피 확률 / 쿨</th><th>공격 간격</th><th>힐팩</th><th>성향</th></tr>
+  <tr><td>너구리</td><td>25% / 4s</td><td>0.7s</td><td>HP 3 이상 잃고 4칸 이내</td><td>거점 앵커, 아군 옆(Cohesion 3)</td></tr>
+  <tr><td>고라니</td><td>45% / 3s</td><td>0.6s</td><td>HP 2 이상, 6칸</td><td>팀과 붙어 다님(Cohesion 3.5)</td></tr>
+  <tr><td>검은 고양이</td><td>60% / 2s</td><td>0.45s</td><td>HP 1 이상, 8칸</td><td>혼자 돌며 후방 유리몸(저격/폭격, 고지대 위 가산) 우선</td></tr>
+  <tr><td>비둘기</td><td>45% / 3.5s</td><td>0.8s</td><td>HP 2 이상, 6칸</td><td>붙으면 1칸 물러남</td></tr>
+  <tr><td>까치</td><td>50% / 3s</td><td>1.0s</td><td>HP 1 이상, 8칸</td><td>거점 대신 근처 고지대에 앉음, 2칸 안으로 오면 물러남</td></tr>
+</table>
+<h3>10.3 난이도 (적팀만)</h3>
+<table>
+  <tr><th>난이도</th><th>변화</th></tr>
+  <tr><td>하 Easy</td><td>회피 ×0.45, 공격 간격 ×1.7, 판단 간격 ×1.5, 반응 지연 +0.4s, 조준 지연 0.8s, 힐팩 반경 -2</td></tr>
+  <tr><td>중 Normal</td><td>기본값. 전 난이도 공통으로 행동 템포 15% 감속(가시성).</td></tr>
+  <tr><td>상 Hard</td><td>회피 ×1.4(최대 95%), 회피 쿨 ×0.6, 공격 간격 ×0.65, 판단 ×0.7, 인간 타겟 가중 +1.5, 조준 지연 0.3s</td></tr>
+</table>
+<p class="small muted">아군 봇은 항상 보통 고정("하"를 골랐다고 내 분대까지 멍청해지면 안 된다). 봇의 시야 규칙은 플레이어와 같다. 예측기는 전 유닛 이동을 학습하지만 학습 서사(브리핑, 자막, 게이지)는 제거됐고 예측 사격 메커니즘만 남았다.</p>
+
+<h2 id="s11"><span class="num">11</span>온라인 멀티</h2>
+<table>
+  <tr><th style="width:220px">항목</th><th>내용</th></tr>
+  <tr><td>매칭</td><td>UGS 세션 퀵조인: 빈 방 합류, 없으면 방 생성 후 로비 대기. Relay 우선, 같은 공유기면 LAN 직접 IP 폴백. 접속 대기는 타이틀의 회전 링("멀티 서버 접속 중"). 20초 타임아웃, <kbd>ESC</kbd> 취소.</td></tr>
+  <tr><td>로비</td><td>1:1 고정. 호스트 = 동물팀, 합류자 = 기계팀. 내 팀 3픽(나 → 팀원1 → 팀원2, 슬롯 클릭으로 되돌아가 다시 고름). 봇 클래스는 롤식 자동 배정(탱→돌격→딜, 중복 없음) 또는 직접 지정. 팀 구성 경고(탱커/원거리 빠짐, 중복). 상대 조합 비공개(존재와 준비 상태만). 팀 채팅. 닉네임 동기화.</td></tr>
+  <tr><td>시작 조건</td><td>합류자가 준비를 눌러야 호스트 시작 가능. 봇전 폴백 없음.</td></tr>
+  <tr><td>지휘관 대전 토글</td><td>호스트 전용. 켜면 양쪽 인간이 각자 자기 팀 봇을 무전 지휘. 원격 지휘관은 LLM 해석을 자기 PC에서 끝내고 결과만 <code>sy_od</code>로 호스트에 보냄. 호스트는 보낸 팀의 봇만 인정.</td></tr>
+  <tr><td>권위</td><td>호스트 시뮬. 클라는 인텐트만 보내고(낙관 이동 적용) 12Hz 팀별 스냅샷을 덮어쓴다. 예고/스킬/이동/피해/사망/밀침/낚아채기/해킹/킬/거점 소유는 이벤트 릴레이로 연출 동기화. 시계는 프레임마다 외삽.</td></tr>
+  <tr><td>시야</td><td>스냅샷은 팀별로 시야 안 정보만. 시야 계산은 결정론이라 클라가 로컬 재계산.</td></tr>
+  <tr><td>동의 게이트</td><td>라운드 결과 <kbd>SPACE</kbd>, 매치엔드 <kbd>R</kbd>. 호스트가 집계, 전원 준비 시 진행. 준비 인원 표시.</td></tr>
+  <tr><td>이탈</td><td>사람이 나가면 전투 중이면 그 유닛에 봇 드라이버 즉시 승계. 호스트가 나가면 클라는 정리 후 타이틀로.</td></tr>
+  <tr><td>채팅/핑</td><td>같은 팀 사람에게만 배달. 쿨다운은 호스트 검증.</td></tr>
+</table>
+
+<h2 id="s12"><span class="num">12</span>조작 전체 표</h2>
+<div class="wrap"><table>
+  <tr><th>입력</th><th>동작</th><th>비고</th></tr>
+  <tr><td>좌클릭 (파랑/노랑 칸)</td><td>이동</td><td>내 유닛은 항상 선택 상태 유지</td></tr>
+  <tr><td>우클릭</td><td>조준 해제 / 선택 해제</td><td></td></tr>
+  <tr><td><kbd>A</kbd></td><td>일반공격 조준 토글 → 칸 클릭으로 발사</td><td>쿨 중이면 토글 불가(버저). HUD 슬롯 클릭도 동일</td></tr>
+  <tr><td><kbd>S</kbd> / <kbd>D</kbd></td><td>스킬 1 / 스킬 2 조준 토글</td><td>동일</td></tr>
+  <tr><td><kbd>ESC</kbd></td><td>조준 취소 → 무전창 닫기 → 일시정지 메뉴 (우선순위 순)</td><td>픽창에서는 타이틀로, 매칭 중엔 취소</td></tr>
+  <tr><td><kbd>H</kbd> 또는 게이지 클릭</td><td>시야해킹 발동</td><td>만충 시</td></tr>
+  <tr><td><kbd>1</kbd>~<kbd>7</kbd> 또는 패널 클릭</td><td>퀵챗 (지휘관 모드에선 곧 명령)</td><td>타이핑 중 잠금</td></tr>
+  <tr><td><kbd>TAB</kbd> / <kbd>Enter</kbd></td><td>무전 채팅바 열기, <kbd>TAB</kbd>/<kbd>ESC</kbd> 닫기, <kbd>Enter</kbd> 발신, 입력줄 밖 클릭 닫기</td><td>지휘관 모드만</td></tr>
+  <tr><td><kbd>V</kbd> 꾹</td><td>음성 무전 push-to-talk</td><td>지휘관 모드, 키와 마이크 있을 때</td></tr>
+  <tr><td>휠클릭 탭 / 꾹+끌기</td><td>핑 ▼ / 핑 휠(▼ ! ?)</td><td></td></tr>
+  <tr><td>마우스 스크롤</td><td>카메라 줌</td><td>TacticalCamera</td></tr>
+  <tr><td><kbd>Y</kbd></td><td>고정 추적 ↔ 자유 시점 토글</td><td>자유 시점에서 화면 가장자리로 엣지 팬</td></tr>
+  <tr><td><kbd>Q</kbd> / <kbd>W</kbd></td><td>카메라 좌/우 45도 회전</td><td></td></tr>
+  <tr><td><kbd>SPACE</kbd></td><td>(전투 중 사망 후, 싱글) 6배속 빨리감기 토글 / (라운드 결과) 다음 라운드 동의</td><td></td></tr>
+  <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>관전 중 따라갈 아군 전환</td><td>사망 후</td></tr>
+  <tr><td><kbd>R</kbd></td><td>매치엔드에서 새 매치 동의</td><td></td></tr>
+  <tr><td><kbd>F1</kbd>~<kbd>F5</kbd></td><td>훈련장 캐릭터 즉시 교체</td><td>훈련장만</td></tr>
+</table></div>
+<p class="small muted">한글 타이핑 중엔 물리키가 게임키와 겹치므로(ㅂ/ㅈ = 카메라, ㅗ = 해킹) 모든 게임 핫키가 잠긴다. 무전 타임 정지 중엔 이동/스킬/해킹 제출도 잠긴다.</p>
+
+<h2 id="s13"><span class="num">13</span>카메라, 연출, 사운드</h2>
+<h3>13.1 카메라</h3>
+<ul>
+  <li><code>TacticalCamera</code>(롤식 쿼터뷰): 기본은 내 유닛 고정 추적(전방 2.2칸 lookAhead), 자유 시점 엣지 팬, 줌, 45도 회전. 라운드 재빌드 시 새 유닛을 즉시 재추적.</li>
+  <li>사망 후 관전: 살아 있는 아군 시점, 좌우 화살표로 순환.</li>
+  <li>라운드 종료 킬캠: 주인공 클로즈업 돌리 인 7.5 + 종료 후 복원.</li>
+  <li><code>CameraShaker</code>: 셰이크와 펀치 인(돌리)은 격파, 예측 사격 순간, <b>내 공격 적중</b>에만.</li>
+</ul>
+<h3>13.2 연출 규칙 (가독성 패스)</h3>
+<ul>
+  <li>색 언어: 빨강 = 적 위협만, 흰색 = 내 공격, 파랑/노랑 = 이동 범위, 팀 색(틸/주황)은 유닛과 HP바만. 공격 VFX는 내 팀 틸 네온 / 적 빨강주황 네온 두 색으로 통일, 모양이 클래스를 말한다.</li>
+  <li>내 공격 적중: 돌리 펀치 + 셰이크 0.4 + 히트스톱 0.08 + 비네트 펀치 + 저역 썸프. 다른 피격은 칸 안 크기의 스파크/카툰 임팩트 + 칸 플래시 + 데미지 숫자 + 사운드.</li>
+  <li>유닛: 발밑 팀 색 가산 원판, 클래스 시그니처 색 링(카드 색과 동일), 이름표, HP바, 스턴 별, 도약 잔상(GhostTrail), 던지기 포물선 궤적, 벽꿍 연출, 밀침 화살표.</li>
+  <li>밀리는 방향 화살표, 스킬 아이콘 + 받침판, 저격 조준경, 폭탄 투사체, 광선, 예고 파이, 링 웨이브, 플로팅 텍스트("스턴!", "차단!", 데미지, 명령 문구).</li>
+  <li>VFX 매트화 방향: 가산/발광 기본값 금지, 강조 한두 요소만 발광. 기계팀엔 HCFX(파스텔) 금지, PPFX 스파크/WarFX 금속. 동물팀은 ToonFX 카툰 펀치. 새 파티클은 칸 이하 크기 + Hierarchy 스케일.</li>
+  <li>안개 구름 시트는 유지(의도된 아트).</li>
+</ul>
+<h3>13.3 사운드</h3>
+<table>
+  <tr><th>BGM 6</th><td>B1 Round1, B2 Round3, B3 Briefing, B4 Victory, B5 Defeat, B6 Title</td></tr>
+  <tr><th>SFX 37</th><td>예고 적/아군, 명중, 빗나감, 홉, 노랑 이동, 피격, 사망 아군/적, 점거 루프, 거점 획득/상실, 라운드 시작/종료, 서든데스, 스킬별(강타, 대시, 점멸, 파열, 저격, 비명, 낚아채기), 벽꿍, 감지 핑, 고스트 소실, 거부 버저, 타이핑, 예측 적중, 해킹, 해킹 준비, 핑, 스턴, 회복, 거점 경합, 고지대 등. 동시 재생 상한 8. 절차 합성 저역 썸프.</td></tr>
+  <tr><th>보이스 7</th><td>영어 관제 AI 보이스 + 한글 자막: 라운드 시작(자막 없음), 거점 획득/상실, 서든데스, 예측 모델 적용(브리핑), 매치 승("예측 초과. 통제 불능") / 패("구역 통제권 회수됨").</td></tr>
+  <tr><th>볼륨</th><td>배경음 / 효과음 / 음성 3종 슬라이더(일시정지 메뉴 설정).</td></tr>
+</table>
+<h3>13.4 아트 에셋</h3>
+<ul>
+  <li>유닛 GLB 5종 리깅(너구리, 고라니, 검은고양이, 비둘기, 까치) + idle/anim(달리기)/atk 변형. 기계팀은 같은 모델에 URP Lit 은색 금속 재질 통째 교체. 별도 기계 GLB(cleaning_bot, delivery_bot, patrol_drone, sprayer_drone, surveillance_drone)는 Resources에 있으나 현재 스킨 매핑에서 쓰지 않는다.</li>
+  <li>소품 GLB: 쓰레기통, 덤불, 바리케이드, 가로등, 힐팩, 고지대(prop_highland), 언덕. 바닥 골목 이미지 bg_alley.</li>
+  <li>UI 아트(Resources/UI): 메인/로비/타이틀 배경, 카드 5종 + 기계팀 회색판(Card_*_M, Card_M_* 두 세트 존재), 초상 5, 역할 아이콘 5, 스킬 아이콘 11 + Generic, 공격/이동/가드/마이크/무전 아이콘, 프레임(배너, 버튼, 칩, 정보, 로비 슬롯, 메인 버튼, 패널, 슬롯), 하단 바, HP 프레임, 해킹 게이지, 결과 배너, 브리핑/치트시트/무전/타이머 패널, 거점 링.</li>
+  <li>폰트: 에이투지체(A2Z) Medium/Bold/Black. 진짜 강조만 Bold, 나머지 Medium. 유저 노출 문구에 em dash, 중앙점, 이모지 금지.</li>
+</ul>
+
+<h2 id="s14"><span class="num">14</span>UI 인벤토리 (교체 대상 정리)</h2>
+<p class="lead">UI 작업만 남았다는 전제로, 지금 화면에 존재하는 UI 요소를 <b>구현 방식별</b>로 전부 나열했다. <span class="tag ongui">OnGUI</span>는 전부 "아트 UI 프리팹이 붙으면 통째로 교체" 전제로 만들어진 임시 드로잉이다. <span class="tag ugui">uGUI</span>는 <code>UIManager</code> 팝업 스택 위의 프리팹이다.</p>
+
+<h3>14.1 화면 밖 (타이틀, 픽, 로비) <span class="tag ugui">uGUI 프리팹</span></h3>
+<table>
+  <tr><th>화면</th><th>프리팹</th><th>구성 요소</th><th>비고</th></tr>
+  <tr><td>타이틀</td><td><code>UITitlePopup</code></td><td>Figma 시안 배경 그림(BG_Main, 로고/캐릭터/버튼 판/글씨 포함) + 그림 위 투명 클릭 영역 4개(멀티/싱글/설정/종료) + 런타임 생성 작은 판 2개(튜토리얼, 훈련장) + 닉네임 입력칸 + 매칭 대기 셰이드/문구/회전 링</td><td>버튼 문구는 그림에 박혀 있어 코드로 못 바꿈. 레터박스.</td></tr>
+  <tr><td>캐릭터 선택 (싱글)</td><td><code>UIClassSelectPopup</code></td><td>상단 분대 슬롯 3칸(프레임 스킨, 초상, 라벨, 선택 틸 판) + AI 난이도 바(상/중/하) + 30초 타이머 + 중앙 카드 5장(ClassCard) + 하단 상태 문구/출격 버튼</td><td>로비와 같은 화면 구성. 픽 배경 BG_Title.</td></tr>
+  <tr><td>로비 (멀티)</td><td><code>UILobbyPopup</code></td><td>내 팀 슬롯 3칸 + 상대 칸 1(존재/준비만) + 중앙 카드 그리드 + 팀 채팅 + 밸런스 경고 + 하단 버튼 줄(지휘관 대전 토글, 준비/시작, 나가기)</td><td>배경 BG_Lobby.</td></tr>
+  <tr><td>(미사용)</td><td><code>UIJoinCodePopup</code></td><td>조인 코드 입력</td><td>방코드 방식 폐기됨. 프리팹과 빌더만 남음.</td></tr>
+  <tr><td>공용 카드</td><td><code>ClassCard</code> 빌더</td><td>네온 테두리 + 헤더(이름, 역할 배지 아이콘) + 4:3 상반신 초상 + HP 바(눈금) + 기동 도트 + 스킬 2행(아이콘, 이름, 한 줄 설명). 컴팩트 카드(초상 + 이름 스트립)와 선택 하이라이트(SelHalo)</td><td>수치는 ClassCatalog 자동. 스킬 설명 문구는 코드 하드코딩(15장 참조).</td></tr>
+  <tr><td>UIHUD</td><td><code>UIHUD.cs</code></td><td>빈 스텁</td><td>인게임 HUD를 uGUI로 옮길 때의 자리.</td></tr>
+</table>
+
+<h3>14.2 인게임 HUD <span class="tag ongui">OnGUI (BattleHud.cs, 1543줄)</span></h3>
+<div class="wrap"><table>
+  <tr><th>영역</th><th>요소</th><th>내용</th></tr>
+  <tr><td rowspan="5">상단</td><td>중앙 타이머</td><td>"남은시간" + m:ss. 30초 이하 호박색, 10초 이하 빨강 맥동. 추가시간이면 "추가시간".</td></tr>
+  <tr><td>좌/우 팀 상태</td><td>"아군"/"적군" 라벨 + 유닛별 초상 얼굴(산 유닛 원색 + 팀 색 테두리, 죽은 유닛 회색)</td></tr>
+  <tr><td>거점 칩 A/B/C</td><td>소유 팀 색(중립 회색) + 점거 파이(점거 팀 색, 실시간)</td></tr>
+  <tr><td>라운드/스코어 줄</td><td>"ROUND n/3   x승 y패"</td></tr>
+  <tr><td>규칙 칩</td><td>라운드 변형 규칙 제목 + 설명 한 줄(호박색 테두리)</td></tr>
+  <tr><td>상단 중앙</td><td>배너</td><td>사망 후 전용: "격파됨. SPACE 빨리감기" / "빨리감기 중 (6배속)". 이벤트 로그 배너는 은퇴.</td></tr>
+  <tr><td rowspan="3">좌상단</td><td>빠른채팅 토글 + 패널</td><td>[빠른채팅 열기/닫기] 버튼, 펼치면 문구 7줄(단축키 병기), 클릭 = 전송</td></tr>
+  <tr><td>채팅 로그</td><td>패널 바로 밑. 콜사인 + 문구, 팀 색, 17pt, 8초 유지, 오래된 줄 위로 밀림</td></tr>
+  <tr><td>무전 채팅바</td><td>좌측 중단(하단에서 420px). 어두운 판 + 좌측 시안 액센트, 상단 한 줄(교신 중 / 마지막 응답 / 안내), 입력줄, 가이드 예시 회전. <b>RadioWindow.cs OnGUI</b></td></tr>
+  <tr><td>우상단</td><td>킬피드</td><td>최근 5줄, 가해자 팀 색, 마지막 1초 페이드</td></tr>
+  <tr><td rowspan="4">하단 통합 바</td><td>HP 세그먼트</td><td>"이름 / 클래스" + HP 바(눈금 = maxHp) + "HP n/m"</td></tr>
+  <tr><td>슬롯 4</td><td>이동(좌클릭, n칸, 노랑 쿨 오버레이) / 일반공격(A, 클래스별 아이콘) / 스킬1(S) / 스킬2(D). 각 슬롯: 키 박스, 이름, 쿨 표기, 쿨 오버레이 + 남은 초, 조준 중 틸 프레임, 클릭 = 단축키</td></tr>
+  <tr><td>시야해킹 세그먼트</td><td>게이지 링 아트(알파 = 충전) + "n%" 큰 숫자 + "시야해킹 게이지 / 준비 완료: H" + 4칸 바. 클릭 = H</td></tr>
+  <tr><td>배경 프레임</td><td>Bar_Bottom / Frame_Panel 아트</td></tr>
+  <tr><td rowspan="6">오버레이/자막</td><td>중앙 큰 공지</td><td>거점 점령, 해킹 준비, 교신 종료, 목표 공지 등. 등장 팝 + 페이드</td></tr>
+  <tr><td>자막 레인</td><td>보이스 자막, 튜토리얼 힌트, 이탈, 명령 거부, "무전 과열"</td></tr>
+  <tr><td>카운트다운</td><td>중앙 대형 숫자 3·2·1</td></tr>
+  <tr><td>위협 배너</td><td>"내 칸에 적 예고" 상단 붉은 배너 + 남은 초</td></tr>
+  <tr><td>히어로 카드</td><td>라운드 결정타 주인공 콜사인 + 사유</td></tr>
+  <tr><td>가장자리 사건 화살표</td><td>화면 밖 킬 등 방향 표시</td></tr>
+  <tr><td>핑 휠</td><td>휠 꾹 시 ▼ / ! / ? 선택 휠</td><td>그리기만 HUD, 상태는 러너</td></tr>
+  <tr><td>무전 타임</td><td>정지 안내문 + 남은 시간</td><td></td></tr>
+  <tr><td>준비 인원</td><td>"n/m 준비" (SPACE/R 게이트)</td><td></td></tr>
+  <tr><td rowspan="2">라운드 결과</td><td>결과 패널</td><td>ROUND n 승/패, 종료 사유, 거점 A/B/C 소유 동그라미(파랑 우리, 빨강 적, 회색 중립), 양 팀 생존 수, 팀별 K/D 전적 줄, SPACE 안내</td></tr>
+  <tr><td>배경</td><td>Panel_Briefing 아트</td></tr>
+  <tr><td rowspan="2">매치엔드</td><td>1페이지</td><td>승/패 타이틀(방사형 글로우) + 종료 사유 + 초상 통계 스트립(내 팀 원본색 좌, 기계팀 회색 우, 닉네임, K/D)</td></tr>
+  <tr><td>2페이지</td><td>MVP 시네마틱: 스포트라이트 + 대각 빔 + 브래킷 + 광택 스윕, 다부문(킬, 화력, 점령). R 안내</td></tr>
+</table></div>
+
+<h3>14.3 그 밖의 OnGUI</h3>
+<table>
+  <tr><th>파일</th><th>내용</th></tr>
+  <tr><td><code>PauseMenu.cs</code></td><td>ESC 일시정지: "일시정지" 제목, 계속하기 / 설정 / 게임 종료. 설정: 배경음/효과음/음성 슬라이더 + 뒤로. timeScale 0. 타이틀의 설정 버튼도 이 화면.</td></tr>
+  <tr><td><code>VoiceRadio.cs</code></td><td>녹음 중 배지: 화면 중앙 하단 어두운 판 + 마이크 아이콘 점멸 + "녹음 중. 손 떼면 발신"</td></tr>
+  <tr><td><code>GuideSpotlight.cs</code></td><td>튜토리얼 스포트라이트: 화면 어둡게 + 봐야 할 곳 구멍</td></tr>
+</table>
+
+<h3>14.4 월드 공간 UI <span class="tag world">월드</span></h3>
+<ul>
+  <li>유닛 이름표, HP바(<code>UnitHpBar</code>), 머리 위 "!"와 링(<code>ThreatWarning</code>), 스턴 별, 발밑 팀 원판/클래스 링, 말풍선(<code>ChatBubble</code>, 무전 3.5초), 플로팅 텍스트(데미지, 상태, 명령, 힌트).</li>
+  <li>거점: 대형 A/B/C 글자, 바닥 원판 게이지, 테두리 띠. 힐팩 리스폰 카운트다운. 핑 마커(링 펄스 + ▼).</li>
+  <li>이동 범위 네온 테두리, 호버 발자국, 조준 윤곽/아이콘/화살표, 예고 마커/공격선/파이/조준경.</li>
+</ul>
+
+<h2 id="s15"><span class="num">15</span>확인 요망 (놓친 부분 후보)</h2>
+<p class="lead">코드를 읽으며 발견한, 기획 변경은 아니지만 UI 작업 전에 결정하거나 정리하면 좋은 항목이다. 판단은 사용자 몫이라 고치지 않고 나열만 했다.</p>
+
+<h3>15.1 기능 흐름의 빈 곳</h3>
+<ul class="check">
+  <li><b>전투 중 타이틀로 돌아가는 버튼이 없다.</b> 일시정지 메뉴는 계속하기 / 설정 / 게임 종료(앱 종료)만 있다. 튜토리얼 완료 공지가 "ESC 메뉴에서 타이틀로"라고 안내하지만 그 버튼이 없다. 훈련장 안내 "ESC 메뉴로 나가기"도 같은 문제. 매치엔드에서는 R → 픽창 → ESC로만 타이틀에 갈 수 있다. (<code>PauseMenu.cs</code>, <code>BattleRunner.EndRadioTime</code>)</li>
+  <li><b>타이틀 전용 설정 화면이 없다.</b> 타이틀 설정 버튼이 일시정지 메뉴의 OnGUI 설정을 띄운다. 해상도, 전체화면, 키 안내 같은 항목도 없다.</li>
+  <li><b>훈련장은 UI 모드 표기가 Multi다.</b> 무전창이 안 뜨는 것은 의도이지만, HUD 상단에 ROUND 1/3, 거점 칩, 타이머(멈춘 값)가 그대로 그려진다. 훈련장용 HUD 축소가 필요한지 확인.</li>
+  <li><b>매치엔드 이후 싱글은 픽창으로만 간다</b>(맵 재선택 없음, 랜덤 맵은 유지). 의도면 OK.</li>
+  <li><b>멀티에서 지휘관 대전이 꺼진 Multi 모드</b>는 무전, 무전 타임, 브리핑이 전부 없고 퀵챗은 채팅만이다. 즉 봇 2기는 완전 자율. 로비 토글 기본값을 확인.</li>
+</ul>
+
+<h3>15.2 문구/데이터 불일치</h3>
+<ul class="check">
+  <li><b>카드 스킬 설명 "저격: 1열 관통"</b>은 구 규칙이다. 현재 조준 사격은 다이아 + 십자 끝 지정, 관통 없음, 벽 시야선 필요. (<code>ClassCard.SkillDesc</code>) 카드 설명은 코드 하드코딩이라 UI 작업 시 같이 고쳐야 한다. 다른 설명("전방 밀치기", "5칸 투척, 벽 충돌", "돌진, 충돌 스턴", "주변 스턴", "3칸 점멸", "근접 강타", "십자 폭격, 둔화", "적 끌어오기", "밀치는 사격")은 현행과 맞다.</li>
+  <li><b>코드 주석의 옛 수치</b>가 여러 곳에 남아 있다(예: 조준 사격 피해 3이라 적힌 enum 주석, 실값 4 / 파열탄과 도약 "5×5" 주석, 실값 체비쇼프 3 = 7×7 / 고지대 시야 "+1" 주석, 실값 +2 / AttackShape 이름 Melee8, Circle2, Square2는 옛 크기). 동작에는 영향 없음. 카드/HUD 수치는 데이터에서 읽으므로 화면은 맞다.</li>
+  <li><b>기계팀 카드 아트가 두 세트</b>다: <code>Card_*_M</code>(코드가 찾는 이름)과 <code>Card_M_*</code>. 후자는 미사용 가능성.</li>
+  <li><b>기계 GLB 5종</b>(cleaning_bot 등)이 Resources에 있지만 스킨 매핑은 동물 모델 + 은색 재질만 쓴다. 미사용 에셋.</li>
+  <li><code>Icon_Guard</code>: 방어 기능은 삭제됐다. 아이콘 미사용.</li>
+  <li>QuickChat 주석 "해킹 발동 시 자동 전송. 매치 1회뿐인 필살기"는 게이지제 이전 표현이다. 동작(쿨 무시 자동 전송)은 유효.</li>
+</ul>
+
+<h3>15.3 정리 후보 (코드/에셋 잔재)</h3>
+<ul class="check">
+  <li><code>UIJoinCodePopup</code> 프리팹과 에디터 빌더: 조인 코드 방식 폐기 후 미사용.</li>
+  <li><code>SkillKind.BombDeliver</code> 구현 + 아이콘: 어느 클래스도 사용하지 않음.</li>
+  <li><code>OrderPresets</code>의 Scatter, Highland, Avoid 프리셋: 빌더만 있고 UI 노출 없음(ReactToRule이 Highland는 사용).</li>
+  <li><code>UIHUD.cs</code> 빈 스텁.</li>
+  <li><code>Assets/_Recovery/0 (2).unity</code>, <code>0 (3).unity</code>: 추적되지 않은 복구 씬 파일이 작업 트리에 있다. <code>ProjectSettings/EditorBuildSettings.asset</code>도 수정 상태.</li>
+  <li><code>docs/INTERFACE_CONTRACT.md</code>는 초기 계약서(9×9, AP, 디코이, Guard 등)로 현행과 크게 다르다. 참고 문서로만.</li>
+</ul>
+
+<h3>15.4 UI 작업 시 지킬 것 (이미 합의된 규칙)</h3>
+<ul>
+  <li>HUD를 늘려서 문제를 풀지 말 것. 이미 보는 요소의 의미를 바꾸는 쪽으로.</li>
+  <li>색 언어: 빨강 = 적 위협만, 흰색 = 내 공격, 파랑/노랑 = 이동, 팀 색은 유닛/HP바만. 조준 슬롯 강조는 틸(노랑 금지).</li>
+  <li>유저 노출 문구: em dash, 중앙점, 말줄임표 글리프, 장식 글리프, 이모지 금지. 기능 글리프(▼ 핑, ①② 접미)는 허용.</li>
+  <li>폰트 에이투지체. Bold는 승패 배너, 중앙 공지, 브리핑 제목, 남은시간 숫자, 해킹 % 숫자, 거점 글자, 튜토리얼 캡션만. 나머지 Medium. FontStyle.Bold(가짜 볼드) 대신 <code>GameFonts.Title</code>.</li>
+  <li>Unity UI는 코드 드로잉 대신 UIManager 프리팹으로. 필요한 에셋은 Assets.md 참고 후 임포트 요청.</li>
+  <li>안개 구름 시트(<code>fogOverlayColor</code>)는 건드리지 않는다.</li>
+</ul>
+
+<h2 id="s16"><span class="num">16</span>코드 지도와 테스트</h2>
+<div class="grid2">
+  <div class="card">
+    <h4>순수 C# 코어 (<code>Assets/Core/Scripts/Battle</code>)</h4>
+    <ul class="small">
+      <li>Grid: <code>GridModel, Cell, Coord, GridConfig, Pathfinding, BattleMaps, MapGenerator</code></li>
+      <li>Units: <code>UnitClass(ClassCatalog), UnitState, BattleState</code></li>
+      <li>Move: <code>MoveSystem, MoveConfig(MoveProfile)</code></li>
+      <li>Combat: <code>CombatSystem(1056줄), CombatConfig</code></li>
+      <li>Round: <code>RoundSystem(Zone), RoundRule(RoundRules), MatchSystem</code></li>
+      <li>Vision: <code>VisionSystem</code> / Pickup: <code>PickupSystem</code></li>
+      <li>Command: <code>SquadOrder(CommandState), OrderPresets, Persona</code></li>
+      <li>Intent: <code>BattleIntent, IIntentSink</code> / Match: <code>GameMode, MatchSetup</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>뷰/러너 (<code>Assets/Core/Scripts/BattleView</code>)</h4>
+    <ul class="small">
+      <li><code>BattleRunner</code>(3379줄) 매치 오케스트레이션, 모드, 무전, 넷 배선</li>
+      <li><code>BattleHud</code>(1543줄) OnGUI HUD 전부</li>
+      <li><code>LlmRadio, VoiceRadio, RadioWindow, PauseMenu, Guide, GuideSpotlight</code></li>
+      <li><code>GridView, UnitView, UnitMoveInput, UnitHpBar, UnitIndicators, ThreatWarning, PingMarker, PushArrow, ZoneCaptureDisc, ZoneBorderRing, HealPackView</code></li>
+      <li>VFX: <code>StrikeVfx, SkillVfx, ImpactFx, ImpactVfx, HackVfx, StunVfx, RingWave, CellFlash, GhostTrail, FloatingText, ChatBubble, VfxLibrary, VfxTextures</code></li>
+      <li><code>CameraShaker, HitStop, GameFreeze, BattleAudio, GameFonts</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>게임 (<code>Assets/Game/Scripts</code>)</h4>
+    <ul class="small">
+      <li>Ai: <code>AiBrain(854줄), AiConfig, RangeTemplates, WorldView</code></li>
+      <li>Prediction: <code>Predictor, ActorPattern, PredictionTypes</code></li>
+      <li>Integration: <code>AiSlotDriver, CoreWorldView, HackSystem, LocalIntentSink</code></li>
+      <li>Net: <code>NetBoot, NetLobby, NetSync(764줄), NetIntentSink</code></li>
+      <li>Art: <code>UnitSkins, SkinAnimator, MapDressing, TacticalCamera, UnitOutlineApplier</code></li>
+      <li>Chat: <code>QuickChat</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>UI와 테스트</h4>
+    <ul class="small">
+      <li><code>Assets/UI/Scripts</code>: <code>UIManager, UIBase, UIPopup, UIHUD, UISlot, UISkin, UITypes, UIEventHandler, ClassCard</code>, Popup: <code>UITitlePopup, UIClassSelectPopup, UILobbyPopup, UIJoinCodePopup</code></li>
+      <li><code>Assets/Editor</code>: <code>UIClassSelectPopupBuilder, UINetPopupBuilders, ToonFxUrpConverter</code></li>
+      <li>EditMode 테스트 9개: BattleMaps, CombatSystem, MapGenerator, MatchSystem, MoveSystem, Pathfinding, RoundSystem, UnitClass, VisionSystem</li>
+      <li>작업 씬: <code>Assets/Scenes/SampleScene.unity</code> (UITest, GoraniSkinTest는 임시/아트 씬)</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+<p class="small muted">이 문서는 코드에서 자동 추출한 것이 아니라 코드를 읽고 옮겨 적은 것이다. 이후 밸런스 수치가 바뀌면 7장과 5장 표를 <code>UnitClass.cs</code>, <code>CombatConfig.cs</code>, <code>RoundSystem.cs</code> 기준으로 다시 맞춰야 한다.</p>
+
+</main>
+</div>
+</body>
+</html>

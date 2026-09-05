@@ -21,6 +21,13 @@ namespace SeoYuGi.Battle
 
         public int GetWins(int team) => wins[team];
 
+        /// <summary>몰수 — 상대 이탈. 남은 팀이 즉시 매치 승리 (2026-09-06).</summary>
+        public void Forfeit(int winnerTeam)
+        {
+            wins[winnerTeam] = WinsNeeded;
+            MatchWinner = winnerTeam;
+        }
+
         /// <summary>라운드 승리 팀 기록. 2선승 달성 시 즉시 매치 종료.</summary>
         public bool RecordRoundResult(int winnerTeam)
         {

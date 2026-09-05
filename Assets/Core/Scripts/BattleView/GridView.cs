@@ -400,8 +400,12 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>거점 칸을 거점 텍스처로 표시. Build 이후 호출.</summary>
+        readonly HashSet<Coord> zoneSet = new HashSet<Coord>(); // 거점 칸 — 배틀 매트 딤 제외 대상
+
         public void MarkZones(IReadOnlyList<Coord> zoneCells)
         {
+            zoneSet.Clear();
+            foreach (var c in zoneCells) zoneSet.Add(c);
             if (matZone == null) return; // 텍스처 미사용 모드
             foreach (var c in zoneCells)
                 if (tiles[c.x, c.y] != null)
@@ -560,6 +564,13 @@ namespace SeoYuGi.BattleView
             else if (baseTints.TryGetValue(c, out var tint))
             {
                 mpb.SetColor(BaseColorId, tint);
+                ApplyBlock(c, mpb);
+            }
+            else if (zoneSet.Contains(c))
+            {
+                // 거점 바닥 = 흰 캔버스 (2026-09-05 "거점은 기본 흰색으로") — 매트 딤을 안 먹여
+                // 파랗게 죽던 문제 해소. 소유는 테두리 링이 말하고, 하이라이트는 흰 바닥 위라 또렷하다.
+                mpb.SetColor(BaseColorId, Color.white * 1.35f);
                 ApplyBlock(c, mpb);
             }
             else

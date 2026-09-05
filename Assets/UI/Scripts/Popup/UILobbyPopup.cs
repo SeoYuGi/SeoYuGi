@@ -126,6 +126,9 @@ public class UILobbyPopup : UIPopup
         BindEvent(Get<GameObject>((int)Buttons.BtnLeave), _ => Leave());
         OnEscape = Leave; // ESC = 나가기 (뒤로)
 
+        CreateTeamSwapButton(); // 상대팀 슬롯은 숨겨져 있어 클릭 이동이 불가 — 버튼으로 (2026-09-05 "상대팀으로도")
+        CreateNicknameInput();  // 닉네임 설정 (2026-09-05) — PlayerPrefs 저장, 콜사인 대체
+
         codeText = transform.Find("CodeText")?.GetComponent<Text>();
         statusText = transform.Find("StatusText")?.GetComponent<Text>();
         Get<GameObject>((int)Buttons.BtnStart).SetActive(NetBoot.IsHost); // 시작은 호스트 전용
@@ -218,6 +221,74 @@ public class UILobbyPopup : UIPopup
         OnLeave?.Invoke();
     }
 
+    InputField nickInput;
+    bool nickSynced; // 슬롯 배정 전 전송 유실 대비 — Refresh에서 내 슬롯 확인 후 1회 재전송
+
+    /// <summary>닉네임 입력칸 — ChatInput을 복제해 스킨을 물려받고 그 위에 배치.
+    /// 엔터로 확정: PlayerPrefs 저장 + 호스트에 콜사인 교체 요청 (킬피드·콜아웃까지 반영).</summary>
+    void CreateNicknameInput()
+    {
+        if (chatInput == null) return;
+        var go = Instantiate(chatInput.gameObject, chatInput.transform.parent);
+        go.name = "NickInput";
+        var rt = go.GetComponent<RectTransform>();
+        var src = chatInput.GetComponent<RectTransform>();
+        float lift = src.sizeDelta.y + 10f;
+        rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, lift);
+        // 닉네임 칸이 들어온 만큼 채팅 컬럼 전체(로그·배경·빠른채팅)를 위로 —
+        // QC만 올리면 로그와 겹친다 (2026-09-05 "채팅도 겹쳐")
+        foreach (var n in new[] { "ChatBack", "ChatLog", "QC1", "QC2", "QC3", "QC4", "QC5", "QC6" })
+        {
+            var t = transform.Find(n) as RectTransform;
+            if (t != null) t.anchoredPosition += new Vector2(0f, lift);
+        }
+        nickInput = go.GetComponent<InputField>();
+        nickInput.onEndEdit.RemoveAllListeners();
+        nickInput.characterLimit = 10;
+        string saved = PlayerPrefs.GetString("sy_nickname", "");
+        nickInput.text = saved;
+        var ph = nickInput.placeholder as Text;
+        if (ph != null) ph.text = "닉네임 (엔터로 확정)";
+        nickInput.onEndEdit.AddListener(v =>
+        {
+            v = v?.Trim();
+            if (string.IsNullOrEmpty(v)) return;
+            PlayerPrefs.SetString("sy_nickname", v);
+            NetLobby.RequestName(v);
+        });
+    }
+
+    /// <summary>팀 변경 버튼 — BtnLeave를 복제해 스킨·크기를 그대로 물려받는다 (프리팹 수정 없이 런타임 생성).
+    /// 상대팀 첫 빈 봇 슬롯으로 이동을 요청한다. 상대팀이 인간으로 가득이면 안내만.</summary>
+    void CreateTeamSwapButton()
+    {
+        var template = Get<GameObject>((int)Buttons.BtnLeave);
+        var go = Instantiate(template, template.transform.parent);
+        go.name = "BtnTeamSwap";
+        var rt = go.GetComponent<RectTransform>();
+        var src = template.GetComponent<RectTransform>();
+        rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, src.sizeDelta.y + 14f);
+        var label = go.GetComponentInChildren<Text>();
+        if (label != null) label.text = "팀 변경 ⇄";
+        BindEvent(go, _ =>
+        {
+            var slots = NetLobby.Slots;
+            if (slots == null) return;
+            ulong myId = Unity.Netcode.NetworkManager.Singleton.LocalClientId;
+            int myTeam = -1;
+            foreach (var s in slots)
+                if (s.owner != SlotOwner.Bot && s.clientId == myId) { myTeam = s.team; break; }
+            if (myTeam < 0) return;
+            foreach (var s in slots)
+                if (s.team != myTeam && s.owner == SlotOwner.Bot)
+                {
+                    NetLobby.RequestSlot(s.unitId); // 호스트가 이동 처리 → OnChanged로 UI 갱신
+                    return;
+                }
+            if (statusText != null) statusText.text = "상대팀이 가득 찼습니다";
+        });
+    }
+
     /// <summary>클라 대기 중 안내 (관전 동기화 전 단계 등).</summary>
     public void SetStatus(string text)
     {
@@ -239,6 +310,14 @@ public class UILobbyPopup : UIPopup
         foreach (var s in slots)
             if (s.owner != SlotOwner.Bot && s.clientId == localId)
             {
+                // 저장된 닉네임 자동 적용 — 슬롯 배정이 늦는 클라도 배정 확인 후 1회 전송 (2026-09-05)
+                if (!nickSynced)
+                {
+                    nickSynced = true;
+                    string savedNick = PlayerPrefs.GetString("sy_nickname", "");
+                    if (!string.IsNullOrEmpty(savedNick) && s.callsign != savedNick)
+                        NetLobby.RequestName(savedNick);
+                }
                 myCls = (int)s.cls;
                 myTeam = s.team;
                 break;

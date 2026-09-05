@@ -762,7 +762,17 @@ namespace SeoYuGi.Battle
                 int unitId = State.Grid.GetUnitAt(cell);
                 if (unitId == Cell.NoUnit) continue;
                 var unit = State.GetUnit(unitId);
-                if (unit.team == strike.team) continue;   // 팀킬 없음
+                if (unit.team == strike.team)
+                {
+                    // 낚아채기는 아군도 낚는다 (2026-09-05) — 구출용. 피해·빗나감 없이 끌어오기만.
+                    if (strike.kind == SkillKind.Snatch && unit.alive && !IsFlying(unit)
+                        && attacker != null && attacker.alive && unit.id != attacker.id)
+                    {
+                        SnatchPull(attacker, unit);
+                        hit = true;
+                    }
+                    continue;   // 팀킬 없음
+                }
                 if (IsFlying(unit)) continue;             // 비행 중 무적
 
                 // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다

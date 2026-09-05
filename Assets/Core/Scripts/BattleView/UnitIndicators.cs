@@ -69,11 +69,14 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>내 유닛 머리 위 ▼ — 난전 중 자기 위치 로스트 방지.</summary>
-        public static void AddPlayerArrow(Transform unit, Color teamColor, float height = 1.7f)
+        public static void AddPlayerArrow(Transform unit, Color teamColor, float height = 1.85f)
         {
             var go = new GameObject("PlayerArrow");
             go.transform.SetParent(unit, false);
-            go.transform.localPosition = new Vector3(0f, height, 0f);
+            // 월드 기준 고정 높이 — 부모(유닛)의 클래스별 스케일을 나눠서 상쇄.
+            // 스케일에 곱해지면 클래스마다 높이가 달라져 이름표(1.35)와 겹친다 (2026-09-05 "화살표랑 닉네임 겹쳐")
+            go.transform.localPosition = new Vector3(0f, height / Mathf.Max(0.01f, unit.localScale.y), 0f);
+            go.transform.localScale = Vector3.one / Mathf.Max(0.01f, unit.localScale.y);
             var tm = go.AddComponent<TextMesh>();
             tm.text = "▼";
             tm.fontSize = 48;

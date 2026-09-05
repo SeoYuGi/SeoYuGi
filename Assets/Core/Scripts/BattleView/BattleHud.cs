@@ -823,8 +823,10 @@ namespace SeoYuGi.BattleView
         /// </summary>
         void DrawBriefingStatus(Rect box)
         {
-            var mine = new Color(0.35f, 0.7f, 1f);
-            var foe = new Color(1f, 0.35f, 0.28f);
+            // 하드코딩 파랑/빨강 폐지 (2026-09-05 "팀 바꿨는데 결과화면은 파랑이 내 팀") —
+            // 진짜 팀색을 쓴다. 내 팀이 빨강이면 왼쪽 줄도 빨강.
+            var mine = Color.Lerp(allyColor, Color.white, 0.15f);
+            var foe = Color.Lerp(enemyColor, Color.white, 0.15f);
             var neutral = new Color(0.45f, 0.5f, 0.58f);
 
             float y = box.y + 112f;
@@ -1103,7 +1105,7 @@ namespace SeoYuGi.BattleView
 
             // 상·하 팀색 밴드가 중앙에서 바깥으로 열린다 (0.4초)
             float open = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(age / 0.4f));
-            float bandH = 96f;
+            float bandH = 124f; // 하단 임무 문구가 테두리 라인에 닿았다 — 여백 확보 (2026-09-05)
             float cy = H / 2f;
             Fill(new Rect(0, cy - bandH, W * open, 3f), accent);
             Fill(new Rect(W - W * open, cy + bandH - 3f, W * open, 3f), accent);
@@ -1111,47 +1113,35 @@ namespace SeoYuGi.BattleView
             GUI.DrawTexture(new Rect(0, cy - bandH + 3f, W, bandH * 2f - 6f), Texture2D.whiteTexture);
             GUI.color = Color.white;
 
-            // 타이틀 — 등장 시 크게 떨어졌다가(1.6→1.0) 안착 + 승리는 은은한 맥동
-            float pop = Mathf.SmoothStep(1.7f, 1f, Mathf.Clamp01(age / 0.35f));
-            float pulse = myWin ? 1f + 0.03f * Mathf.Sin(age * 4f) : 1f;
-            var titleStyle = new GUIStyle(bannerStyle) { fontSize = Mathf.RoundToInt(64 * pop * pulse) };
-            string title = myWin ? "★  승  리  ★" : "패      배";
-            // 3중 글로우 — 뒤로 갈수록 크고 투명
-            for (int i = 3; i >= 1; i--)
-            {
-                float off = i * 2.5f;
-                GUI.color = new Color(accent.r, accent.g, accent.b, 0.18f);
-                GUI.Label(new Rect(-off, cy - 55f - off, W, 90f), title, titleStyle);
-                GUI.Label(new Rect(off, cy - 55f + off, W, 90f), title, titleStyle);
-            }
+            // 작전 보고 톤 (2026-09-05 "너무 AI같음" — 별·색종이 폐기): 콜사인 EN 라벨 + 큰 국문 + 임무 한 줄
+            float pop = Mathf.SmoothStep(1.5f, 1f, Mathf.Clamp01(age / 0.3f));
+
+            float subA = Mathf.Clamp01((age - 0.15f) / 0.3f);
+            ShadowLabel(new Rect(0, cy - 78f, W, 22f), myWin ? "M I S S I O N   C O M P L E T E" : "M I S S I O N   F A I L E D",
+                new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
+                new Color(accent.r, accent.g, accent.b, subA));
+
+            var titleStyle = new GUIStyle(bannerStyle) { fontSize = Mathf.RoundToInt(62 * pop) };
+            string title = myWin ? "승리" : "패배";
+            GUI.color = new Color(accent.r, accent.g, accent.b, 0.25f); // 타이트한 글로우 한 겹
+            GUI.Label(new Rect(0, cy - 50f + 2f, W, 80f), title, titleStyle);
             GUI.color = Color.white;
-            ShadowLabel(new Rect(0, cy - 55f, W, 90f), title, titleStyle, Color.Lerp(Color.white, accent, 0.35f));
+            ShadowLabel(new Rect(0, cy - 50f, W, 80f), title, titleStyle, Color.Lerp(Color.white, accent, 0.25f));
 
-            // 스코어 (조금 늦게 페이드인)
+            // 타이틀 아래 액센트 언더라인 — 밴드와 같은 속도로 열린다
+            float underW = 240f * open;
+            Fill(new Rect(W / 2f - underW / 2f, cy + 30f, underW, 2f), accent);
+
+            // 스코어 + 임무 문구 (조금 늦게 페이드인)
             float scoreA = Mathf.Clamp01((age - 0.4f) / 0.4f);
-            ShadowLabel(new Rect(0, cy + 44f, W, 30f),
+            ShadowLabel(new Rect(0, cy + 40f, W, 30f),
                 $"{match.GetWins(playerTeam)}  :  {match.GetWins(1 - playerTeam)}",
-                new GUIStyle(timerStyle) { fontSize = 30 }, new Color(1f, 1f, 1f, scoreA));
-            ShadowLabel(new Rect(0, cy + 82f, W, 24f), "R — 새 매치",
-                new GUIStyle(roundStyle) { fontSize = 16, alignment = TextAnchor.MiddleCenter },
+                new GUIStyle(timerStyle) { fontSize = 28 }, new Color(1f, 1f, 1f, scoreA));
+            ShadowLabel(new Rect(0, cy + 74f, W, 24f),
+                myWin ? "도시 관리 AI 소탕 완료  ·  R — 새 매치" : "작전 실패 — 재정비하라  ·  R — 새 매치",
+                new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
                 new Color(0.75f, 0.8f, 0.88f, scoreA));
-
-            // 승리 순간 색종이 — 위에서 떨어지는 팀색 조각 (결정적 난수로 매 프레임 같은 자리)
-            if (myWin)
-            {
-                for (int i = 0; i < 60; i++)
-                {
-                    float seed = i * 12.9898f;
-                    float fx = Frac01(seed) * W;
-                    float speed = 120f + Frac01(seed * 1.7f) * 180f;
-                    float fy = ((age * speed + Frac01(seed * 3.3f) * H) % (H + 40f)) - 20f;
-                    var cc = i % 2 == 0 ? accent : new Color(1f, 0.9f, 0.4f);
-                    Fill(new Rect(fx, fy, 5f, 9f), new Color(cc.r, cc.g, cc.b, 0.85f));
-                }
-            }
         }
-
-        static float Frac01(float x) { x = Mathf.Sin(x) * 43758.5453f; return x - Mathf.Floor(x); }
 
         /// <summary>게이지 바 — 어두운 트랙 + 채움(윗변 하이라이트) + 끝단 캡 + 구간 눈금.
         /// segments &gt; 0이면 그 개수로 칸 나눔 (HP처럼 이산 수치 읽기용).</summary>

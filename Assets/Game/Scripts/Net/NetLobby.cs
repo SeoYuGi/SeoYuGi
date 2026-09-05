@@ -22,6 +22,7 @@ namespace SeoYuGi.Net
         const string MsgStart = "sy_start"; // host→all : 매치 시작 (MatchSetup)
         const string MsgChatReq = "sy_chatq"; // client→host : 로비 채팅 요청 (텍스트)
         const string MsgChatBrd = "sy_chatb"; // host→client : 로비 채팅 배달 (콜사인+텍스트, 같은 팀만)
+        const string MsgName = "sy_name";   // client→host : 닉네임 설정 요청 (2026-09-05)
 
         // 슬롯 템플릿 — BattleRunner.roster와 동일한 6칸 (id, team, 콜사인)
         static readonly (int id, int team, string name)[] Template =
@@ -76,6 +77,7 @@ namespace SeoYuGi.Net
 
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgLobby, OnLobbyMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgSlot, OnSlotMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgName, OnNameMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgClass, OnClassMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgStart, OnStartMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatReq, OnChatReqMsg);
@@ -103,6 +105,20 @@ namespace SeoYuGi.Net
             using var w = new FastBufferWriter(8, Allocator.Temp);
             w.WriteValueSafe(unitId);
             nm.CustomMessagingManager.SendNamedMessage(MsgSlot, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>닉네임 설정 — 내 슬롯 콜사인을 바꾼다. 슬롯 브로드캐스트에 실려 전원에게 동기화되고,
+        /// HostStart의 SlotConfig로도 흘러 킬피드·콜아웃에 그대로 찍힌다.</summary>
+        public static void RequestName(string name)
+        {
+            name = name?.Trim();
+            if (string.IsNullOrEmpty(name)) return;
+            if (name.Length > 10) name = name.Substring(0, 10);
+            var nm = NetworkManager.Singleton;
+            if (nm.IsHost) { SetName(nm.LocalClientId, name); return; }
+            using var w = new FastBufferWriter(128, Allocator.Temp);
+            w.WriteValueSafe(name);
+            nm.CustomMessagingManager.SendNamedMessage(MsgName, NetworkManager.ServerClientId, w);
         }
 
         public static void RequestClass(UnitClass cls)
@@ -291,11 +307,30 @@ namespace SeoYuGi.Net
                 {
                     var owner = Slots[i].owner;
                     var cls = Slots[i].cls;
+                    var callsign = Slots[i].callsign;
                     Slots[i].owner = SlotOwner.Bot;
                     Slots[i].clientId = 0;
+                    Slots[i].callsign = Template[i].name; // 빈 슬롯은 기본 콜사인 복원
                     Slots[dst].owner = owner;
                     Slots[dst].clientId = clientId;
                     Slots[dst].cls = cls;
+                    Slots[dst].callsign = callsign; // 닉네임은 사람을 따라간다 (2026-09-05)
+                    break;
+                }
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        /// <summary>호스트 — 해당 클라 슬롯의 콜사인 교체.</summary>
+        static void SetName(ulong clientId, string name)
+        {
+            name = name?.Trim();
+            if (string.IsNullOrEmpty(name)) return;
+            if (name.Length > 10) name = name.Substring(0, 10);
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].owner != SlotOwner.Bot && Slots[i].clientId == clientId)
+                {
+                    Slots[i].callsign = name;
                     break;
                 }
             Broadcast();
@@ -381,6 +416,13 @@ namespace SeoYuGi.Net
             if (!NetworkManager.Singleton.IsHost) return;
             r.ReadValueSafe(out int unitId);
             MoveTo(sender, unitId);
+        }
+
+        static void OnNameMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out string name);
+            SetName(sender, name);
         }
 
         static void OnClassMsg(ulong sender, FastBufferReader r)

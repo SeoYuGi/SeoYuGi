@@ -113,7 +113,7 @@ namespace SeoYuGi.BattleView
                 voice.OnTranscript += SendFreeText; // 받아쓴 문장이 내 채팅 줄로 남는다 (SendFreeText가 표시)
             }
             radio.enabled = GameModeState.IsCommander;
-            radio.FreezeOnOpen = !NetBoot.IsOnline; // 온라인은 호스트 시계 — 무전 타임이 정지를 대신한다
+            radio.FreezeOnOpen = false; // 싱글도 정지 없음 (2026-09-06) — 무한 정지로 프롬프트를 수백 개 박는 구멍 + 멀티와 규칙 통일. 고민 시간 = 무전 타임
             voice.enabled = GameModeState.IsCommander;
             if (!radio.enabled) radio.Close(); // 모드가 바뀌었는데 시간이 느린 채로 남지 않게
 
@@ -144,9 +144,18 @@ namespace SeoYuGi.BattleView
             }
         }
 
+        float nextFreeTextAt; // 자유 무전 최소 간격 — 연타로 LLM 요청을 쏟아붓지 않게 (2026-09-06)
+
         void SendFreeText(string text)
         {
             // 전사해도 무전은 살아 있다 — 관전하며 남은 분대를 지휘한다 (2026-09-05 "죽었을 때도 지휘")
+            if (Time.unscaledTime < nextFreeTextAt)
+            {
+                hud.ShowSubtitle("무전 과열. 잠시 뒤 다시.", 1.2f);
+                if (radio != null) radio.SetWaiting(false);
+                return;
+            }
+            nextFreeTextAt = Time.unscaledTime + 2.5f;
             var squad = CommandableUnitIds();
             if (squad.Count == 0) { if (radio != null) radio.SetWaiting(false); return; }
             ShowRadioLine(playerUnitId, text); // 내가 보낸 무전 — 말풍선 + 채팅 로그
@@ -755,7 +764,9 @@ namespace SeoYuGi.BattleView
         // ── 무전 타임 ──────────────────────────────────────────
         void TickRadioTime()
         {
-            bool online = GameModeState.IsCommander && NetBoot.IsOnline && phase == Phase.Playing;
+            // 싱글도 같은 주기 (2026-09-06) — 무전창 정지를 없앤 대신 정해진 고민 시간을 준다. 싱글은 자기가 호스트.
+            bool online = GameModeState.IsCommander && phase == Phase.Playing;
+            bool schedules = !NetBoot.IsOnline || NetBoot.IsHost;
             if (radioTimeActive)
             {
                 float remain = radioTimeEndsAt - Time.unscaledTime;
@@ -773,15 +784,16 @@ namespace SeoYuGi.BattleView
             {
                 Guide.MarkRadio();
                 radioTimeGuided = true;
+                nextRadioTimeAt = Battle.time + RadioTimeEvery; // 가이드 무전이 첫 무전 타임을 대신한다 — 곧바로 두 번 얼지 않게
                 BeginRadioTime(Guide.RadioLength);
                 if (radio != null && radio.enabled) radio.OpenGuided();
                 hud.PushEvent("튜토리얼 3/3. 지휘: 분대에 말로 지시하면 알아듣고 움직인다", StrikeVfx.MineNeon);
                 return;
             }
-            if (!online || !NetBoot.IsHost || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
+            if (!online || !schedules || nextRadioTimeAt < 0f || Battle == null || Battle.time < nextRadioTimeAt) return;
             nextRadioTimeAt = Battle.time + RadioTimeEvery;
             BeginRadioTime(RadioTimeLen);
-            NetSync.HostSendRadioTime(true, RadioTimeLen);
+            if (NetBoot.IsOnline) NetSync.HostSendRadioTime(true, RadioTimeLen);
         }
 
         /// <summary>훈련장 — 허수아비 제자리 복귀(밀려난 뒤 3초 안 맞으면) + F1~F5 캐릭터 교체.</summary>

@@ -106,7 +106,8 @@ namespace SeoYuGi.BattleView
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"LlmRadio 파싱 실패: {e.Message}");
+                    string raw = req.downloadHandler != null ? req.downloadHandler.text : "";
+                    Debug.LogWarning($"LlmRadio 파싱 실패: {e.Message}\n{(raw.Length > 600 ? raw.Substring(0, 600) : raw)}");
                     result = SquadOrders.NotUnderstood("응답이 깨졌습니다. 다시 말해 주십시오.");
                 }
                 finally { req.Dispose(); }
@@ -170,9 +171,9 @@ $"거점 zoneIndex: {zones}.\n\n" +
                     int start = text.IndexOf('{'), end = text.LastIndexOf('}');
                     if (start < 0 || end <= start) return;
                     var payload = JObject.Parse(text.Substring(start, end - start + 1));
-                    string line = payload["line"]?.Value<string>();
+                    string line = ReadString(payload["line"]);
                     if (string.IsNullOrWhiteSpace(line)) return;
-                    int unitId = payload["unitId"]?.Value<int>() ?? -1;
+                    int unitId = ReadInt(payload["unitId"], -1);
                     bool known = false;
                     foreach (var id in squad) if (id == unitId) { known = true; break; }
                     onLine(known ? unitId : squad[0], line.Trim());
@@ -238,8 +239,8 @@ context + "\n\n" +
                     foreach (var item in lines)
                     {
                         if (shown >= 2) break;
-                        string line = item["line"]?.Value<string>();
-                        int unitId = item["unitId"]?.Value<int>() ?? -1;
+                        string line = ReadString(item["line"]);
+                        int unitId = ReadInt(item["unitId"], -1);
                         if (string.IsNullOrWhiteSpace(line)) continue;
                         bool known = false;
                         foreach (var id in squad) if (id == unitId) { known = true; break; }
@@ -314,6 +315,25 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "까치는 명백히 틀린 명령에만 question, 너구리는 더듬으며 obey.";
         }
 
+        /// <summary>JSON 정수 방어 읽기 — null·"3"·3.0·빠진 키 전부 기본값 또는 정수로. 모델 출력은 스키마를 완전히 지키지 않는다.</summary>
+        static int ReadInt(JToken t, int fallback)
+        {
+            if (t == null || t.Type == JTokenType.Null || t.Type == JTokenType.Undefined) return fallback;
+            if (t.Type == JTokenType.Integer) return t.Value<int>();
+            if (t.Type == JTokenType.Float) return (int)Math.Round(t.Value<double>());
+            return int.TryParse(t.ToString().Trim(), out int v) ? v : fallback;
+        }
+
+        static bool ReadBool(JToken t, bool fallback)
+        {
+            if (t == null || t.Type == JTokenType.Null || t.Type == JTokenType.Undefined) return fallback;
+            if (t.Type == JTokenType.Boolean) return t.Value<bool>();
+            var s = t.ToString().Trim().ToLowerInvariant();
+            return s == "true" || s == "1" || s == "yes" ? true : s == "false" || s == "0" || s == "no" ? false : fallback;
+        }
+
+        static string ReadString(JToken t) => t == null || t.Type == JTokenType.Null ? null : t.Type == JTokenType.String ? t.Value<string>() : t.ToString();
+
         static SquadOrders ParseResponse(string json, System.Collections.Generic.IReadOnlyList<int> squad,
             System.Collections.Generic.IReadOnlyList<int> enemies, int zoneCount)
         {
@@ -332,20 +352,20 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 
             var s = new SquadOrders
             {
-                understood = payload["understood"]?.Value<bool>() ?? false,
-                ack = payload["ack"]?.Value<string>() ?? ""
+                understood = ReadBool(payload["understood"], false),
+                ack = ReadString(payload["ack"]) ?? ""
             };
             if (string.IsNullOrEmpty(s.ack)) s.ack = s.understood ? "수신했습니다." : "다시 말해 주십시오.";
             // 반문·불복종 (2026-09-05) — orders를 적용하지 않고 ack만 남긴다. 기존 명령은 그대로.
-            string compliance = (payload["compliance"]?.Value<string>() ?? "obey").ToLowerInvariant();
+            string compliance = (ReadString(payload["compliance"]) ?? "obey").ToLowerInvariant();
             if (compliance == "refuse" || compliance == "question") { s.understood = false; s.refused = compliance == "refuse"; return s; }
             if (!s.understood) return s;
 
             // 유닛별 응답 (2026-09-06) — 복합 명령이면 각자 자기 몫만 말한다. 없는 유닛은 버린다.
             foreach (var ja in payload["acks"] as JArray ?? new JArray())
             {
-                int aid = ja["unitId"]?.Value<int>() ?? -1;
-                string line = ja["line"]?.Value<string>();
+                int aid = ReadInt(ja["unitId"], -1);
+                string line = ReadString(ja["line"]);
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 bool ok = false;
                 foreach (var id in squad) if (id == aid) { ok = true; break; }
@@ -354,24 +374,24 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 
             foreach (var jo in payload["orders"] as JArray ?? new JArray())
             {
-                int unitId = jo["unitId"]?.Value<int>() ?? -1;
+                int unitId = ReadInt(jo["unitId"], -1);
                 bool known = false;
                 foreach (var id in squad) if (id == unitId) { known = true; break; }
                 if (!known) continue; // 없는 유닛·적 유닛 명령은 버린다
 
                 var o = UnitOrder.Free(unitId);
-                if (Enum.TryParse((string)jo["goal"], true, out OrderGoal goal)) o.goal = goal;
-                if (Enum.TryParse((string)jo["stance"], true, out OrderStance stance)) o.stance = stance;
-                o.zoneIndex = jo["zoneIndex"]?.Value<int>() ?? -1;
+                if (Enum.TryParse(ReadString(jo["goal"]) ?? "", true, out OrderGoal goal)) o.goal = goal;
+                if (Enum.TryParse(ReadString(jo["stance"]) ?? "", true, out OrderStance stance)) o.stance = stance;
+                o.zoneIndex = ReadInt(jo["zoneIndex"], -1);
                 if (o.goal == OrderGoal.Zone &&
                     (o.zoneIndex < 0 || o.zoneIndex >= zoneCount)) o.goal = OrderGoal.Free; // 이상값 → 자율
 
-                int focus = jo["focusEnemyId"]?.Value<int>() ?? -1;
+                int focus = ReadInt(jo["focusEnemyId"], -1);
                 bool validEnemy = false;
                 foreach (var e in enemies) if (e == focus) { validEnemy = true; break; }
                 o.focusEnemyId = validEnemy ? focus : -1; // 아군·유령 id 지목은 버린다
 
-                o.persistent = jo["persist"]?.Value<bool>() ?? false; // "매치 내내" — 라운드 백지화를 견딘다
+                o.persistent = ReadBool(jo["persist"], false); // "매치 내내" — 라운드 백지화를 견딘다
 
                 s.orders.Add(o);
             }

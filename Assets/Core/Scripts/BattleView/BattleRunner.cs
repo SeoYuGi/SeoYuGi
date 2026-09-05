@@ -1381,8 +1381,7 @@ namespace SeoYuGi.BattleView
                 || Spectating; // 관전 중엔 안개를 걷는다 — 죽고 나서까지 가려두면 남은 판을 볼 수가 없다
 
             mapIndex = setup.mapIndex;
-            map = BattleMaps.Get(mapIndex);
-            gridConfig = new GridConfig { width = map.Width, height = map.Height };
+            SetMap(BattleMaps.Get(mapIndex));
             predictor = NewPredictor(); // 클라에선 미사용 — null 분기 대신 동일 경로 유지
             hackSystem = NewHackSystem();
             Match = new MatchSystem(); // 로비 재시작 대비 — 매치 스코어 백지
@@ -1512,6 +1511,20 @@ namespace SeoYuGi.BattleView
             ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f)); // 링 제거 — 기둥 전용 (가독성 패스)
         }
 
+        /// <summary>
+        /// 맵 교체의 단일 진입점 (2026-09-06). map·gridConfig를 갈고, 타일·거점 라벨을 다음 BuildRound에서 다시 짓게 표시한다.
+        /// 예전엔 PickRandomMap·클라 setup이 map만 바꿔서 한 세션의 두 번째 매치부터 뷰가 옛 맵에 남았다 (거점 글자 어긋남, 이동 막힘).
+        /// </summary>
+        void SetMap(ParsedMap m)
+        {
+            map = m;
+            gridConfig = new GridConfig { width = map.Width, height = map.Height };
+            gridViewBuilt = false; // 타일·거점 라벨 전부 재생성
+            foreach (var go in zoneLabels)
+                if (go != null) Destroy(go);
+            zoneLabels.Clear();
+        }
+
         /// <summary>맵 랜덤 확정 + 맵 종속 상태 조립 → 클래스 선택으로.</summary>
         void PickRandomMap()
         {
@@ -1525,8 +1538,7 @@ namespace SeoYuGi.BattleView
                     if (m.Width * m.Height < bestArea) { bestArea = m.Width * m.Height; mapIndex = i; }
                 }
             }
-            map = BattleMaps.Get(mapIndex);
-            gridConfig = new GridConfig { width = map.Width, height = map.Height };
+            SetMap(BattleMaps.Get(mapIndex));
             predictor = NewPredictor();
             hackSystem = NewHackSystem();
             Debug.Log($"맵 랜덤 → [{map.Name}] ({map.Width}x{map.Height})");
@@ -1744,12 +1756,7 @@ namespace SeoYuGi.BattleView
             var nextMap = BattleMaps.Get(mapIndex + (Match.CurrentRound - 1) / RoundsPerMap);
             if (map == null || nextMap.Name != map.Name)
             {
-                map = nextMap;
-                gridConfig = new GridConfig { width = map.Width, height = map.Height };
-                gridViewBuilt = false; // 타일·거점 라벨 전부 재생성
-                foreach (var go in zoneLabels)
-                    if (go != null) Destroy(go);
-                zoneLabels.Clear();
+                SetMap(nextMap);
                 Debug.Log($"맵 로테이션 → [{map.Name}] ({map.Width}x{map.Height})");
             }
 

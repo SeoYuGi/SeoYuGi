@@ -110,11 +110,7 @@ public class UITitlePopup : UIPopup
     {
         var btn = Get<GameObject>((int)Buttons.BtnHost);
         btn.SetActive(true);
-        BindEvent(btn, _ =>
-        {
-            Debug.Log($"[지휘관] 버튼 클릭 — searching={searching}, 핸들러={(OnCommander != null ? "있음" : "없음")}");
-            if (!searching) OnCommander?.Invoke();
-        });
+        BindEvent(btn, _ => { if (!searching) OnCommander?.Invoke(); });
 
         var rt = (RectTransform)btn.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
@@ -148,7 +144,7 @@ public class UITitlePopup : UIPopup
 
     void BuildFooter()
     {
-        MakeText("Footer", "3판 2선승 · 라운드 120초 · 지휘관 모드에서는 T로 팀원에게 무전한다", 14, FontStyle.Normal,
+        MakeText("Footer", "3판 2선승 · 라운드 120초 · 지휘관 모드에서는 TAB으로 팀원에게 무전한다", 14, FontStyle.Normal,
             new Color(DimText.r, DimText.g, DimText.b, 0.8f),
             new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(900f, 22f), GameFonts.Hud);
     }

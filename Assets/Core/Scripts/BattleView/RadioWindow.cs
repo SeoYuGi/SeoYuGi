@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using SeoYuGi.Battle;
 using UnityEngine;
@@ -7,7 +7,7 @@ using UnityEngine.InputSystem;
 namespace SeoYuGi.BattleView
 {
     /// <summary>
-    /// 무전 지휘창 (지휘관 모드) — T로 열면 전투가 느려지고, 팀원에게 상시 명령을 내린다.
+    /// 무전 지휘창 (지휘관 모드) — TAB으로 열면 전투가 느려지고, 팀원에게 상시 명령을 내린다.
     ///
     /// 프리셋 버튼은 LLM을 거치지 않는다. 즉시 나가고 오프라인에서도 동작하므로
     /// 네트워크가 없어도 지휘관 모드 전체가 성립한다. 자유 서술은 나중에 얹는 확장이다.
@@ -40,7 +40,7 @@ namespace SeoYuGi.BattleView
         public void HandleHotkey()
         {
             if (Keyboard.current == null) return;
-            if (Keyboard.current.tKey.wasPressedThisFrame) Toggle();
+            if (Keyboard.current.tabKey.wasPressedThisFrame) Toggle();
             else if (IsOpen && Keyboard.current.escapeKey.wasPressedThisFrame) Close();
         }
 
@@ -115,7 +115,7 @@ namespace SeoYuGi.BattleView
             GUI.Label(new Rect(box.x + PadX, y, W - PadX * 2, 28f), "무전", titleStyle);
             y += 30f;
             GUI.Label(new Rect(box.x + PadX, y, W - PadX * 2, 20f),
-                "팀원에게 지시한다 · T 또는 ESC로 닫기", hintStyle);
+                "팀원에게 지시한다 · TAB 또는 ESC로 닫기", hintStyle);
             y += 28f;
 
             var presets = OrderPresets.All;

@@ -463,12 +463,9 @@ namespace SeoYuGi.BattleView
             popup.OnCommander = () =>
             {
                 // 지휘관 모드 — 매칭 없이 바로 봇전. 팀원 2기를 무전으로 지휘한다.
-                Debug.Log("[지휘관] 핸들러 진입");
                 GameModeState.Current = GameMode.Commander;
                 UIManager.Instance.ClosePopupUI(popup);
-                Debug.Log("[지휘관] 타이틀 닫음 → 맵 뽑기");
                 PickRandomMap();
-                Debug.Log("[지휘관] PickRandomMap 통과");
             };
         }
 
@@ -845,6 +842,7 @@ namespace SeoYuGi.BattleView
         /// <summary>라운드 1개 분량의 Core + 뷰 전체 조립. 라운드 시작마다 호출.</summary>
         void BuildRound()
         {
+            EnsureRadio(); // 매 라운드 — StartNextRound는 2라운드부터라 1라운드에 무전창이 안 생겼다
             ClearRoundObjects();
             if (pickBg != null) { Destroy(pickBg); pickBg = null; } // 픽 배경 제거
 
@@ -1706,7 +1704,6 @@ namespace SeoYuGi.BattleView
         void StartNextRound()
         {
             Orders.Clear(); // 새 라운드 = 명령 백지. 지난 판 지시가 넘어오지 않는다
-            EnsureRadio();
             predictor.SetRound(Match.CurrentRound); // R1 관찰 → R2 적용 → R3 선점
             BuildRound();
         }
@@ -1785,7 +1782,7 @@ namespace SeoYuGi.BattleView
                 input.enabled = true;
             }
 
-            // 무전 (T) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
+            // 무전 (TAB) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
             if (radio != null && radio.enabled) radio.HandleHotkey();
 
             // 해킹 (H) — 궁게이지 만충 시, 5초간 적 예측 AI 교란 + 적 전원 위치 표시. 클라는 Pending.

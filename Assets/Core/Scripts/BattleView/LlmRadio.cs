@@ -217,7 +217,9 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "- 분대원에겐 사람 같은 자율성이 있다. 응답에 \"compliance\" 필드를 넣는다: \"obey\"(기본) | " +
 "\"question\"(모호해서 되묻는다 — orders 비움) | \"refuse\"(명백한 자살행위만 — HP 1로 돌격, 혼자서 적 셋이 든 거점 진입 등. " +
 "orders 비우고 ack에 거부 이유 + 대안 한 문장). 거부는 드물어야 한다 — 열에 아홉은 복종.\n" +
-"- ack는 분대원이 무전으로 답하는 한국어 한 문장, 40자 이내. 군용 무전 말투, 약간의 성격(툴툴·의욕·침착) 허용.";
+"- ack는 응답하는 분대원(orders[0], 없으면 가장 관련된 분대원)의 '성격' 설명대로 말한다 — 말버릇 포함, 한국어 한 문장 40자 이내. " +
+"compliance도 성격을 따른다: 고라니는 자주 refuse하며 돌격을 선언, 비둘기는 되묻고 툴툴대지만 obey, 검은냥은 한두 단어로 obey, " +
+"까치는 명백히 틀린 명령에만 question, 너구리는 더듬으며 obey.";
         }
 
         static SquadOrders ParseResponse(string json, System.Collections.Generic.IReadOnlyList<int> squad,

@@ -240,10 +240,117 @@ namespace SeoYuGi.BattleView
                 default: return;
             }
             var built = OrderPresets.Build(p, squad, zoneCount);
+            int speaker = Personalize(built, squad); // 성격 — 말투 + (고라니) 불복종·(비둘기) 툴툴
             Orders.Apply(built);
             if (IsNetClient) NetSync.ClientSendOrders(built); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
-            ShowRadioLine(squad[0], Orders.LastAck); // 분대 응답도 채팅 로그에
+            ShowRadioLine(speaker, Orders.LastAck); // 분대 응답도 채팅 로그에
             ShowOrderMarkers(built.orders);
+        }
+
+        /// <summary>
+        /// 프리셋 명령에 분대원 성격을 입힌다 (LLM 없는 경로). 발화자는 돌려가며 하나.
+        /// 고라니가 Refuse를 굴리면 그 유닛 명령만 "자율+돌격"으로 바뀌고 거부 대사가 나간다 — 나머지는 복종.
+        /// 비둘기 Grumble은 툴툴대는 대사만, 명령은 그대로. 반환 = 발화자 unitId.
+        /// </summary>
+        int Personalize(SquadOrders built, List<int> squad)
+        {
+            if (squad.Count == 0) return playerUnitId;
+            int speaker = squad[radioSpeakerRotation++ % squad.Count];
+            string ack = built.ack;
+            foreach (var id in squad)
+            {
+                var slot = FindSlot(id);
+                var roll = Personas.Roll(slot.cls, personaRng);
+                if (roll == Personas.Reply.Refuse)
+                {
+                    for (int i = 0; i < built.orders.Count; i++)
+                        if (built.orders[i].unitId == id)
+                        {
+                            var o = built.orders[i];
+                            o.goal = OrderGoal.Free; o.stance = OrderStance.Aggressive; o.focusEnemyId = -1;
+                            built.orders[i] = o;
+                        }
+                    speaker = id; // 거부한 놈이 말한다 — 안 그러면 왜 혼자 딴 데 가는지 모른다
+                    built.ack = Personas.RefuseLine(slot.cls, slot.team, personaRng);
+                    hud.PushEvent($"[무전] {slot.callsign}: 명령 무시 — 돌격", new Color(1f, 0.78f, 0.25f));
+                    return speaker;
+                }
+                if (roll == Personas.Reply.Grumble && id == speaker)
+                    ack = Personas.GrumbleLine(slot.cls, slot.team, built.ack, personaRng);
+            }
+            var sp = FindSlot(speaker);
+            built.ack = ack == built.ack ? Personas.Speak(sp.cls, sp.team, built.ack, personaRng) : ack;
+            return speaker;
+        }
+
+        /// <summary>
+        /// 라운드 규칙에 분대가 스스로 반응 — "B 봉쇄 확인, A부터 갑니다" 식 무전 + 그에 맞는 초기 명령.
+        /// 호스트는 인간 지휘관이 있는 모든 팀의 봇에 명령을 넣고, 대사는 각자 자기 팀만 본다 (클라는 대사만 — 명령은 호스트가).
+        /// 규칙 없으면 아무 일 없음.
+        /// </summary>
+        void ReactToRule()
+        {
+            if (Rule == null || !GameModeState.IsCommander || matchSetup?.slots == null) return;
+            int zoneCount = Round != null ? Round.Zones.Count : 0;
+
+            for (int team = 0; team < 2; team++)
+            {
+                if (!TeamHasHuman(team)) continue;
+                bool mine = team == playerTeam;
+                if (!mine && IsNetClient) continue; // 상대 팀 명령은 호스트 몫
+
+                var bots = new List<int>();
+                var ranged = new List<int>();
+                foreach (var s in matchSetup.slots)
+                    if (s.team == team && s.owner == SlotOwner.Bot && Battle.GetUnit(s.unitId)?.alive == true)
+                    {
+                        bots.Add(s.unitId);
+                        if (s.cls == UnitClass.Sniper || s.cls == UnitClass.Grenadier) ranged.Add(s.unitId);
+                    }
+                if (bots.Count == 0) continue;
+
+                string line;
+                var orders = new SquadOrders();
+                switch (Rule.kind)
+                {
+                    case RoundRuleKind.ZoneLockdown:
+                    {
+                        int open = -1;
+                        for (int i = 0; i < zoneCount; i++) if (Rule.ZoneEnabled(i)) { open = i; break; }
+                        var locked = new List<string>();
+                        for (int i = 0; i < zoneCount; i++) if (!Rule.ZoneEnabled(i)) locked.Add(OrderPresets.ZoneName(i));
+                        line = $"{string.Join("·", locked)} 봉쇄 확인. {OrderPresets.ZoneName(System.Math.Max(open, 0))} 거점부터 갑니다.";
+                        orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.GatherZone, zone = System.Math.Max(open, 0) }, bots, zoneCount);
+                        break;
+                    }
+                    case RoundRuleKind.HighlandPower:
+                        line = "고지대 화력 두 배. 고지대를 먼저 잡겠습니다.";
+                        orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.Highland }, ranged, zoneCount);
+                        foreach (var o in OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone },
+                                     bots.FindAll(b => !ranged.Contains(b)), zoneCount).orders) orders.orders.Add(o);
+                        break;
+                    case RoundRuleKind.SwiftFoot:
+                        line = "발이 빨라졌습니다. 거점을 빠르게 훑겠습니다.";
+                        orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
+                        break;
+                    case RoundRuleKind.ShortFuse:
+                        line = "시간이 30초 짧습니다. 초반부터 거점을 잡습니다.";
+                        orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
+                        break;
+                    default: // NoTakeback
+                        line = "탈환 불가 — 첫 점령이 전부입니다. 빈 거점부터 찍습니다.";
+                        orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
+                        break;
+                }
+                orders.ack = line;
+                if (!IsNetClient) teamOrders[team].Apply(orders); // 호스트(싱글 포함) — 실제 명령
+                if (mine)
+                {
+                    var sp = FindSlot(bots[0]);
+                    ShowRadioLine(bots[0], Personas.Speak(sp.cls, sp.team, line, personaRng));
+                    ShowOrderMarkers(orders.orders);
+                }
+            }
         }
 
         /// <summary>
@@ -264,7 +371,8 @@ namespace SeoYuGi.BattleView
                 sb.Append(id).Append(": ").Append(ClassNames.For(r.team, r.cls))
                   .Append(" (").Append(RoleWord(r.cls)).Append(") HP ")
                   .Append(u.hp).Append('/').Append(u.maxHp)
-                  .Append(" 위치 (").Append(u.pos.x).Append(',').Append(u.pos.y).Append(")\n");
+                  .Append(" 위치 (").Append(u.pos.x).Append(',').Append(u.pos.y).Append(")")
+                  .Append(" 성격: ").Append(Personas.PromptBlock(r.cls)).Append('\n');
             }
             // 적은 편성만 준다 — 위치·HP는 시야 밖 정보라 새면 안 된다 (실제 사격도 시야 규칙을 탄다)
             sb.Append("적군 (생존, 위치 불명):\n");
@@ -394,6 +502,8 @@ namespace SeoYuGi.BattleView
         bool radioTimeActive;
         float radioTimeEndsAt;        // 실시간(unscaled) 기준 종료 시각 — 정지 중엔 전투 시계가 안 가므로
         float nextBriefingAt;         // 분대 브리핑 쿨 (실시간) — 무전 타임·무전창 열 때 한 번, 최소 12초 간격
+        readonly System.Random personaRng = new System.Random(); // 분대원 말버릇·복종 주사위 (연출용 — 결정론 불필요)
+        int radioSpeakerRotation;     // 프리셋 응답 발화자 돌려쓰기 — 매번 같은 놈만 말하지 않게
         bool radioOpenPrev;           // 무전창 열림 엣지 — 싱글 지휘관 브리핑 트리거
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
@@ -1043,6 +1153,7 @@ namespace SeoYuGi.BattleView
         void OnNetZoneOwner(int zoneIdx, int owner)
         {
             if (!IsNetClient || Round == null || zoneIdx >= Round.Zones.Count) return;
+            if (Round.Rule != null) { Round.Rule.OnZoneCaptured(zoneIdx); Round.SyncZoneActive(); } // 봉쇄 해제 — 호스트와 같은 규칙 진행 (zone.active는 스냅샷에 없다)
             var zone = Round.Zones[zoneIdx];
             bool ours = owner == playerTeam;
             battleAudio.PlaySfx(ours ? "S12a_ZoneCaptured" : "S12b_ZoneLost", 1.5f);
@@ -1958,6 +2069,11 @@ namespace SeoYuGi.BattleView
                 hud.ShowSubtitle($"◆ {Rule.title} ◆  {Rule.detail}", 5f);
                 Debug.Log($"라운드 규칙: {Rule.title} — {Rule.detail}");
             }
+            // 기계팀 지휘관 — 분대가 상대 동물을 스캔해 모방한다는 컨셉 대사 (성격도 같은 동물을 따른다)
+            if (GameModeState.IsCommander && playerTeam == 1)
+                foreach (var id in CommandableUnitIds())
+                    ShowRadioLine(id, Personas.MimicLine(FindSlot(id).cls));
+            ReactToRule(); // 규칙을 분대가 알아듣고 먼저 움직인다 — "B 봉쇄 확인, A부터 갑니다"
             Debug.Log($"라운드 {Match.CurrentRound} 시작 (Predictor round={predictor.Round})");
         }
 

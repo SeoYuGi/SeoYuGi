@@ -66,7 +66,7 @@ namespace SeoYuGi.Battle
     public static class RoundRules
     {
         /// <summary>규칙이 뽑힐 확률. 1라운드는 기본기를 익히는 판이라 낮게 둔다.</summary>
-        public static float ChanceFor(int round) => round <= 1 ? 0.30f : 0.60f;
+        public static float ChanceFor(int round) => round <= 1 ? 0.50f : 0.80f; // 상향 (2026-09-05) — 변수가 판을 살린다
 
         /// <summary>
         /// 그 라운드의 규칙 하나. 안 뽑히면 null (= 평범한 라운드).

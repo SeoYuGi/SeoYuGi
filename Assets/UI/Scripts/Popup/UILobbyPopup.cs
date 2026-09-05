@@ -74,11 +74,11 @@ public class UILobbyPopup : UIPopup
                 portrait.color = Color.white;
                 portrait.preserveAspect = false;
             }
-            // 캐릭터 선택 팝업과 같은 풀 카드 — 상대팀 줄을 숨겨 확보한 공간만큼 키워서 재배치.
-            // (슬롯 크기 축소판은 스탯이 깨알이라 폐기 — 2026-09-05 "너무작아")
+            // 캐릭터 선택 팝업과 같은 1배 카드(280x450) — 카드가 짧아져 축소 없이 들어간다 (2026-09-06).
+            // 위로는 슬롯 줄(하단 120), 아래로는 상태 문구(-420) 사이. 선택 확대(1.06)까지 안 겹침.
             var rt = (RectTransform)pick.transform;
-            SeoYuGi.UI.ClassCard.Build(rt, i, 0.62f);
-            rt.anchoredPosition = new Vector2((i - 2) * 195f, -120f);
+            SeoYuGi.UI.ClassCard.Build(rt, i, 1f);
+            rt.anchoredPosition = new Vector2((i - 2) * (SeoYuGi.UI.ClassCard.BaseW + 22f), -125f);
         }
 
         for (int i = 0; i < 6; i++)
@@ -101,6 +101,13 @@ public class UILobbyPopup : UIPopup
         }
         Get<GameObject>((int)Buttons.BtnCopyCode)?.SetActive(false);
         balanceText = transform.Find("BalanceText")?.GetComponent<Text>();
+        if (balanceText != null)
+        {
+            // 프리팹 위치(우측 중앙 x650)는 1배 카드와 겹친다 — 슬롯 줄 왼쪽, 상대 칸(우측 x500)과 대칭 자리로 (2026-09-06)
+            var brt = balanceText.rectTransform;
+            brt.anchoredPosition = new Vector2(-620f, 245f);
+            brt.sizeDelta = new Vector2(300f, 200f);
+        }
         // 시작/준비 (2026-09-06 1:1 고정): 호스트 = 상대가 준비했을 때만 시작, 클라 = 준비 토글
         BindEvent(Get<GameObject>((int)Buttons.BtnStart), _ =>
         {
@@ -274,9 +281,20 @@ public class UILobbyPopup : UIPopup
         RefreshOpponentBox();
     }
 
+    /// <summary>러너가 세션 연결 직후 부른다 — 로비가 연결보다 먼저 열리므로 OnChanged를 기다리지 않고 채운다.</summary>
+    public void RefreshNow() => Refresh();
+
     void RefreshOpponentBox()
     {
         if (oppText == null) return;
+        var startLabelEarly = Get<GameObject>((int)Buttons.BtnStart)?.GetComponentInChildren<Text>();
+        if (NetLobby.Slots == null) // 아직 서버 연결 중 — 방을 파는 중이거나 파진 방을 찾는 중
+        {
+            oppText.text = "서버 연결 중";
+            oppBox.color = new Color(0.2f, 0.2f, 0.25f, 0.85f);
+            if (startLabelEarly != null) startLabelEarly.text = "연결 중";
+            return;
+        }
         bool joined = NetLobby.OpponentJoined || !NetBoot.IsHost; // 클라 입장에선 호스트가 곧 상대
         bool ready = NetBoot.IsHost ? NetLobby.OpponentReady : true;
         if (!joined)
@@ -301,7 +319,8 @@ public class UILobbyPopup : UIPopup
 
     Text commanderLabel;
 
-    /// <summary>지휘관 대전 토글 — 호스트만 바꾸고, 상태는 NetLobby.Commander로 전원 동기화. 팀 변경 버튼 위에.</summary>
+    /// <summary>지휘관 대전 토글 — 호스트만 바꾸고, 상태는 NetLobby.Commander로 전원 동기화.
+    /// 하단 버튼 줄 왼쪽 칸(폐지된 코드 복사 자리). 나가기 위에 쌓으면 1배 카드 밑단과 겹친다 (2026-09-06).</summary>
     void CreateCommanderToggle()
     {
         var template = Get<GameObject>((int)Buttons.BtnLeave);
@@ -309,7 +328,7 @@ public class UILobbyPopup : UIPopup
         go.name = "BtnCommander";
         var rt = go.GetComponent<RectTransform>();
         var src = template.GetComponent<RectTransform>();
-        rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, (src.sizeDelta.y + 14f) * 2f);
+        rt.anchoredPosition = src.anchoredPosition + new Vector2(-480f, 0f);
         commanderLabel = go.GetComponentInChildren<Text>();
         BindEvent(go, _ =>
         {

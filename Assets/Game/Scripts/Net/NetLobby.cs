@@ -95,6 +95,15 @@ namespace SeoYuGi.Net
 
         static bool hooked;
 
+        /// <summary>세션 밖에서 로비를 먼저 열 때 — 지난 세션의 슬롯이 로비에 비치지 않게 비운다 (2026-09-06 "대기 화면 없이 바로 방").</summary>
+        public static void Clear()
+        {
+            Slots = null;
+            Commander = false;
+            ReceivedSetup = null;
+            OnChanged?.Invoke();
+        }
+
         /// <summary>호스트/클라 공통 — 접속 직후 1회 호출. 핸들러 등록 + (호스트) 초기 슬롯 구성.</summary>
         public static void Begin()
         {

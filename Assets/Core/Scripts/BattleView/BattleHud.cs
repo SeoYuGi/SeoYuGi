@@ -513,28 +513,8 @@ namespace SeoYuGi.BattleView
             return tex;
         }
 
-        float threatRemain = -1f, threatUntil; // 내 칸 피격 예고 — 러너가 매 프레임 갱신, 0.15초 안 오면 꺼짐
 
-        /// <summary>내 칸에 적 예고가 떨어진다 — 상단 붉은 배너. remain = 판정까지 남은 초.</summary>
-        public void ShowThreat(float remain)
-        {
-            threatRemain = remain;
-            threatUntil = Time.time + 0.15f;
-        }
-
-        void DrawThreat()
-        {
-            if (Time.time >= threatUntil) return;
-            float urgency = 1f - Mathf.Clamp01(threatRemain / 0.8f);
-            float beat = 0.5f + 0.5f * Mathf.Sin(Time.time * (6f + 14f * urgency));
-            var box = new Rect(W / 2f - 190, 205, 380, 48); // 96 → 205: 확대된 상단바 아래, 이벤트 배너와 같은 레인 (2026-09-06)
-            var red = new Color(1f, 0.25f, 0.18f);
-            NeonPanel(box, red, 0.6f + 0.4f * beat);
-            Fill(new Rect(box.x + 1, box.y + 1, box.width - 2, box.height - 2), new Color(0.6f, 0.05f, 0.02f, 0.25f + 0.2f * beat));
-            ShadowLabel(new Rect(box.x, box.y + 6, box.width, 36),
-                $"피격 예고 {Mathf.Max(0f, threatRemain):0.0}s. 피하세요!", subtitleStyle,
-                Color.Lerp(Color.white, red, 0.25f * beat));
-        }
+        // 피격 예고 HUD 배너("피격 예고 0.8s")는 은퇴 (2026-09-06 "과하고 정신없다") — 유닛 주위 링·화면 가장자리 맥동만 남긴다
 
         /// <summary>보이스 재생 동안 하단에 한글 자막 표시.</summary>
         public void ShowSubtitle(string text, float seconds)
@@ -591,7 +571,6 @@ namespace SeoYuGi.BattleView
                     DrawAnnounce();
                 }
                 DrawCountdown();
-                DrawThreat();
                 DrawEdgePings();
                 DrawPingWheel();
             }

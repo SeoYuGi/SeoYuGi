@@ -1058,7 +1058,7 @@ namespace SeoYuGi.BattleView
             radioTimeActive = false;
             GameFreeze.Pop();
             if (NetBoot.IsOnline && NetBoot.IsHost) NetSync.HostSendRadioTime(false, 0f);
-            hud.ShowAnnounce("교신 종료. 전투 재개", StrikeVfx.MineNeon, 1.2f);
+            // "교신 종료" 배너는 은퇴 — 정지가 풀리는 걸로 충분 (2026-09-06 배너 다이어트)
             if (radioTimeGuided)
             {
                 radioTimeGuided = false;
@@ -2711,6 +2711,14 @@ namespace SeoYuGi.BattleView
             hud.AddKill(killerName, victimName, feedColor);
             hud.PingEdge(gridView.CoordToWorld(dead.pos), feedColor); // 프레임 밖 킬 — 가장자리 방향 화살표 (가시성 패스 D)
 
+            // 처치 / 전사 배너 (2026-09-06 "배너는 처치·사망·거점만") — 킬피드는 구석이라 큰 사건이 안 읽혔다
+            if (dead.team != playerTeam && killer != null && killer.team == playerTeam)
+                hud.ShowAnnounce($"{killerName}, {victimName} 처치", teamColors[playerTeam], 2f);
+            else if (deadId == playerUnitId)
+                hud.ShowAnnounce(killerName != null ? $"전사. {killerName}에게 당했습니다" : "전사", new Color(1f, 0.35f, 0.25f), 2.4f);
+            else if (dead.team == playerTeam)
+                hud.ShowAnnounce($"{victimName} 전사", new Color(1f, 0.35f, 0.25f), 2f);
+
             // 멀티킬 콜아웃 (2026-09-05 모멘텀) — 잘 싸운 순간을 게임이 크게 불러준다
             if (killer != null)
             {
@@ -2759,8 +2767,7 @@ namespace SeoYuGi.BattleView
             var ground = gridView.CoordToWorld(me.pos);
             var head = view != null ? view.transform.position + Vector3.up * 0.6f : ground + Vector3.up * 1.1f;
             threatWarning.Set(ground, head, remain);
-            // 세 겹으로 알린다: 유닛 주위(링·!) + 화면 가장자리(붉은 비네트 맥동) + HUD 배너
-            hud.ShowThreat(remain);
+            // 두 겹으로 알린다: 유닛 주위(링·!) + 화면 가장자리(붉은 비네트 맥동). HUD 배너는 은퇴 (2026-09-06)
             ImpactFx.PulseThreat(1f - Mathf.Clamp01(remain / 0.8f));
         }
 
@@ -3155,7 +3162,7 @@ namespace SeoYuGi.BattleView
             bool hackReadyNow = hackSystem.IsReady(playerUnitId);
             if (hackReadyNow && !hackReadyAnnounced)
             {
-                hud.ShowAnnounce("시야해킹 준비 완료. H 키: 적 전원 정지 + 위치 노출", StrikeVfx.MineNeon, 3.2f);
+                // 배너는 은퇴 (2026-09-06 배너 다이어트) — 하단바 게이지 100% + 소리
                 battleAudio.PlaySfx("S28_HackReady", 1f);
                 battleAudio.PlaySfx("S22_DetectPing", 0.9f);
             }
@@ -3249,10 +3256,7 @@ namespace SeoYuGi.BattleView
             {
                 bool onHigh = Battle.Grid.IsHighland(me.pos);
                 if (onHigh && !playerWasOnHighland)
-                {
-                    hud.ShowAnnounce("고지대 확보. 시야 +2 / 사거리 +2 / 이동 +1", teamColors[playerTeam], 2.2f);
-                    battleAudio.PlaySfx("S34_Highland", 1.2f);
-                }
+                    battleAudio.PlaySfx("S34_Highland", 1.2f); // 배너는 은퇴 (2026-09-06 배너 다이어트) — 소리만
                 playerWasOnHighland = onHigh;
             }
 
@@ -3265,13 +3269,9 @@ namespace SeoYuGi.BattleView
             }
             if (prevMyZones >= 0 && (myZones != prevMyZones || enemyZones != prevEnemyZones))
             {
-                if (myZones == 2 && prevMyZones < 2)
-                    hud.ShowAnnounce("아군 거점 2개 확보. 하나 남았습니다!", teamColors[playerTeam], 2.6f);
-                else if (enemyZones == 2 && prevEnemyZones < 2)
-                {
-                    hud.ShowAnnounce("위험. 적이 거점 2개 장악!", new Color(1f, 0.35f, 0.25f), 2.6f);
+                // "거점 2개" 배너는 은퇴 (2026-09-06 배너 다이어트) — 점령/상실 배너와 상단 칩이 이미 말한다. 경보음만
+                if (enemyZones == 2 && prevEnemyZones < 2)
                     battleAudio.PlaySfx("S33_ZoneContest", 2f);
-                }
             }
             prevMyZones = myZones; prevEnemyZones = enemyZones;
 

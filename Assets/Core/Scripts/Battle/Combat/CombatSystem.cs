@@ -101,6 +101,17 @@ namespace SeoYuGi.Battle
 
         /// <summary>기본공격 사거리 판정 — 클래스별 모양 (범위 다이어그램 원본).</summary>
         /// <summary>bonus = 고지대 사거리 연장(+2). 모양을 유지한 채 반경만 커진다.</summary>
+        /// <summary>
+        /// 인접 8방(3×3에서 자기 제외) — 근접 스킬(방패밀기·강타·발톱·비명 교란·넉백샷)의 고정 사거리.
+        /// 2026-09-05 기본공격 사거리를 +1 했을 때, 모양 열거형(Melee8)을 공유하던 스킬까지
+        /// 같이 늘어나는 것을 막으려고 분리했다. 스킬 사거리는 여기, 기본공격은 InAttackShape.
+        /// </summary>
+        public static bool IsAdjacent8(Coord from, Coord to)
+        {
+            int dx = Math.Abs(to.x - from.x), dy = Math.Abs(to.y - from.y);
+            return (dx != 0 || dy != 0) && dx <= 1 && dy <= 1;
+        }
+
         public static bool InAttackShape(AttackShape shape, Coord from, Coord to, int bonus = 0)
         {
             int dx = Math.Abs(to.x - from.x), dy = Math.Abs(to.y - from.y);
@@ -108,9 +119,9 @@ namespace SeoYuGi.Battle
             int cheb = Math.Max(dx, dy);
             switch (shape)
             {
-                case AttackShape.Melee8: return cheb <= 1 + bonus;
-                case AttackShape.Circle2: { int r = 2 + bonus; return cheb <= r && !(dx == r && dy == r); }
-                case AttackShape.Square2: return cheb <= 2 + bonus;
+                case AttackShape.Melee8: return cheb <= 2 + bonus;
+                case AttackShape.Circle2: { int r = 3 + bonus; return cheb <= r && !(dx == r && dy == r); }
+                case AttackShape.Square2: return cheb <= 3 + bonus;
                 default: return false;
             }
         }
@@ -197,7 +208,7 @@ namespace SeoYuGi.Battle
         /// <summary>인접8 단일 칸 예고 타격 — 방패밀기(밀침2·벽꿍), 강타(밀침1), 발톱(순수 딜).</summary>
         ActDenied CastMeleeStrike(UnitState unit, Coord target, SkillDef skill, int pushCells, int wallBonus)
         {
-            if (!InAttackShape(AttackShape.Melee8, unit.pos, target)) return ActDenied.BadTarget;
+            if (!IsAdjacent8(unit.pos, target)) return ActDenied.BadTarget; // 근접 스킬 = 인접8 고정 (기본공격 +1과 무관)
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             var d = target - unit.pos;
@@ -358,7 +369,7 @@ namespace SeoYuGi.Battle
         ActDenied CastKnockShot(UnitState unit, Coord target, SkillDef skill)
         {
             // 인접8 적에게 즉발 피해 + 본인이 반대 방향 2칸 후퇴 (벽 막힘, 낙하 자기 부담)
-            if (!InAttackShape(AttackShape.Melee8, unit.pos, target)) return ActDenied.BadTarget;
+            if (!IsAdjacent8(unit.pos, target)) return ActDenied.BadTarget; // 근접 스킬 = 인접8 고정 (기본공격 +1과 무관)
             int victimId = State.Grid.GetUnitAt(target);
             if (victimId == Cell.NoUnit) return ActDenied.BadTarget;
             var victim = State.GetUnit(victimId);
@@ -403,7 +414,7 @@ namespace SeoYuGi.Battle
             if (unit == null || !unit.alive) return;
             var shape = ClassCatalog.Get(unit.unitClass).attackShape;
             int bonus = AttackBonus(unit);
-            int r = 2 + bonus; // 가장 넓은 모양(Square2) 기준 탐색 반경
+            int r = 3 + bonus; // 가장 넓은 모양(Square2) 기준 탐색 반경 — 사거리 +1과 함께 넓혔다
             for (int dx = -r; dx <= r; dx++)
             for (int dy = -r; dy <= r; dy++)
             {
@@ -520,7 +531,7 @@ namespace SeoYuGi.Battle
                 case SkillKind.Smash:
                 case SkillKind.Claw:
                 case SkillKind.KnockShot:
-                    if (!InAttackShape(AttackShape.Melee8, unit.pos, hover) || !State.Grid.IsWalkableTerrain(hover)) return false;
+                    if (!IsAdjacent8(unit.pos, hover) || !State.Grid.IsWalkableTerrain(hover)) return false;
                     cells.Add(hover);
                     return true;
                 case SkillKind.Scream:

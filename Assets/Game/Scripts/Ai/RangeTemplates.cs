@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using SeoYuGi.Prediction;
 
 namespace SeoYuGi.Ai
@@ -14,12 +14,18 @@ namespace SeoYuGi.Ai
         /// <summary>8방 인접 3×3 링 — 너구리·고라니·검은냥 기본공격, 발톱, 비명 교란, 방패밀기, 강타, 까치 넉백탄.</summary>
         public static readonly Cell[] Adjacent8 = Ring(1);
 
-        /// <summary>반경 2 원형(5×5에서 네 모서리 제외) — 비둘기 기본공격.</summary>
-        public static readonly Cell[] Circle2 = Build(2, (dx, dy) =>
-            (dx != 0 || dy != 0) && !(Abs(dx) == 2 && Abs(dy) == 2));
+        /// <summary>
+        /// 근접 클래스 기본공격 — 5×5(반경2, 24칸). 2026-09-05 사거리 +1.
+        /// Adjacent8과 분리해 둔다: 발톱·비명 교란·방패밀기·강타·넉백샷은 여전히 인접8이다.
+        /// </summary>
+        public static readonly Cell[] MeleeBasic = Ring(2);
 
-        /// <summary>5×5 링(자기 제외 24칸) — 까치 기본공격. (검은냥 도약 착지와 같은 모양 = Square2)</summary>
-        public static readonly Cell[] MagpieBasic = Build(2, (dx, dy) => dx != 0 || dy != 0);
+        /// <summary>반경 3 원형(7×7에서 네 모서리 제외) — 비둘기 기본공격. 2026-09-05 사거리 +1.</summary>
+        public static readonly Cell[] Circle2 = Build(3, (dx, dy) =>
+            (dx != 0 || dy != 0) && !(Abs(dx) == 3 && Abs(dy) == 3));
+
+        /// <summary>7×7(자기 제외 48칸) — 까치 기본공격. 2026-09-05 사거리 +1.</summary>
+        public static readonly Cell[] MagpieBasic = Ring(3);
 
         /// <summary>맨해튼 4 다이아몬드 + 십자 방향 5칸 연장 — 까치 조준 사격 지정 범위 (열 전체에서 변경).</summary>
         public static readonly Cell[] SnipeRange = BuildRect(5, (dx, dy) =>
@@ -48,7 +54,7 @@ namespace SeoYuGi.Ai
             {
                 case ClassId.Grenadier: return Circle2;
                 case ClassId.Sniper: return MagpieBasic;
-                default: return Adjacent8;
+                default: return MeleeBasic; // 인접8이 아니다 — 기본공격만 +1 (스킬은 Adjacent8 유지)
             }
         }
 

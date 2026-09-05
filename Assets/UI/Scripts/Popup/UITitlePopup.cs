@@ -1,15 +1,18 @@
-﻿using System;
+using System;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
-/// 시작 화면 — 도플갱어 메인화면 시안(Figma) 배치.
+/// 시작 화면 — 도플갱어 메인화면 시안(Figma) 그대로.
 ///
-/// 배경(UI/BG_Main)에 로고가 이미 박혀 있으므로 로고를 따로 그리지 않는다.
-/// 좌측에 버튼 네 개를 세로로 쌓는다: 멀티 모드 / 지휘관 모드 (싱글) / 설정 / 게임 종료.
-/// 버튼 판은 UI/Frame_MainButton, 글씨는 프리텐다드(GameFonts).
+/// 배경(UI/BG_Main)에 로고·캐릭터·버튼 판·글씨까지 전부 그려져 있다. 그래서 여기서는
+/// 아무것도 그리지 않고, 그림 속 버튼 자리에 **투명한 클릭 영역**만 올린다.
+/// 판을 코드로 다시 그리면 시안과 어긋나고(모서리·글씨), 그림을 그대로 쓰면 어긋날 것이 없다.
+///
+/// 배경은 원본 비율을 지키고(FitInParent) 남는 쪽은 검게 둔다. 클릭 영역은 배경의
+/// 자식이라 해상도·비율이 바뀌어도 그림 위 같은 자리를 지킨다.
 ///
 /// 프리팹의 버튼 셋(BtnSingle·BtnHost·BtnJoin)을 재활용하고 모자란 하나만 런타임 생성한다 —
 /// 팀원 프리팹은 건드리지 않는다는 이 파일의 기존 규칙 그대로.
@@ -24,20 +27,22 @@ public class UITitlePopup : UIPopup
 
     static readonly Color Cyan = new Color(0.35f, 0.85f, 1f);
 
-    // 버튼 위치는 화면이 아니라 '배경 이미지' 기준의 비율이다.
-    // 배경이 레터박스로 들어가면 화면 기준 좌표는 여백만큼 어긋나므로,
-    // 버튼을 배경의 자식으로 넣고 정규화 앵커로 붙인다 — 해상도·비율이 바뀌어도 그림 위 같은 자리다.
-    // 값은 합성 시안(1336×753) 실측을 이미지 크기로 나눈 것.
-    const float BtnCx = 0.1882f;   // 버튼 중심 x
-    const float BtnW = 0.2013f;    // 버튼 폭
-    const float BtnH = 0.0797f;    // 버튼 높이
-    const float BtnGap = 0.1062f;  // 버튼 간격
-    const float FirstCy = 0.5219f; // 첫 버튼 중심 y (아래 기준)
+    // 그림(1670×941) 속 버튼 판 실측 → 정규화 (x: 좌측 기준, y: 아래 기준).
+    // 네 판의 x는 같다. 위에서부터 멀티 / 지휘관 / 설정 / 종료.
+    const float BtnX0 = 145f / 1670f, BtnX1 = 478f / 1670f;
+    static readonly (float top, float bottom)[] BtnRows =
+    {
+        (410f / 941f, 493f / 941f),
+        (511f / 941f, 591f / 941f),
+        (612f / 941f, 690f / 941f),
+        (710f / 941f, 789f / 941f),
+    };
 
     Text searchText;
     RectTransform searchRing;   // 매칭 대기 회전 링
-    readonly Image[] btnGlows = new Image[4];
-    RectTransform bgRect;   // 배경 이미지 — 버튼의 부모
+    Image searchShade;          // 매칭 중 버튼 열을 눌러 두는 판 — 그림 속 버튼이 눌리는 것처럼 안 보이게
+    RectTransform bgRect;       // 배경 이미지 — 클릭 영역의 부모
+    readonly GameObject[] hits = new GameObject[4];
     bool searching;
 
     public override void Init()
@@ -45,37 +50,35 @@ public class UITitlePopup : UIPopup
         Bind<GameObject>(typeof(Buttons));
 
         var dim = transform.Find("Dim")?.GetComponent<Image>();
-        if (dim != null) dim.color = new Color(0f, 0f, 0f, 0f); // 배경 아트를 가리지 않는다
+        if (dim != null)
+        {
+            dim.color = new Color(0f, 0f, 0f, 0f);
+            dim.raycastTarget = false; // 투명해도 레이캐스트를 먹으면 아래 버튼이 눌리지 않는다
+        }
 
         var prefabTitle = transform.Find("Title");
         if (prefabTitle != null) prefabTitle.gameObject.SetActive(false); // 로고는 배경에 박혀 있다
 
         bgRect = BuildBackground();
 
-        // 프리팹에 없는 네 번째. Init이 두 번 돌아도 새로 만들지 않는다 —
-        // 겹쳐 만들면 같은 버튼이 두 벌 그려진다.
+        // 프리팹에 없는 네 번째. Init이 두 번 돌아도 새로 만들지 않는다.
         var existingQuit = transform.Find("BtnQuit") ?? (bgRect != null ? bgRect.Find("BtnQuit") : null);
-        var quit = existingQuit != null ? existingQuit.gameObject : MakeButtonObject("BtnQuit");
-        StyleButton(Get<GameObject>((int)Buttons.BtnSingle), 0, "멀티 모드", () => Pick());
-        StyleButton(Get<GameObject>((int)Buttons.BtnHost), 1, "지휘관 모드 (싱글)", () => OnCommander?.Invoke());
-        StyleButton(Get<GameObject>((int)Buttons.BtnJoin), 2, "설정", () => OnSettings?.Invoke());
-        StyleButton(quit, 3, "게임 종료", Quit);
+        var quit = existingQuit != null ? existingQuit.gameObject : new GameObject("BtnQuit", typeof(RectTransform));
+
+        hits[0] = HitArea(Get<GameObject>((int)Buttons.BtnSingle), 0, () => Pick());
+        hits[1] = HitArea(Get<GameObject>((int)Buttons.BtnHost), 1, () => OnCommander?.Invoke());
+        hits[2] = HitArea(Get<GameObject>((int)Buttons.BtnJoin), 2, () => OnSettings?.Invoke());
+        hits[3] = HitArea(quit, 3, Quit);
     }
 
     // ── 배치 ─────────────────────────────────────────────
 
-    /// <summary>
-    /// 배경 아트 — 원본 비율을 그대로 지키고, 화면과 비율이 다르면 남는 쪽은 검게 둔다.
-    /// FitInParent("contain")이라 그림이 잘리지 않는다 — cover로 덮으면 넓은 화면에서
-    /// 확대돼 좌측 로고가 화면 밖으로 밀려난다.
-    /// 버튼은 이 오브젝트의 자식이 되어 그림과 함께 움직인다.
-    /// </summary>
+    /// <summary>배경 아트 — 원본 비율 유지, 화면과 비율이 다르면 남는 쪽은 검정.</summary>
     RectTransform BuildBackground()
     {
         var oldLetter = transform.Find("Letterbox");
         if (oldLetter != null) DestroyImmediate(oldLetter.gameObject); // Init 재실행 대비
 
-        // 여백용 검은 바탕 — 배경보다 뒤, 화면 전체
         var back = new GameObject("Letterbox", typeof(RectTransform), typeof(Image));
         var brt = (RectTransform)back.transform;
         brt.SetParent(transform, false);
@@ -91,11 +94,9 @@ public class UITitlePopup : UIPopup
 
         var go = new GameObject("Background", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
         var rt = (RectTransform)go.transform;
-        rt.SetParent(brt, false);           // 검은 바탕 안에서 비율을 맞춘다
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
+        rt.SetParent(brt, false);
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
 
         var img = go.GetComponent<Image>();
         img.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
@@ -103,83 +104,41 @@ public class UITitlePopup : UIPopup
         img.raycastTarget = false;
 
         var fit = go.GetComponent<AspectRatioFitter>();
-        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent; // 원본 비율 유지, 남는 쪽은 검정
+        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
         fit.aspectRatio = (float)tex.width / tex.height;
         return rt;
     }
 
-    GameObject MakeButtonObject(string name)
-    {
-        var go = new GameObject(name, typeof(RectTransform), typeof(Image));
-        go.transform.SetParent(transform, false);
-        var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
-        textGo.transform.SetParent(go.transform, false);
-        var trt = (RectTransform)textGo.transform;
-        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
-        trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
-        return go;
-    }
-
-    /// <summary>버튼 하나를 시안 위치·모양으로. index = 위에서부터 0.</summary>
-    void StyleButton(GameObject btn, int index, string label, Action onClick)
+    /// <summary>
+    /// 그림 속 버튼 자리에 투명 클릭 영역. 판·글씨는 그리지 않는다 — 그림에 있다.
+    /// 프리팹 버튼에 딸린 Text·Image는 꺼서 그림과 겹치지 않게 한다.
+    /// </summary>
+    GameObject HitArea(GameObject btn, int index, Action onClick)
     {
         btn.SetActive(true);
         BindEvent(btn, _ => { if (!searching) onClick?.Invoke(); });
 
         var rt = (RectTransform)btn.transform;
-        // 배경의 자식으로 두고 정규화 앵커로 붙인다 — 레터박스로 그림이 줄거나 움직여도
-        // 버튼이 그림 위 같은 자리를 지킨다. 화면 기준 좌표면 여백만큼 어긋난다.
         if (bgRect != null) rt.SetParent(bgRect, false);
-        float cy = FirstCy - index * BtnGap;
-        rt.anchorMin = new Vector2(BtnCx - BtnW / 2f, cy - BtnH / 2f);
-        rt.anchorMax = new Vector2(BtnCx + BtnW / 2f, cy + BtnH / 2f);
+        var row = BtnRows[index];
+        rt.anchorMin = new Vector2(BtnX0, 1f - row.bottom);
+        rt.anchorMax = new Vector2(BtnX1, 1f - row.top);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
-        rt.SetAsLastSibling(); // 배경 위로
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        rt.SetAsLastSibling();
 
-        var plate = Resources.Load<Texture2D>("UI/Frame_MainButton");
+        // 레이캐스트만 받는 투명 Image. 프리팹의 Image가 있으면 그것을 쓴다.
         var img = btn.GetComponent<Image>();
         if (img == null) img = btn.AddComponent<Image>();
-        if (plate != null)
-        {
-            img.sprite = Sprite.Create(plate, new Rect(0, 0, plate.width, plate.height), new Vector2(0.5f, 0.5f));
-            img.color = Color.white;
-            img.type = Image.Type.Simple;
-        }
-        else
-        {
-            img.sprite = null;
-            img.color = new Color(0.03f, 0.06f, 0.12f, 0.9f); // 에셋 미도착 폴백
-        }
+        img.sprite = null;
+        img.color = new Color(0f, 0f, 0f, 0f);
         img.raycastTarget = true;
 
-        // 뒤에 깔리는 발광 판 — 알파 펄스. 있으면 새로 만들지 않는다(Init 재실행 대비).
-        var oldGlow = btn.transform.Find("Glow");
-        if (oldGlow != null) Destroy(oldGlow.gameObject);
-        var glowGo = new GameObject("Glow", typeof(RectTransform), typeof(Image));
-        var grt = (RectTransform)glowGo.transform;
-        grt.SetParent(btn.transform, false);
-        grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
-        grt.offsetMin = new Vector2(-8f, -8f); grt.offsetMax = new Vector2(8f, 8f);
-        grt.SetAsFirstSibling();
-        var glow = glowGo.GetComponent<Image>();
-        glow.color = new Color(Cyan.r, Cyan.g, Cyan.b, 0.08f);
-        glow.raycastTarget = false;
-        if (index < btnGlows.Length) btnGlows[index] = glow;
-
-        var text = btn.GetComponentInChildren<Text>();
-        if (text != null)
-        {
-            text.text = label;
-            text.fontSize = 30;
-            text.fontStyle = FontStyle.Normal;
-            text.color = new Color(0.92f, 0.97f, 1f);
-            text.alignment = TextAnchor.MiddleCenter;
-            text.horizontalOverflow = HorizontalWrapMode.Overflow;
-            text.raycastTarget = false;
-            if (GameFonts.Hud != null) text.font = GameFonts.Hud;
-        }
+        // 프리팹 버튼에 딸린 라벨·장식은 그림과 겹치므로 끈다
+        foreach (var t in btn.GetComponentsInChildren<Text>(true)) t.gameObject.SetActive(false);
+        var old = btn.GetComponent<Outline>();
+        if (old != null) old.enabled = false;
+        return btn;
     }
 
     static void Quit()
@@ -193,20 +152,35 @@ public class UITitlePopup : UIPopup
 
     // ── 매칭 연출 ─────────────────────────────────────────
 
-    /// <summary>매칭 시작 — 버튼 숨기고 '상대를 찾는 중' + 회전 링. 러너가 결과에 따라 닫는다.</summary>
+    /// <summary>매칭 시작 — 클릭 영역을 끄고 버튼 열 위에 어두운 판 + '상대를 찾는 중' + 회전 링.
+    /// 판·글씨가 그림에 박혀 있어 지울 수 없으므로, 대신 눌러서 "지금은 안 눌린다"를 보인다.</summary>
     public void ShowSearching()
     {
         searching = true;
-        Get<GameObject>((int)Buttons.BtnSingle).SetActive(false);
-        Get<GameObject>((int)Buttons.BtnHost).SetActive(false);
-        Get<GameObject>((int)Buttons.BtnJoin).SetActive(false);
-        var quit = transform.Find("BtnQuit") ?? (bgRect != null ? bgRect.Find("BtnQuit") : null);
-        if (quit != null) quit.gameObject.SetActive(false);
+        foreach (var h in hits) if (h != null) h.SetActive(false);
+
+        var parent = bgRect != null ? bgRect : (RectTransform)transform;
+        float cx = (BtnX0 + BtnX1) * 0.5f;
+        float top = 1f - BtnRows[0].top, bottom = 1f - BtnRows[3].bottom;
+
+        if (searchShade == null)
+        {
+            var go = new GameObject("SearchShade", typeof(RectTransform), typeof(Image));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(parent, false);
+            rt.anchorMin = new Vector2(BtnX0 - 0.01f, bottom - 0.02f);
+            rt.anchorMax = new Vector2(BtnX1 + 0.01f, top + 0.02f);
+            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+            searchShade = go.GetComponent<Image>();
+            searchShade.color = new Color(0f, 0f, 0f, 0.82f);
+            searchShade.raycastTarget = false;
+        }
+        searchShade.gameObject.SetActive(true);
 
         if (searchText == null)
         {
             searchText = MakeText("Searching", "", 30, FontStyle.Normal, new Color(0.6f, 0.9f, 1f),
-                new Vector2(BtnCx, FirstCy), new Vector2(0f, 0f), new Vector2(700f, 60f), GameFonts.Title);
+                new Vector2(cx, (top + bottom) * 0.5f + 0.09f), Vector2.zero, new Vector2(700f, 60f), GameFonts.Title);
 
             // 검정 배경 키잉 로드 — 링 텍스처는 plain black 위에 생성돼 그냥 쓰면 검정 사각형이 보인다
             var ringTex = BattleHud.LoadKeyed("UI/Ring_Zone");
@@ -217,8 +191,8 @@ public class UITitlePopup : UIPopup
             {
                 var go = new GameObject("SearchRing", typeof(RectTransform), typeof(Image));
                 searchRing = (RectTransform)go.transform;
-                searchRing.SetParent(bgRect != null ? bgRect : transform, false);
-                searchRing.anchorMin = searchRing.anchorMax = new Vector2(BtnCx, FirstCy - BtnGap);
+                searchRing.SetParent(parent, false);
+                searchRing.anchorMin = searchRing.anchorMax = new Vector2(cx, (top + bottom) * 0.5f - 0.08f);
                 searchRing.anchoredPosition = Vector2.zero;
                 searchRing.sizeDelta = new Vector2(150f, 150f);
                 var img = go.GetComponent<Image>();
@@ -245,10 +219,6 @@ public class UITitlePopup : UIPopup
 
     void LateUpdate()
     {
-        float pulse = (Mathf.Sin(Time.unscaledTime * 2.4f) + 1f) * 0.5f; // 0..1
-        foreach (var g in btnGlows)
-            if (g != null) g.color = new Color(Cyan.r, Cyan.g, Cyan.b, 0.05f + pulse * 0.10f);
-
         if (!searching && Keyboard.current != null &&
             (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame))
             Pick(); // 신 Input System — 구 Input API는 이 프로젝트에서 예외를 던진다

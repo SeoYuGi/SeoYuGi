@@ -1557,7 +1557,7 @@ namespace SeoYuGi.BattleView
                 initial[i] = roster[mineIdx[i]].cls;
             }
             popup.SetTeam(names, initial);
-            popup.SetTimer(30f); // 롤/오버워치식 캐릭터 선택 제한시간 — 종료 시 현재 선택으로 자동 출격
+            // 제한시간 없음 (2026-09-06 "싱글은 제한시간 없게") — 봇전이라 기다리는 사람이 없다. 멀티는 로비가 따로 관리
             popup.OnTeamPicked = classes =>
             {
                 for (int i = 0; i < mineIdx.Count; i++)

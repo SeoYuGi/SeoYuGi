@@ -2495,7 +2495,8 @@ namespace SeoYuGi.BattleView
 
                 bool isEnemy = unit.team != playerTeam;
                 bool visible = (unit.alive || view.IsDying) && // 쓰러짐 연출 동안은 살려둔다 (타격감 2차)
-                               (!isEnemy || hackReveal || vision.IsVisibleTo(playerTeam, unit.pos));
+                               (!isEnemy || hackReveal || Spectating || vision.IsVisibleTo(playerTeam, unit.pos));
+                               // 관전(사망) 중엔 적 전원 공개 — 안개만 걷고 유닛은 숨기면 반쪽 관전 (2026-09-05)
 
                 if (view.gameObject.activeSelf != visible)
                     view.gameObject.SetActive(visible);

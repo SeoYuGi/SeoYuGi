@@ -26,6 +26,7 @@ namespace SeoYuGi.Battle
         public int wallBonusDamage; // 벽/맵 경계에 밀려 부딪히면 추가 피해
         public float stunSeconds;   // 비명 교란: 판정 시 스턴 부여
         public SkillKind kind;      // 이 예고가 무슨 스킬인가 — 예고 아이콘용. 평타는 SkillKind.BasicAttack
+        public int targetUnitId = Cell.NoUnit; // 유닛 잠금 (낚아채기) — 예고 중 움직여도 따라간다 (2026-09-05)
         public Coord aimCell;       // 시전자가 지정한 칸 — 연출용(조준경·공격선). 광역은 중심, 자기중심 스킬은 시전자 칸
     }
 
@@ -430,7 +431,10 @@ namespace SeoYuGi.Battle
                 cells = { target },      // 단일 칸 — 광역이 아니다
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
-                damage = skill.damage * HighlandScale(unit)
+                damage = skill.damage * HighlandScale(unit),
+                // 유닛 잠금 (2026-09-05 "우리팀 낚아채기가 안 돼"): 칸만 기억하면 예고 1초 사이
+                // 움직이는 아군 봇을 절대 못 잡는다 — 발톱은 유닛을 쫓는다.
+                targetUnitId = State.Grid.GetUnitAt(target)
             });
             return ActDenied.None;
         }
@@ -773,6 +777,14 @@ namespace SeoYuGi.Battle
             var attacker = State.GetUnit(strike.attackerId);
             bool hit = false;
             int dealt = 0;
+
+            // 유닛 잠금 예고(낚아채기) — 대상이 예고 중 이동했으면 현재 칸으로 판정을 옮긴다
+            if (strike.targetUnitId != Cell.NoUnit)
+            {
+                var locked = State.GetUnit(strike.targetUnitId);
+                if (locked != null && locked.alive && strike.cells.Count == 1)
+                    strike.cells[0] = locked.pos;
+            }
 
             foreach (var cell in strike.cells)
             {

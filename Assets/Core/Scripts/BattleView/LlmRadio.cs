@@ -22,7 +22,7 @@ namespace SeoYuGi.BattleView
     public static class LlmRadio
     {
         const string Endpoint = "https://api.openai.com/v1/chat/completions";
-        const string Model = "gpt-4o-mini"; // 명령 해석은 단순 분류 — 속도·비용 우선
+        const string Model = "gpt-4.1-mini"; // 4o-mini와 같은 속도·비용 등급, 복합 명령·문맥 파악이 낫다 (2026-09-06). 안 되면 "gpt-4o-mini"로 되돌릴 것
         const int TimeoutSeconds = 10;
 
         static string cachedKey;
@@ -128,7 +128,8 @@ namespace SeoYuGi.BattleView
             var zones = zoneCount >= 3 ? "0=A(왼쪽), 1=B(중앙), 2=C(오른쪽)" : "0=A(중앙 단일 거점)";
             string system =
 "너는 실시간 전술 게임의 아군 분대원 중 하나다. 아래 전장 상황을 보고 지휘관(플레이어)에게 무전으로 " +
-"상황 보고 한 문장을 한다. 위험 또는 기회 딱 하나만 — 예: 잃은 거점, 낮은 HP, 비어 있는 거점, 우세 거점.\n\n" +
+"상황 보고 한 문장을 한다. 위험 또는 기회 딱 하나만, 그리고 가능하면 제안까지 — 예: \"B가 비었습니다. 제가 찍을까요?\", \"HP 1입니다. 뒤로 빠지겠습니다.\", " +
+"\"적이 A 점거 중. 둘이 같이 가면 밀 수 있습니다.\" 남은 시간·점거 게이지·현재 명령을 근거로 판단한다.\n\n" +
 "전장 상황:\n" + squadBrief + "\n\n" +
 (eventHint != null ? "방금 일어난 일: " + eventHint + ". 이 사건에 대해 보고한다 — 지휘관이 이미 화면으로 봤으니 사실 반복이 아니라 분대원 시점의 반응·제안으로.\n\n" : "") +
 $"거점 zoneIndex: {zones}.\n\n" +
@@ -277,7 +278,7 @@ context + "\n\n" +
 "현재 전장 상황 (unitId: 호출명·HP·위치, 거점 소유):\n" + squadBrief + "\n\n" +
 $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "응답 형식 (JSON 외 텍스트 금지):\n" +
-"{\"understood\":true,\"ack\":\"무전 응답 한 문장\",\"acks\":[{\"unitId\":3,\"line\":\"분대원별 응답 한 문장\"}],\"orders\":[{\"unitId\":3,\"goal\":\"Zone\",\"zoneIndex\":1,\"stance\":\"Aggressive\",\"focusEnemyId\":-1,\"persist\":false}]}\n\n" +
+"{\"reason\":\"전장 판단 한 줄(내부용)\",\"understood\":true,\"ack\":\"무전 응답 한 문장\",\"acks\":[{\"unitId\":3,\"line\":\"분대원별 응답 한 문장\"}],\"orders\":[{\"unitId\":3,\"goal\":\"Zone\",\"zoneIndex\":1,\"stance\":\"Aggressive\",\"focusEnemyId\":-1,\"persist\":false}]}\n\n" +
 "goal: \"Free\"(자율 판단) | \"Zone\"(지정 거점으로 — zoneIndex 필수) | \"Highland\"(가까운 고지대 선점) | " +
 "\"Regroup\"(지휘관 곁으로) | \"Fallback\"(뒤로 물러남)\n" +
 "stance: \"Normal\" | \"Aggressive\"(적을 찾아가 적극 교전) | \"Evasive\"(먼저 쏘지 않고 임무 우선)\n" +
@@ -297,6 +298,10 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "- \"저격수부터 노려\"처럼 적을 지목하면 해당 분대원(들)의 focusEnemyId에 그 적 unitId를 넣는다. " +
 "goal은 언급 없으면 \"Free\", stance는 \"Aggressive\"가 자연스럽다.\n" +
 "- 게임에 없는 세부 행동(특정 스킬, 좌표 등)은 가장 가까운 goal/stance 조합으로 해석한다.\n" +
+"- reason은 명령을 정하기 전에 쓴다: 남은 시간, 거점 소유·점거 상황, 분대원 HP·위치·현재 명령을 보고 지휘관 의도를 한 줄로 판단한다. " +
+"모호한 지시는 전장 상황으로 가장 그럴듯한 쪽을 고른다 — \"거점 가\"면 비었거나 뺏기는 거점, \"막아\"면 적이 점거 중인 아군 거점. question은 정말 갈릴 때만.\n" +
+"- 지휘관 지시가 상황과 어긋나면(이미 아군 거점으로 가라, 봉쇄된 거점으로 가라 등) obey하되 ack에 그 사실을 한 마디 덧붙인다.\n" +
+"- ack와 acks에는 상황 근거를 한 마디 곁들인다 — \"B 비었으니 내가 먼저 찍는다\", \"까돌봇 저격수라 제가 붙습니다\". 그냥 복창은 금지.\n" +
 "- 해석할 수 없거나 게임과 무관한 말이면 {\"understood\":false,\"ack\":\"짧은 되물음\"}.\n" +
 "- 분대원에겐 사람 같은 자율성이 있다. 응답에 \"compliance\" 필드를 넣는다: \"obey\"(기본) | " +
 "\"question\"(모호해서 되묻는다 — orders 비움) | \"refuse\"(명백한 자살행위만 — HP 1로 돌격, 혼자서 적 셋이 든 거점 진입 등. " +

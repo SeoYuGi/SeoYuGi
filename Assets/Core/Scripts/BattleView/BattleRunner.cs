@@ -381,6 +381,15 @@ namespace SeoYuGi.BattleView
             var sb = new System.Text.StringBuilder();
             var me = Battle.GetUnit(playerUnitId);
             var mySlot = FindSlot(playerUnitId);
+            // 판단 재료 (2026-09-06 "애들이 좀 더 고능하게"): 시간·규칙·스코어를 먼저 준다
+            if (Round != null)
+            {
+                float remain = Mathf.Max(0f, Round.Config.roundSeconds - Battle.time);
+                sb.Append("라운드 ").Append(Match.CurrentRound).Append("/3, 스코어 아군 ").Append(Match.GetWins(playerTeam))
+                  .Append(":").Append(Match.GetWins(1 - playerTeam))
+                  .Append(Round.Overtime ? ". 추가시간 — 첫 킬 또는 첫 탈환이 승리" : $". 남은 시간 {Mathf.CeilToInt(remain)}초")
+                  .Append(Rule != null ? $". 규칙 [{Rule.title}] {Rule.detail}" : "").Append('\n');
+            }
             sb.Append("지휘관(나, \"").Append(mySlot.callsign).Append("\")");
             if (me != null && me.alive) sb.Append(" 위치: (").Append(me.pos.x).Append(',').Append(me.pos.y).Append(")");
             else sb.Append(". 전사, 관전 중 지휘");
@@ -396,6 +405,8 @@ namespace SeoYuGi.BattleView
                   .Append(s.cls).Append('/').Append(RoleWord(s.cls))
                   .Append(" | HP ").Append(u.hp).Append('/').Append(u.maxHp)
                   .Append(" 위치 (").Append(u.pos.x).Append(',').Append(u.pos.y).Append(")")
+                  .Append(Battle.Grid.IsHighland(u.pos) ? " 고지대" : "")
+                  .Append(" | 현재 명령: ").Append(Orders.HasOrder(id) ? OrderDesc(Orders.Get(id)) : "자율")
                   .Append(" | 성격: ").Append(Personas.PromptBlock(s.cls)).Append('\n');
             }
             // 적은 편성만 준다 — 위치·HP는 시야 밖 정보라 새면 안 된다 (실제 사격도 시야 규칙을 탄다)
@@ -416,7 +427,28 @@ namespace SeoYuGi.BattleView
                     string owner = z.owner < 0 ? "중립" : z.owner == playerTeam ? "아군" : "적군";
                     sb.Append("거점 ").Append(OrderPresets.ZoneName(i)).Append('(').Append(i)
                       .Append("): ").Append(owner)
-                      .Append(". 중심 (").Append(z.Center.x).Append(',').Append(z.Center.y).Append(")\n");
+                      .Append(". 중심 (").Append(z.Center.x).Append(',').Append(z.Center.y).Append(")");
+                    if (!z.active) sb.Append(". 봉쇄됨(점령 불가)");
+                    else
+                    {
+                        // 점거 상태 + 거점 위 인원 — "빈 거점", "뺏기는 거점", "경합"을 모델이 스스로 읽게
+                        int ours = 0, theirs = 0;
+                        foreach (var c in z.cells)
+                        {
+                            int uid = Battle.Grid.GetUnitAt(c);
+                            if (uid == SeoYuGi.Battle.Cell.NoUnit) continue;
+                            var uu = Battle.GetUnit(uid);
+                            if (uu == null || !uu.alive) continue;
+                            if (uu.team == playerTeam) ours++; else theirs++;
+                        }
+                        if (ours == 0 && theirs == 0) sb.Append(". 비어 있음");
+                        else sb.Append(". 거점 위 아군 ").Append(ours).Append(" / 적 ").Append(theirs);
+                        if (ours > 0 && theirs > 0) sb.Append(" (경합, 게이지 정지)");
+                        else if (z.capturingTeam >= 0 && z.progress > 0f && Round.Config.captureSeconds > 0f)
+                            sb.Append(z.capturingTeam == playerTeam ? ". 아군 점거 중 " : ". 적 점거 중 ")
+                              .Append(Mathf.RoundToInt(z.progress / Round.Config.captureSeconds * 100f)).Append('%');
+                    }
+                    sb.Append('\n');
                 }
             return sb.ToString();
         }

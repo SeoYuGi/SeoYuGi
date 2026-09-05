@@ -66,8 +66,9 @@ namespace SeoYuGi.BattleView
         GUIStyle bannerTextStyle, labelStyle, bannerStyle, briefTitleStyle, briefLineStyle, killStyle, announceStyle;
         GUIStyle keyStyle, slotNameStyle, slotCostStyle, slotCoolStyle, bigNumStyle, subStyle, subtitleStyle;
         bool stylesReady;
-        Texture2D iconMove, iconAttack, iconGuard, iconSkill, panelBriefing; // Resources/UI — 없으면 무시
+        Texture2D iconMove, iconAttack, iconGuard, iconSkill1, iconSkill2, panelBriefing; // Resources/UI — 없으면 무시
         Texture2D texSlot, texPanel, texInfo, texChip, texBanner;           // 프레임류 — 없으면 GUI.Box 폴백
+        Texture2D texTimer, texGauge, texResultBanner, texCheatsheet;       // UI 리마스터 2차분 (2026-09-05)
         UnitMoveInput moveInput; // 선택 상태 조회용 — 같은 GO에서 자동 연결
 
         // 해상도 대응: 세로 1080 기준 비례 스케일 × hudScale — 어느 기기든 화면 대비 같은 크기
@@ -99,13 +100,19 @@ namespace SeoYuGi.BattleView
             iconMove = Resources.Load<Texture2D>("UI/Icon_Move");
             iconAttack = Resources.Load<Texture2D>("UI/Icon_Attack");
             iconGuard = Resources.Load<Texture2D>("UI/Icon_Guard");
-            iconSkill = Resources.Load<Texture2D>("UI/" + SkillIconName(battle.GetUnit(playerUnitId).unitClass));
+            var myCls = battle.GetUnit(playerUnitId).unitClass;
+            iconSkill1 = LoadSkillIcon(ClassCatalog.Get(myCls).skills[0].kind); // 스킬별 아이콘 — 10종 전부 아트 확보 (2026-09-05)
+            iconSkill2 = LoadSkillIcon(ClassCatalog.Get(myCls).skills[1].kind);
             panelBriefing = Resources.Load<Texture2D>("UI/Panel_Briefing");
             texSlot = LoadKeyed("UI/Frame_Slot");
             texPanel = LoadKeyed("UI/Frame_Panel");
             texInfo = LoadKeyed("UI/Frame_Info");
             texChip = LoadKeyed("UI/Frame_Chip");
             texBanner = LoadKeyed("UI/Frame_Banner");
+            texTimer = LoadKeyed("UI/Panel_Timer");
+            texGauge = LoadKeyedTealSwap("UI/Gauge_Hack"); // 아트는 보라 — 색 언어(보라=예측)에 맞춰 틸로 채널 스왑
+            texResultBanner = LoadKeyed("UI/Banner_Result");
+            texCheatsheet = LoadKeyed("UI/Panel_Cheatsheet");
         }
 
         static readonly Dictionary<string, Texture2D> keyedCache = new Dictionary<string, Texture2D>();
@@ -305,17 +312,27 @@ namespace SeoYuGi.BattleView
             GUI.color = Color.white;
         }
 
-        static string SkillIconName(UnitClass cls)
+        static Texture2D LoadSkillIcon(SkillKind kind)
         {
-            switch (cls)
+            var t = Resources.Load<Texture2D>("UI/Icon_Skill_" + kind);
+            return t != null ? t : Resources.Load<Texture2D>("UI/Icon_Skill_Generic");
+        }
+
+        /// <summary>LoadKeyed + R↔G 채널 스왑 — 보라 계열 아트를 팀 틸로. (해킹 게이지 전용)</summary>
+        static Texture2D LoadKeyedTealSwap(string path)
+        {
+            var src = LoadKeyed(path);
+            if (src == null) return null;
+            try
             {
-                case UnitClass.Tank: return "Icon_Skill_Smash";
-                case UnitClass.Balance: return "Icon_Skill_Dash";
-                case UnitClass.Assassin: return "Icon_Skill_Blink";
-                case UnitClass.Grenadier: return "Icon_Skill_Burst";
-                case UnitClass.Sniper: return "Icon_Skill_Snipe";
-                default: return "Icon_Skill_Generic";
+                var px = src.GetPixels32();
+                for (int i = 0; i < px.Length; i++) { var r = px[i].r; px[i].r = px[i].g; px[i].g = r; }
+                var tex = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
+                tex.SetPixels32(px);
+                tex.Apply();
+                return tex;
             }
+            catch (UnityException) { return src; }
         }
 
         /// <summary>라운드 사이 결과 화면. lines는 폐기된 브리핑 잔재 — null로 온다.</summary>
@@ -502,7 +519,7 @@ namespace SeoYuGi.BattleView
         {
             // 남은시간 (탱고파이브 중앙 타이머) — 프레임 아트의 테두리 여백만큼 텍스트를 안쪽에
             var timerBox = new Rect(W / 2f - 84, 2, 168, 62);
-            DrawFrame(timerBox, texInfo);
+            DrawFrame(timerBox, texTimer != null ? texTimer : texInfo);
             if (round.SuddenDeath)
             {
                 GUI.color = new Color(1f, 0.4f, 0.3f);
@@ -701,7 +718,7 @@ namespace SeoYuGi.BattleView
             DrawSlot(new Rect(sx + (slotW + gap) * 2, y, slotW, slotH), "S", SkillName(u.unitClass, 0),
                 $"쿨 {s1.cooldownSeconds:0}s", s1Cool <= 0f,
                 s1Cool, s1.cooldownSeconds > 0f ? s1Cool / s1.cooldownSeconds : 0f,
-                aim == UnitMoveInput.AimMode.Skill, iconSkill,
+                aim == UnitMoveInput.AimMode.Skill, iconSkill1,
                 () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Skill));
 
             var s2 = ClassCatalog.Get(u.unitClass).skills[1];
@@ -709,7 +726,7 @@ namespace SeoYuGi.BattleView
             DrawSlot(new Rect(sx + (slotW + gap) * 3, y, slotW, slotH), "D", SkillName(u.unitClass, 1),
                 $"쿨 {s2.cooldownSeconds:0}s", s2Cool <= 0f,
                 s2Cool, s2.cooldownSeconds > 0f ? s2Cool / s2.cooldownSeconds : 0f,
-                aim == UnitMoveInput.AimMode.Skill2, iconSkill,
+                aim == UnitMoveInput.AimMode.Skill2, iconSkill2,
                 () => moveInput?.ToggleAim(UnitMoveInput.AimMode.Skill2));
 
             // 해킹 궁게이지 세그먼트 (구 AP 탄약 카운터 자리) — 만충 시 H 발동
@@ -721,6 +738,11 @@ namespace SeoYuGi.BattleView
             var hackColor = hackReady
                 ? Color.Lerp(new Color(0.45f, 1f, 0.95f), Color.white, 0.5f + 0.5f * Mathf.Sin(Time.time * 6f))
                 : new Color(0.3f, 0.75f, 0.72f);
+            if (texGauge != null) // 게이지 링 아트 — 숫자 뒤 장식, 충전량은 알파로
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.35f + 0.65f * charge);
+                GUI.DrawTexture(new Rect(hackSeg.xMax - 58, hackSeg.y + 3, 56, 56), texGauge, ScaleMode.ScaleToFit);
+            }
             GUI.color = hackColor;
             GUI.Label(new Rect(hackSeg.x, hackSeg.y + 2, hackSeg.width, 30), $"{charge * 100f:0}%", bigNumStyle);
             GUI.color = Color.white;
@@ -851,9 +873,17 @@ namespace SeoYuGi.BattleView
             if (panelBriefing != null)
                 GUI.DrawTexture(box, panelBriefing, ScaleMode.StretchToFill); // 관제 터미널 배경
 
-            // 패널 아트의 상·하단 장식 밴드를 피해 텍스트는 중앙부에 + 반투명 백킹으로 가독성 확보
-            GUI.color = new Color(0f, 0f, 0f, 0.55f);
-            GUI.DrawTexture(new Rect(box.x + 50, box.y + 44, box.width - 100, 30), Texture2D.whiteTexture);
+            // 결과 배너 아트 (날개 프레임) — 중립색 아트를 승/패 색으로 틴트. 없으면 구 백킹 폴백.
+            if (texResultBanner != null)
+            {
+                GUI.color = myWin ? new Color(0.55f, 1f, 0.7f) : new Color(1f, 0.55f, 0.45f);
+                GUI.DrawTexture(new Rect(box.x + 40, box.y + 22, box.width - 80, 74), texResultBanner, ScaleMode.ScaleToFit);
+            }
+            else
+            {
+                GUI.color = new Color(0f, 0f, 0f, 0.55f);
+                GUI.DrawTexture(new Rect(box.x + 50, box.y + 44, box.width - 100, 30), Texture2D.whiteTexture);
+            }
             GUI.color = myWin ? new Color(0.4f, 1f, 0.6f) : new Color(1f, 0.45f, 0.35f);
             GUI.Label(new Rect(box.x, box.y + 46, box.width, 26),
                 $"ROUND {briefingRound} — {(myWin ? "승리" : "패배")}", briefTitleStyle);
@@ -1003,6 +1033,9 @@ namespace SeoYuGi.BattleView
 
             GUI.color = new Color(0f, 0f, 0f, 0.82f);
             GUI.DrawTexture(new Rect(x0, y0, panelW, panelH), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            if (texCheatsheet != null) // 치트시트 프레임 아트 — 반투명 백킹 위에 겹침
+                GUI.DrawTexture(new Rect(x0 - 6, y0 - 6, panelW + 12, panelH + 12), texCheatsheet, ScaleMode.StretchToFill);
             GUI.color = new Color(0.55f, 0.95f, 1f);
             GUI.Label(new Rect(x0, y0 + 4, panelW, 20), "빠른채팅 — 클릭 or 숫자키", subStyle);
             GUI.color = Color.white;

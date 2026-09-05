@@ -17,8 +17,9 @@ namespace SeoYuGi.BattleView
     {
         public bool IsOpen { get; private set; }
 
-        /// <summary>입력줄 아랫변이 화면 아래서 이만큼(×스케일) 위. 러너의 가이드 스포트라이트가 같은 값을 쓴다.</summary>
-        public const float FieldBottom = 420f;
+        /// <summary>입력줄이 화면에 있음(컴포넌트 활성) — 채팅 로그가 그 위에 쌓인다. 배치는 BattleHud.RadioFieldTopHud.</summary>
+        public static bool Shown { get; private set; }
+        void OnEnable() => Shown = true;
 
         /// <summary>열 때 전장을 정지시킬지. 싱글 지휘관 = true. 온라인은 호스트 시계라 정지 불가 — 러너가 false로 둔다.
         /// 온라인의 "고민 시간"은 무전 타임(호스트가 전원 동시 정지)이 대신한다.</summary>
@@ -34,7 +35,7 @@ namespace SeoYuGi.BattleView
         public event Action<string> OnFreeText;
 
         Func<string> ackProvider;
-        GUIStyle hintStyle, inputStyle, ackStyle;
+        GUIStyle hintStyle, inputStyle, ackStyle, rightHintStyle;
         bool stylesReady;
         string draft = "";   // 입력 중인 문장
         bool waiting;        // 발신 후 응답 대기 — 재발신 잠금 (게임은 돌아간다)
@@ -91,6 +92,7 @@ namespace SeoYuGi.BattleView
 
         void OnDisable()
         {
+            Shown = false;
             Close(); // 라운드 종료·씬 전환에서 시간이 느린 채로 남지 않게
         }
 
@@ -116,47 +118,49 @@ namespace SeoYuGi.BattleView
 
         void OnGUI()
         {
-            if (!IsOpen) return;
+            // 상시 표시 (2026-09-06 "채팅 있는 게임들처럼"): 중앙 하단, 채팅 로그 맨 밑·하단바 바로 위에 입력줄을 고정해 둔다.
+            // 닫힘 = 흐린 판 + 마지막 교신 응답(또는 여는 법), 열림 = 포커스된 입력줄. TAB/Enter로 열고 Enter 발신.
+            if (!BattleHud.BattleHudActive) return;
             EnsureStyles();
 
-            float s = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
-            inputStyle.fontSize = Mathf.RoundToInt(18 * s);
-            hintStyle.fontSize = Mathf.RoundToInt(14 * s);
-            ackStyle.fontSize = Mathf.RoundToInt(15 * s);
+            float u = BattleHud.PixelPerHud;
+            inputStyle.fontSize = Mathf.RoundToInt(17 * u);
+            hintStyle.fontSize = Mathf.RoundToInt(14 * u);
+            ackStyle.fontSize = Mathf.RoundToInt(14 * u);
 
-            // 좌측 중단 채팅바 — 채팅 로그(좌하단) 위, 시선이 전장에 남는 위치 (2026-09-06 "좀 더 위로")
-            float w = Mathf.Min(560f * s, Screen.width * 0.5f);
-            float fieldH = 42f * s, pad = 10f * s;
-            float x = 24f * s;
-            float yField = Screen.height - FieldBottom * s;
+            float w = BattleHud.ChatW * u, fieldH = BattleHud.RadioFieldH * u;
+            float x = (Screen.width - w) / 2f, yField = BattleHud.RadioFieldTopHud * u;
+            var fieldRect = new Rect(x, yField, w, fieldH);
+            var inner = new Rect(x + 10f * u, yField, w - 20f * u, fieldH);
 
-            if (!LlmRadio.HasKey)
-            {
-                GUI.Label(new Rect(x, yField, w, fieldH),
-                    "자유 무전 오프라인. API 키 없음. 퀵챗(숫자키)은 동작한다.", hintStyle);
-                return;
-            }
-
-            // 배경판 — 채팅 로그와 같은 어두운 판 + 좌측 시안 액센트 (Panel_Radio 아트는 은퇴, 2026-09-06 "심플하게")
+            // 판 + 좌측 시안 액센트 — 채팅 로그와 같은 어두운 판. 닫혀 있으면 흐리게
             var prev = GUI.color;
-            var back = new Rect(x - pad, yField - 30f * s - pad, w + pad * 2, fieldH + 30f * s + pad * 2);
-            GUI.color = new Color(0.02f, 0.04f, 0.09f, 0.8f);
-            GUI.DrawTexture(back, Texture2D.whiteTexture);
-            GUI.color = new Color(0.55f, 0.95f, 1f, 0.8f);
-            GUI.DrawTexture(new Rect(back.x, back.y, 2f, back.height), Texture2D.whiteTexture);
+            GUI.color = new Color(0.02f, 0.04f, 0.09f, IsOpen ? 0.9f : 0.55f);
+            GUI.DrawTexture(fieldRect, Texture2D.whiteTexture);
+            GUI.color = new Color(0.55f, 0.95f, 1f, IsOpen ? 0.9f : 0.35f);
+            GUI.DrawTexture(new Rect(fieldRect.x, fieldRect.y, 2f, fieldRect.height), Texture2D.whiteTexture);
             GUI.color = prev;
 
             string ack = ackProvider != null ? ackProvider() : "";
-            string topLine = waiting ? "...교신 중"
-                : guided ? "이렇게 말하면 알아듣습니다. 입력하거나 V를 누른 채 말하세요"
-                : !string.IsNullOrEmpty(ack) ? "> " + ack
-                : "무전 / Enter 발신 / TAB 닫기";
-            GUI.Label(new Rect(x, yField - 28f * s, w, 26f * s), topLine,
-                waiting || string.IsNullOrEmpty(ack) ? hintStyle : ackStyle);
+            if (!IsOpen)
+            {
+                string idle = !LlmRadio.HasKey ? "자유 무전 오프라인 (API 키 없음). 퀵챗(숫자키)은 동작"
+                    : waiting ? "...교신 중"
+                    : !string.IsNullOrEmpty(ack) ? "> " + ack
+                    : "TAB  무전 입력";
+                bool dim = !LlmRadio.HasKey || waiting || string.IsNullOrEmpty(ack);
+                GUI.Label(inner, idle, dim ? hintStyle : ackStyle);
+                return;
+            }
+
+            if (!LlmRadio.HasKey)
+            {
+                GUI.Label(inner, "자유 무전 오프라인. API 키 없음. 퀵챗(숫자키)은 동작한다.", hintStyle);
+                return;
+            }
 
             var ev = Event.current;
             // 입력줄 밖 클릭 = 닫기 (2026-09-06). 입력줄 자체 클릭은 캐럿 이동이라 유지.
-            var fieldRect = new Rect(x, yField, w, fieldH);
             if (ev.type == EventType.MouseDown && !fieldRect.Contains(ev.mousePosition))
             {
                 Close();
@@ -186,11 +190,16 @@ namespace SeoYuGi.BattleView
             draft = GUI.TextField(fieldRect, draft, inputStyle);
             GUI.enabled = true;
 
+            // 오른쪽 끝 흐린 안내 — 위에 줄을 더 두면 채팅 로그와 겹친다
+            if (rightHintStyle == null) rightHintStyle = new GUIStyle(hintStyle) { alignment = TextAnchor.MiddleRight };
+            rightHintStyle.fontSize = hintStyle.fontSize;
+            GUI.Label(new Rect(x, yField, w - 8f * u, fieldH), waiting ? "...교신 중" : "Enter 발신   TAB 닫기", rightHintStyle);
+
             // 가이드 — 비어 있는 입력줄에 예시 문장이 3초마다 바뀐다 (회색). 라벨은 클릭을 안 먹어 포커스는 그대로.
             if (guided && string.IsNullOrEmpty(draft))
             {
                 var ex = Guide.RadioExamples[(int)(Time.unscaledTime / 3f) % Guide.RadioExamples.Length];
-                GUI.Label(new Rect(x + 8f * s, yField, w - 16f * s, fieldH), "예: " + ex, hintStyle);
+                GUI.Label(inner, "예: " + ex, hintStyle);
             }
 
             if (wantFocus)

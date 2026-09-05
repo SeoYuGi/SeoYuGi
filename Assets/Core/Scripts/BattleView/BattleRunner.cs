@@ -901,12 +901,12 @@ namespace SeoYuGi.BattleView
                 GuideSpotlight.Set(ScreenRectAround(pts, 110f * s), "거점. 밟으면 게이지가 찬다. 더 많이 가진 팀이 이긴다");
                 return;
             }
-            if (radioTimeGuided && radio != null && radio.IsOpen) // ③ 무전창 (RadioWindow 배치와 같은 계산)
+            if (radioTimeGuided && radio != null && radio.IsOpen) // ③ 무전창 (BattleHud 공용 배치 — 중앙 하단 입력줄)
             {
-                float rs = Mathf.Max(1f, Screen.height / 1080f) * 1.25f;
-                float w = Mathf.Min(560f * rs, Screen.width * 0.5f), fieldH = 42f * rs, pad = 10f * rs;
-                float x = 24f * rs, yField = Screen.height - RadioWindow.FieldBottom * rs;
-                GuideSpotlight.Set(new Rect(x - pad - 6f, yField - 30f * rs - pad - 6f, w + pad * 2 + 12f, fieldH + 30f * rs + pad * 2 + 12f),
+                float u = BattleHud.PixelPerHud;
+                float w = BattleHud.ChatW * u, fieldH = BattleHud.RadioFieldH * u;
+                float x = (Screen.width - w) / 2f, yField = BattleHud.RadioFieldTopHud * u;
+                GuideSpotlight.Set(new Rect(x - 6f, yField - 6f, w + 12f, fieldH + 12f),
                     "무전. 이렇게 말하면 분대가 알아듣고 움직인다");
                 return;
             }

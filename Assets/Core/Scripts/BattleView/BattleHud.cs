@@ -73,7 +73,13 @@ namespace SeoYuGi.BattleView
         bool chatPanelOpen; // [무전] 토글 — 마우스로도 보낼 수 있게
         // 빠른채팅 패널 치수 (좌상단)
         const float ChatBtnW = 96f, ChatBtnH = 26f, ChatRowH = 30f, ChatPanelW = 170f, ChatX0 = 12f, ChatToggleY = 12f;
-        float bottomBarTop; // 하단바 프레임 윗변 — DrawBottomBar가 매 프레임 갱신, 채팅 로그 기준선
+
+        // 무전 입력줄·채팅 로그 공용 배치 (2026-09-06 "입력창을 로그 맨 밑에 고정") — RadioWindow·가이드 스포트라이트가 같은 값을 본다. HUD 단위.
+        public const float ChatW = 480f, RadioFieldH = 34f, RadioFieldGap = 10f;
+        public static float PixelPerHud { get; private set; } = 1f; // HUD 단위 → 화면 픽셀 (OnGUI마다 갱신)
+        public static float BottomBarTopHud { get; private set; }    // 하단바 프레임 윗변 — DrawBottomBar가 매 프레임 갱신
+        public static bool BattleHudActive { get; private set; }     // 전투 HUD가 그려지는 중(오버레이 없음) — 무전 입력줄 표시 조건
+        public static float RadioFieldTopHud => BottomBarTopHud - RadioFieldGap - RadioFieldH;
         float idleHintUntil; // 기본 조작 안내(타일 클릭 = 이동)는 진입 후 15초만 — 그 뒤엔 화면 중앙을 비운다
 
         GUIStyle timerStyle, timerLabelStyle, dotStyle, chipStyle, roundStyle;
@@ -568,9 +574,11 @@ namespace SeoYuGi.BattleView
 
         void OnGUI()
         {
+            BattleHudActive = battle != null && overlay == Overlay.None;
             if (battle == null) return;
             EnsureStyles();
             float s = UiScale;
+            PixelPerHud = s;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(s, s, 1f));
 
             var baseMtx = GUI.matrix; // 상단바만 1.3배 — 버튼이 없어 클릭 좌표 무관
@@ -838,7 +846,7 @@ namespace SeoYuGi.BattleView
             float totalW = segW + gap + 4 * slotW + 3 * gap + gap + segW;
             float x0 = W / 2f - totalW / 2f;
             float y = H - slotH - 18f;
-            bottomBarTop = y - 14f; // 채팅 로그가 이 위에 붙는다 (2026-09-06)
+            BottomBarTopHud = y - 14f; // 무전 입력줄·채팅 로그가 이 위에 쌓인다 (2026-09-06)
 
             DrawFrame(new Rect(x0 - 34, y - 14, totalW + 68, slotH + 30), texPanel); // 바 배경 — 장식 테두리가 내용 밖에 오도록 여유
 
@@ -1204,7 +1212,7 @@ namespace SeoYuGi.BattleView
                 if (Time.time >= chatLog[i].until) chatLog.RemoveAt(i);
             if (chatLog.Count == 0) return;
 
-            const float boxW = 480f; // 무전 문장(35자 안팎)이 한 줄에 들어가는 폭. 넘치면 줄바꿈 (2026-09-06 "말이 다 잘림")
+            const float boxW = ChatW; // 무전 입력줄과 같은 폭. 문장(35자 안팎)이 한 줄에 들어간다. 넘치면 줄바꿈
             if (chatStyle == null) chatStyle = new GUIStyle(labelStyle) { wordWrap = true, fontSize = 17 }; // 13 → 17, "대사가 잘 안 보인다" (2026-09-06)
             float total = 0f;
             var hs = new float[chatLog.Count];
@@ -1213,10 +1221,11 @@ namespace SeoYuGi.BattleView
                 hs[i] = Mathf.Max(26f, chatStyle.CalcHeight(new GUIContent(chatLog[i].text), boxW - 16f));
                 total += hs[i];
             }
-            // 채팅 로그 = 중앙 하단, 하단바 바로 위 (2026-09-06 B안): 공지 배너(화면 37% 높이)와 안 겹치고 시선이 가운데.
-            // 최대 3줄(ChatLogMax), 아래에서 위로 쌓인다. 무전창·패널 상태와 무관 — 자리가 안 튄다.
+            // 채팅 로그 = 중앙 하단 (2026-09-06 B안): 무전 입력줄이 있으면 그 바로 위, 없으면(멀티) 하단바 바로 위.
+            // 공지 배너(화면 37% 높이)와 안 겹치고 시선이 가운데. 최대 3줄(ChatLogMax), 아래에서 위로 쌓인다. 열고 닫아도 자리 안 튄다.
             float logX = W / 2f - boxW / 2f, logW = boxW;
-            float y = (bottomBarTop > 0f ? bottomBarTop : H - 96f) - 12f - total;
+            float baseTop = RadioWindow.Shown ? RadioFieldTopHud : BottomBarTopHud;
+            float y = (baseTop > 0f ? baseTop : H - 96f) - 10f - total;
 
             var logBox = new Rect(logX, y - 4, logW, total + 8);
             Fill(logBox, new Color(0.02f, 0.04f, 0.09f, 0.6f));

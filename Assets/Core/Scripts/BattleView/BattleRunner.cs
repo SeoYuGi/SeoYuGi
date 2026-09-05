@@ -170,7 +170,10 @@ namespace SeoYuGi.BattleView
                     if (IsNetClient && result.understood) NetSync.ClientSendOrders(result); // 원격 지휘관 — 호스트의 내 팀 봇에 적용
                     int speaker = result.orders.Count > 0 ? result.orders[0].unitId
                                 : squad.Count > 0 ? squad[0] : playerUnitId;
-                    ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "...수신 불량." : result.ack);
+                    if (result.acks.Count > 0) // 복합 명령 — 분대원마다 자기 몫만 되풀이 (2026-09-06)
+                        foreach (var a in result.acks) ShowRadioLine(a.unitId, Personas.Mark(playerTeam, a.line));
+                    else
+                        ShowRadioLine(speaker, string.IsNullOrEmpty(result.ack) ? "...수신 불량." : result.ack);
                     if (result.refused) // 불복종 — 분대가 명령을 물렸다. 채팅 로그와 별개로 전황 배너에도 남긴다
                         hud.PushEvent($"[무전] {FindSlot(speaker).callsign}: 명령 거부. {result.ack}", new Color(1f, 0.78f, 0.25f));
                     ShowOrderMarkers(result.orders);

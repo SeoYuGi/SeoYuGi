@@ -277,7 +277,7 @@ context + "\n\n" +
 "현재 전장 상황 (unitId: 호출명·HP·위치, 거점 소유):\n" + squadBrief + "\n\n" +
 $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "응답 형식 (JSON 외 텍스트 금지):\n" +
-"{\"understood\":true,\"ack\":\"무전 응답 한 문장\",\"orders\":[{\"unitId\":3,\"goal\":\"Zone\",\"zoneIndex\":1,\"stance\":\"Aggressive\",\"focusEnemyId\":-1,\"persist\":false}]}\n\n" +
+"{\"understood\":true,\"ack\":\"무전 응답 한 문장\",\"acks\":[{\"unitId\":3,\"line\":\"분대원별 응답 한 문장\"}],\"orders\":[{\"unitId\":3,\"goal\":\"Zone\",\"zoneIndex\":1,\"stance\":\"Aggressive\",\"focusEnemyId\":-1,\"persist\":false}]}\n\n" +
 "goal: \"Free\"(자율 판단) | \"Zone\"(지정 거점으로 — zoneIndex 필수) | \"Highland\"(가까운 고지대 선점) | " +
 "\"Regroup\"(지휘관 곁으로) | \"Fallback\"(뒤로 물러남)\n" +
 "stance: \"Normal\" | \"Aggressive\"(적을 찾아가 적극 교전) | \"Evasive\"(먼저 쏘지 않고 임무 우선)\n" +
@@ -285,6 +285,12 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "persist: 명령 지속 범위 — false(기본)면 이번 라운드만, \"매치 내내/게임 내내/계속\" 류면 true(라운드가 바뀌어도 유지).\n\n" +
 "규칙:\n" +
 "- 지휘관이 언급한 분대원에게만 명령한다. 전원을 향한 말이면 전원에게.\n" +
+"- \"나머지\", \"다른 애들\", \"남은 애들\", \"너희 둘\"은 그 문장에서 이름이 불리지 않은 아군 분대원 전부를 뜻한다. 이름이 불린 분대원에게는 절대 그 명령을 주지 않는다.\n" +
+"- \"나\", \"날\", \"나를\", \"내 옆\", \"내 뒤\"는 지휘관 본인이다. \"날 따라와\", \"나한테 붙어\", \"내 옆으로\"는 goal \"Regroup\".\n" +
+"- \"X 잡아\", \"X 잡고\", \"X 쳐\", \"X 마크\"는 그 적을 focusEnemyId로, stance \"Aggressive\".\n" +
+"- 한 문장에 분대원마다 다른 명령이 있으면 (\"너굴은 까돌봇 잡고, 나머지는 날 따라와\") 쉼표·\"~고\"로 문장을 갈라 분대원별로 따로 orders에 넣는다. " +
+"acks에는 명령을 받은 분대원마다 한 줄씩, 각자 자기 명령만 자기 말투로 되풀이한다 — 남의 명령을 대신 말하지 않는다 (너굴: \"어, 어... 까돌봇, 내가 잡는다.\" / 깜냥: \"지휘관 옆으로.\"). " +
+"ack는 acks[0]과 같아도 된다.\n" +
 "- 호칭 대응: 지휘관은 유닛을 별명(\"라니\"), 동물 이름(\"고라니\"), 기계 이름(\"돌격\"), 클래스명(\"Balance\"), 역할(\"브루저\", \"저격수\"), " +
 "\"상대 지휘관\"·\"상대 플레이어\"·\"저 사람\" 등 무엇으로든 부른다 — 위 목록의 '= 다른 호칭들'과 대조해 unitId를 찾는다. 적 이름도 같은 방식.\n" +
 "- \"피 없는 애\", \"가까운 애\", \"우리 거점\" 같은 표현은 위 전장 상황(HP·좌표·소유)으로 해석해 대상을 고른다.\n" +
@@ -329,6 +335,17 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
             string compliance = (payload["compliance"]?.Value<string>() ?? "obey").ToLowerInvariant();
             if (compliance == "refuse" || compliance == "question") { s.understood = false; s.refused = compliance == "refuse"; return s; }
             if (!s.understood) return s;
+
+            // 유닛별 응답 (2026-09-06) — 복합 명령이면 각자 자기 몫만 말한다. 없는 유닛은 버린다.
+            foreach (var ja in payload["acks"] as JArray ?? new JArray())
+            {
+                int aid = ja["unitId"]?.Value<int>() ?? -1;
+                string line = ja["line"]?.Value<string>();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                bool ok = false;
+                foreach (var id in squad) if (id == aid) { ok = true; break; }
+                if (ok && s.acks.Count < 3) s.acks.Add((aid, line.Trim()));
+            }
 
             foreach (var jo in payload["orders"] as JArray ?? new JArray())
             {

@@ -49,6 +49,9 @@ namespace SeoYuGi.Battle
         public bool refused;                          // 분대가 명령을 거부했다 (understood=false와 함께) — 연출·로그 구분용
         public string ack = "";                       // 무전 응답 한 줄 (프리셋은 고정 문구, 자유 서술은 LLM이 쓴다)
         public List<UnitOrder> orders = new List<UnitOrder>();
+        /// <summary>유닛별 응답 (2026-09-06) — 복합 명령("너굴은 까돌봇 잡고, 나머지는 날 따라와")이면 각자 자기 몫만 되풀이한다.
+        /// 로컬 연출용. 네트로는 orders만 보낸다.</summary>
+        public List<(int unitId, string line)> acks = new List<(int unitId, string line)>();
 
         public static SquadOrders NotUnderstood(string reason) =>
             new SquadOrders { understood = false, ack = reason };

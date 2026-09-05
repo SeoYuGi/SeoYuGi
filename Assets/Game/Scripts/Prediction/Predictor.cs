@@ -101,46 +101,41 @@ namespace SeoYuGi.Prediction
             return result;
         }
 
-        /// HUD 학습 게이지용 0..1 — 표본 수(20수에 만충) 60% + 이동 패턴 일치율 40%.
-        /// "AI가 나를 학습한다"를 상시 숫자로 보이게 (2026-09-05).
-        public float LearningProgress(int actorId)
-        {
-            if (!_actors.TryGetValue(actorId, out var p)) return 0f;
-            float samples = Math.Min(1f, p.ObservedMoves / 20f);
-            return samples * 0.6f + Predictability(p) * 0.4f;
-        }
-
         /// 라운드 간 브리핑 화면용 분석 문구.
         public string[] GetBriefing(int actorId)
         {
             if (!_actors.TryGetValue(actorId, out var p) || p.ObservedMoves < 4)
-                return new[] { "데이터 수집 중... 아직 당신을 모릅니다." };
+                return new[] { "아직 당신을 잘 모르겠습니다. 조금 더 지켜보겠습니다." };
 
+            // 사람 말로 — "무엇을 봤고, 그래서 다음 판에 뭘 할 건지" 한 문장씩. 수치·좌표·분류 용어 금지 (2026-09-05).
             var lines = new List<string>();
 
-            // 스타일 분류 + 카운터 예고 — 다음 라운드에 실제로 이 전술이 실행된다 (약속-이행)
             var style = GetStyle(actorId);
             if (style == PlayStyle.ZoneRusher)
-                lines.Add("분류: 거점 돌격형 — 고지대를 선점해 진입로를 내려다봅니다.");
+                lines.Add("당신은 거점으로 곧장 달려드는 편이더군요. 다음 판엔 높은 곳에서 내려다보며 쏘겠습니다.");
             else if (style == PlayStyle.HighlandHolder)
-                lines.Add("분류: 고지대 선호형 — 선호 고지를 먼저 접수합니다.");
+                lines.Add("높은 자리를 좋아하시는군요. 다음 판엔 그 자리에 제가 먼저 가 있겠습니다.");
 
             int third = LaneThird(p, out float lanePct);
-            string[] laneNames = { "좌측", "중앙", "우측" };
-            lines.Add($"{laneNames[third]} 경로 선호 {(int)(lanePct * 100)}% — 해당 경로에 화력을 배치합니다.");
+            string[] laneNames = { "왼쪽", "가운데", "오른쪽" };
+            int outOfTen = Math.Max(1, (int)Math.Round(lanePct * 10));
+            if (lanePct >= 0.5f)
+                lines.Add($"열 번 중 {outOfTen}번은 {laneNames[third]} 길로 오셨습니다. 거기서 기다리겠습니다.");
+            else
+                lines.Add("길은 골고루 쓰시네요. 어디로 올지 아직 못 정했습니다.");
 
             if (p.FirstZoneEntryTime >= 0f && p.FirstZoneEntryTime < 15f)
-                lines.Add($"개막 {p.FirstZoneEntryTime:0}초 만에 거점 직행 — 선점 저격을 준비합니다.");
+                lines.Add($"시작 {p.FirstZoneEntryTime:0}초 만에 거점에 들어오셨습니다. 다음엔 들어오는 길목부터 겨누겠습니다.");
 
             float predictability = Predictability(p);
             if (predictability > 0.55f)
-                lines.Add($"이동 패턴 일치율 {(int)(predictability * 100)}% — 당신의 다음 수가 보입니다.");
+                lines.Add("움직임이 꽤 규칙적입니다. 다음에 어느 칸으로 갈지 대충 보입니다.");
             else
-                lines.Add("이동 패턴이 불규칙합니다 — 표본을 더 수집합니다.");
+                lines.Add("움직임이 들쭉날쭉해서 아직 읽기 어렵습니다.");
 
             var opening = p.OpeningCells.OrderByDescending(kv => kv.Value).FirstOrDefault();
             if (opening.Value >= 2)
-                lines.Add($"오프닝 경유지 {opening.Key} 반복 감지 — 초반 설치를 조정합니다.");
+                lines.Add("시작할 때마다 같은 칸을 지나가시더군요. 거기에 미리 깔아두겠습니다.");
 
             return lines.ToArray();
         }
@@ -205,14 +200,14 @@ namespace SeoYuGi.Prediction
             if (p.ObservedMoves < 6) return;
 
             if (p.FirstZoneEntryTime >= 0f && p.FirstZoneEntryTime < 15f)
-                Fire(actorId, "rush", "개막 거점 직행");
+                Fire(actorId, "rush", "거점으로 바로 달려드시는군요. 기억해 두겠습니다.");
             if (p.HighlandEntries >= 3)
-                Fire(actorId, "high", "고지대 선호");
+                Fire(actorId, "high", "높은 자리를 좋아하시네요. 기억해 두겠습니다.");
             int third = LaneThird(p, out float lanePct);
             if (lanePct > 0.6f && p.ObservedMoves >= 10)
             {
-                string[] laneNames = { "좌측", "중앙", "우측" };
-                Fire(actorId, "lane", $"{laneNames[third]} 경로 편중");
+                string[] laneNames = { "왼쪽", "가운데", "오른쪽" };
+                Fire(actorId, "lane", $"자꾸 {laneNames[third]} 길로 오시네요. 기억해 두겠습니다.");
             }
         }
 

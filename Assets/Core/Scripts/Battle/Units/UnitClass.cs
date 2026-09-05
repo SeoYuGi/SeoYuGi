@@ -120,7 +120,7 @@
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 3, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Snatch, telegraphSeconds = 1.6f, damage = 1, range = 5, cooldownSeconds = 10f } // 위치 강제 이동이 강력해 피해는 낮게, 비행은 빠르게
+                    new SkillDef { kind = SkillKind.Snatch, telegraphSeconds = 1.0f, damage = 1, range = 5, cooldownSeconds = 10f } // 위치 강제 이동이 강력해 피해는 낮게, 비행은 빠르게
                 }
             },
             new ClassDef

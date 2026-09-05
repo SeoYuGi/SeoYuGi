@@ -124,8 +124,29 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>자연어 무전 발신 — 채팅바·음성 공용. 내 발신·분대 응답 모두 채팅 로그에 남는다.</summary>
+        /// <summary>
+        /// 관전 중 — 내 유닛이 죽었고 라운드는 아직 도는 상태.
+        /// 안개를 걷어 남은 판을 볼 수 있게 하되, 지휘는 막는다 — 죽은 사람이 계속 지시하면
+        /// 죽음의 대가가 사라진다. 시야 정보도 산 사람만 갖는 것이 맞다.
+        /// </summary>
+        public bool Spectating
+        {
+            get
+            {
+                if (phase != Phase.Playing || Battle == null) return false;
+                var me = Battle.GetUnit(playerUnitId);
+                return me != null && !me.alive;
+            }
+        }
+
         void SendFreeText(string text)
         {
+            if (Spectating)
+            {
+                hud.ShowSubtitle("전사했습니다. 무전을 보낼 수 없습니다.", 2f);
+                if (radio != null) radio.SetWaiting(false);
+                return;
+            }
             var squad = CommandableUnitIds();
             if (squad.Count == 0) { if (radio != null) radio.SetWaiting(false); return; }
             ShowRadioLine(playerUnitId, text); // 내가 보낸 무전 — 말풍선 + 채팅 로그
@@ -370,7 +391,8 @@ namespace SeoYuGi.BattleView
             playerTeam = FindRoster(playerUnitId).team;
             // 해킹 시야 강탈 중엔 전부 보임 — 이 함수가 안개·적 예고 필터·타격 VFX 필터의 공통 기준이라 여기서 걷는다
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c)
-                || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time));
+                || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time))
+                || Spectating; // 관전 중엔 안개를 걷는다 — 죽고 나서까지 가려두면 남은 판을 볼 수가 없다
 
             // 플레이어 행동 거부 버저 — input은 라운드 넘어 유지되므로 1회만 구독
             input.OnActionDenied += () => battleAudio.PlaySfx("S24_ApBuzz", 0.5f);
@@ -780,7 +802,8 @@ namespace SeoYuGi.BattleView
             playerTeam = FindSlot(playerUnitId).team;
             // 해킹 시야 강탈 중엔 전부 보임 — 이 함수가 안개·적 예고 필터·타격 VFX 필터의 공통 기준이라 여기서 걷는다
             playerVisibleFn = c => vision.IsVisibleTo(playerTeam, c)
-                || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time));
+                || (hackSystem != null && Battle != null && hackSystem.RevealActive(playerTeam, Battle.time))
+                || Spectating; // 관전 중엔 안개를 걷는다 — 죽고 나서까지 가려두면 남은 판을 볼 수가 없다
 
             mapIndex = setup.mapIndex;
             map = BattleMaps.Get(mapIndex);
@@ -1425,8 +1448,12 @@ namespace SeoYuGi.BattleView
                     {
                         var flier = viewRegistry.Get(strike.attackerId);
                         if (flier != null && flier.gameObject.activeInHierarchy)
-                            flier.PlayBombFlight(gridView.CoordToWorld(strike.cells[0]),
-                                Mathf.Max(0.2f, strike.impactTime - Battle.time), 0.7f);
+                        {
+                            // 날아가는 시간 = 예고 시간. 낚아채기는 도착이 곧 판정이라
+                            // 왕복 중 '가는 구간'만 예고에 맞추고, 돌아오는 구간은 판정 뒤의 연출이다.
+                            float outT = Mathf.Max(0.2f, strike.impactTime - Battle.time);
+                            flier.PlayBombFlight(gridView.CoordToWorld(strike.cells[0]), outT, 0.5f);
+                        }
                     }
                 }
 
@@ -2140,7 +2167,10 @@ namespace SeoYuGi.BattleView
             if (pauseMenu != null && pauseMenu.IsOpen) return; // 멈춘 동안엔 다른 입력을 받지 않는다
 
             // 무전 채팅바 (Enter) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
-            if (radio != null && radio.enabled) radio.HandleHotkey();
+            // 관전 중(전사)에는 아예 열리지 않는다 — 프리셋·자유서술·음성 모두 같이 막힌다.
+            if (radio != null && radio.enabled && !Spectating) radio.HandleHotkey();
+            if (Spectating && radio != null && radio.IsOpen) radio.Close();
+            if (voice != null) voice.enabled = GameModeState.IsCommander && !Spectating;
 
             // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
             bool typing = RadioWindow.TextInputActive;

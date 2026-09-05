@@ -101,21 +101,31 @@ public class UILobbyPopup : UIPopup
         }
         Get<GameObject>((int)Buttons.BtnCopyCode)?.SetActive(false);
         balanceText = transform.Find("BalanceText")?.GetComponent<Text>();
+        // 시작/준비 (2026-09-06 1:1 고정): 호스트 = 상대가 준비했을 때만 시작, 클라 = 준비 토글
         BindEvent(Get<GameObject>((int)Buttons.BtnStart), _ =>
         {
-            if (!NetBoot.IsHost) return;
-            UIManager.Instance.ClosePopupUI(this);
-            OnStart?.Invoke();
+            if (NetBoot.IsHost)
+            {
+                if (!NetLobby.CanStart)
+                {
+                    if (statusText != null)
+                        statusText.text = NetLobby.OpponentJoined ? "상대가 준비를 누르면 시작할 수 있습니다" : "상대 지휘관을 기다리는 중입니다";
+                    return;
+                }
+                UIManager.Instance.ClosePopupUI(this);
+                OnStart?.Invoke();
+            }
+            else NetLobby.RequestReady(!NetLobby.MyReady);
         });
         BindEvent(Get<GameObject>((int)Buttons.BtnLeave), _ => Leave());
         OnEscape = Leave; // ESC = 나가기 (뒤로)
 
-        CreateTeamSwapButton(); // 상대팀 슬롯은 숨겨져 있어 클릭 이동이 불가 — 버튼으로 (2026-09-05 "상대팀으로도")
+        // 팀 변경 버튼 폐지 (2026-09-06) — 호스트 = 파랑, 합류자 = 빨강 고정
         CreateCommanderToggle(); // 지휘관 대전 — 유저1+봇2 vs 유저1+봇2, 각자 자기 봇을 무전 지휘 (2026-09-05)
 
         codeText = transform.Find("CodeText")?.GetComponent<Text>();
         statusText = transform.Find("StatusText")?.GetComponent<Text>();
-        Get<GameObject>((int)Buttons.BtnStart).SetActive(NetBoot.IsHost); // 시작은 호스트 전용
+        CreateOpponentBox(); // 우측 빨간 빈 칸 — 상대가 들어오면 "매칭됨", 준비하면 "준비 완료" (2026-09-06)
 
         ApplySkin();
         NetLobby.OnChanged += Refresh;
@@ -231,41 +241,62 @@ public class UILobbyPopup : UIPopup
 
     /// <summary>팀 변경 버튼 — BtnLeave를 복제해 스킨·크기를 그대로 물려받는다 (프리팹 수정 없이 런타임 생성).
     /// 상대팀 첫 빈 봇 슬롯으로 이동을 요청한다. 상대팀이 인간으로 가득이면 안내만.</summary>
-    void CreateTeamSwapButton()
+    Image oppBox; Text oppText; // 상대 지휘관 칸 (2026-09-06)
+
+    /// <summary>내 팀 슬롯 줄 오른쪽에 상대 칸 하나. 상대 조합은 비공개라 존재와 준비 상태만 보인다.</summary>
+    void CreateOpponentBox()
     {
-        var template = Get<GameObject>((int)Buttons.BtnLeave);
-        var go = Instantiate(template, template.transform.parent);
-        go.name = "BtnTeamSwap";
-        var rt = go.GetComponent<RectTransform>();
-        var src = template.GetComponent<RectTransform>();
-        rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, src.sizeDelta.y + 14f);
-        var label = go.GetComponentInChildren<Text>();
-        if (label != null) { label.text = "팀 변경"; label.fontSize = 17; label.alignment = TextAnchor.MiddleCenter; }
-        // 복제 시점이 ApplySkin보다 앞이라 민짜로 남는다 — 버튼 판 스킨 직접 적용 (2026-09-05)
-        var plate = UISkin.ButtonPlate();
-        var img2 = go.GetComponent<Image>();
-        if (plate != null && img2 != null) { img2.sprite = plate; img2.color = Color.white; img2.preserveAspect = false; }
-        // 복제본에 딸려온 여분 배경(검정 판) 끄기 — Image만으론 안 잡혀서(RawImage 등) 그래픽 전부,
-        // 글자(Text)와 루트 판만 남긴다 (2026-09-05)
-        foreach (var extra in go.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
-            if (extra.gameObject != go && !(extra is Text)) extra.enabled = false;
-        BindEvent(go, _ =>
+        var parent = slotRoots[0] != null ? slotRoots[0].parent : transform;
+        var go = new GameObject("OpponentBox", typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(parent, false);
+        var rt = (RectTransform)go.transform;
+        if (slotRoots[0] != null) { rt.anchorMin = slotRoots[0].anchorMin; rt.anchorMax = slotRoots[0].anchorMax; rt.pivot = slotRoots[0].pivot; }
+        rt.sizeDelta = new Vector2(190f, 110f);
+        rt.anchoredPosition = new Vector2(500f, 245f);
+        oppBox = go.GetComponent<Image>();
+        oppBox.color = new Color(0.35f, 0.08f, 0.1f, 0.85f);
+        var outline = go.AddComponent<Outline>();
+        outline.effectColor = new Color(1f, 0.35f, 0.35f);
+        outline.effectDistance = new Vector2(2f, -2f);
+
+        var tgo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+        tgo.transform.SetParent(go.transform, false);
+        var trt = (RectTransform)tgo.transform;
+        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one; trt.offsetMin = trt.offsetMax = Vector2.zero;
+        oppText = tgo.GetComponent<Text>();
+        oppText.alignment = TextAnchor.MiddleCenter;
+        oppText.fontSize = 20;
+        oppText.color = Color.white;
+        var font = GameFonts.Hud;
+        if (font == null) font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        oppText.font = font;
+        oppText.text = "?";
+        RefreshOpponentBox();
+    }
+
+    void RefreshOpponentBox()
+    {
+        if (oppText == null) return;
+        bool joined = NetLobby.OpponentJoined || !NetBoot.IsHost; // 클라 입장에선 호스트가 곧 상대
+        bool ready = NetBoot.IsHost ? NetLobby.OpponentReady : true;
+        if (!joined)
         {
-            var slots = NetLobby.Slots;
-            if (slots == null) return;
-            ulong myId = Unity.Netcode.NetworkManager.Singleton.LocalClientId;
-            int myTeam = -1;
-            foreach (var s in slots)
-                if (s.owner != SlotOwner.Bot && s.clientId == myId) { myTeam = s.team; break; }
-            if (myTeam < 0) return;
-            foreach (var s in slots)
-                if (s.team != myTeam && s.owner == SlotOwner.Bot)
-                {
-                    NetLobby.RequestSlot(s.unitId); // 호스트가 이동 처리 → OnChanged로 UI 갱신
-                    return;
-                }
-            if (statusText != null) statusText.text = "상대팀이 가득 찼습니다";
-        });
+            oppText.text = "?\n상대 지휘관 대기";
+            oppBox.color = new Color(0.35f, 0.08f, 0.1f, 0.85f);
+        }
+        else if (NetBoot.IsHost)
+        {
+            oppText.text = ready ? "매칭됨\n준비 완료" : "매칭됨\n준비 중";
+            oppBox.color = ready ? new Color(0.15f, 0.45f, 0.2f, 0.9f) : new Color(0.6f, 0.15f, 0.15f, 0.9f);
+        }
+        else
+        {
+            oppText.text = "매칭됨\n호스트가 시작합니다";
+            oppBox.color = new Color(0.6f, 0.15f, 0.15f, 0.9f);
+        }
+        var startLabel = Get<GameObject>((int)Buttons.BtnStart)?.GetComponentInChildren<Text>();
+        if (startLabel != null)
+            startLabel.text = NetBoot.IsHost ? (NetLobby.CanStart ? "시작" : "상대 대기") : (NetLobby.MyReady ? "준비 취소" : "준비");
     }
 
     Text commanderLabel;
@@ -324,6 +355,7 @@ public class UILobbyPopup : UIPopup
     void Refresh()
     {
         RefreshCommanderLabel();
+        RefreshOpponentBox();
 
         var slots = NetLobby.Slots;
         if (slots == null) return;

@@ -26,13 +26,14 @@ namespace SeoYuGi.Integration
         public void CommandPing(SeoYuGi.Prediction.Cell cell, int type, float now) => brain.CommandPing(cell, type, now);
 
         /// <param name="orders">지휘관 모드에서 플레이어가 내린 상시 명령. null이면 완전 자율.</param>
+        /// <param name="scaleDifficulty">난이도 적용 여부 — 적팀 봇만 true. 아군 봇은 항상 보통 (2026-09-06).</param>
         public AiSlotDriver(int unitId, UnitClass cls, int team, IIntentSink sink, Predictor predictor = null,
-            CommandState orders = null)
+            CommandState orders = null, bool scaleDifficulty = true)
         {
             this.unitId = unitId;
             Team = team;
             this.sink = sink;
-            brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor, orders);
+            brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls, scaleDifficulty), predictor, orders);
         }
 
         public void Tick(IWorldView world)

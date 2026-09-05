@@ -24,6 +24,7 @@ namespace SeoYuGi.Net
         const string MsgChatBrd = "sy_chatb"; // host→client : 로비 채팅 배달 (콜사인+텍스트, 같은 팀만)
         const string MsgName = "sy_name";   // client→host : 닉네임 설정 요청 (2026-09-05)
         const string MsgBotClass = "sy_bcls"; // client→host : 내 팀 봇 클래스 직접 지정 (2026-09-06 3픽 로비)
+        const string MsgReady = "sy_ready";   // client→host : 준비 토글 (2026-09-06 1:1 고정 — 상대가 준비해야 호스트가 시작)
 
         // 슬롯 템플릿 — BattleRunner.roster와 동일한 6칸 (id, team, 콜사인)
         static readonly (int id, int team, string name)[] Template =
@@ -41,6 +42,43 @@ namespace SeoYuGi.Net
             public SlotOwner owner;
             public ulong clientId; // RemoteHuman/LocalHuman(호스트 자신)일 때
             public bool manual;    // 봇 클래스를 사람이 직접 지정했다 — 자동 밸런스가 안 건드린다
+            public bool ready;     // 사람 슬롯의 준비 상태 — 호스트는 시작 버튼이 곧 준비라 클라만 의미 있다 (2026-09-06)
+        }
+
+        /// <summary>그 팀에 사람이 있나.</summary>
+        static bool HumanOn(int team)
+        {
+            if (Slots == null) return false;
+            foreach (var s in Slots) if (s.team == team && s.owner != SlotOwner.Bot) return true;
+            return false;
+        }
+
+        /// <summary>1:1 고정 (2026-09-06): 호스트 = 파랑(0), 합류자 = 빨강(1). 상대가 들어왔나.</summary>
+        public static bool OpponentJoined => HumanOn(1);
+
+        /// <summary>빨강 팀 사람이 준비를 눌렀나 — 호스트 시작 조건.</summary>
+        public static bool OpponentReady
+        {
+            get
+            {
+                if (Slots == null) return false;
+                foreach (var s in Slots) if (s.team == 1 && s.owner == SlotOwner.RemoteHuman) return s.ready;
+                return false;
+            }
+        }
+
+        public static bool CanStart => OpponentReady;
+
+        /// <summary>내(로컬) 슬롯의 준비 상태 — 클라 버튼 라벨용.</summary>
+        public static bool MyReady
+        {
+            get
+            {
+                var nm = NetworkManager.Singleton;
+                if (Slots == null || nm == null) return false;
+                foreach (var s in Slots) if (s.owner != SlotOwner.Bot && s.clientId == nm.LocalClientId) return s.ready;
+                return false;
+            }
         }
 
         public static LobbySlot[] Slots { get; private set; }
@@ -85,6 +123,7 @@ namespace SeoYuGi.Net
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgName, OnNameMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgClass, OnClassMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgBotClass, OnBotClassMsg);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgReady, OnReadyMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgStart, OnStartMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatReq, OnChatReqMsg);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgChatBrd, OnChatBrdMsg);
@@ -134,6 +173,32 @@ namespace SeoYuGi.Net
             using var w = new FastBufferWriter(8, Allocator.Temp);
             w.WriteValueSafe((int)cls);
             nm.CustomMessagingManager.SendNamedMessage(MsgClass, NetworkManager.ServerClientId, w);
+        }
+
+        /// <summary>준비 토글 — 클라가 누른다. 호스트는 시작 버튼이 준비를 대신한다.</summary>
+        public static void RequestReady(bool on)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || nm.CustomMessagingManager == null) return;
+            if (nm.IsHost) { SetReady(nm.LocalClientId, on); return; }
+            using var w = new FastBufferWriter(8, Allocator.Temp);
+            w.WriteValueSafe((byte)(on ? 1 : 0));
+            nm.CustomMessagingManager.SendNamedMessage(MsgReady, NetworkManager.ServerClientId, w);
+        }
+
+        static void SetReady(ulong clientId, bool on)
+        {
+            for (int i = 0; i < Slots.Length; i++)
+                if (Slots[i].owner != SlotOwner.Bot && Slots[i].clientId == clientId) Slots[i].ready = on;
+            Broadcast();
+            OnChanged?.Invoke();
+        }
+
+        static void OnReadyMsg(ulong sender, FastBufferReader r)
+        {
+            if (!NetworkManager.Singleton.IsHost) return;
+            r.ReadValueSafe(out byte on);
+            SetReady(sender, on != 0);
         }
 
         /// <summary>내 팀 봇 클래스 직접 지정 — 3픽 로비(나 → 팀원1 → 팀원2). 호스트가 팀 검증 후 적용.</summary>
@@ -220,6 +285,7 @@ namespace SeoYuGi.Net
         {
             var nm = NetworkManager.Singleton;
             if (!nm.IsHost) return;
+            if (!CanStart) { Debug.LogWarning("NetLobby.HostStart: 상대가 준비되지 않았다 — 시작 거부"); return; } // 봇전 폴백 없음 (2026-09-06)
 
             var slots = new SlotConfig[Slots.Length];
             for (int i = 0; i < Slots.Length; i++)
@@ -304,9 +370,10 @@ namespace SeoYuGi.Net
             var nm = NetworkManager.Singleton;
             if (!nm.IsHost || clientId == nm.LocalClientId) return;
 
-            int idx = FindFree(0);
-            if (idx < 0) idx = FindFree(1);
-            if (idx < 0) { nm.DisconnectClient(clientId); return; } // 만석
+            // 1:1 고정 (2026-09-06): 호스트 = 파랑(0), 합류자 = 빨강(1). 빨강에 이미 사람이 있으면 만석.
+            if (HumanOn(1)) { nm.DisconnectClient(clientId); return; }
+            int idx = FindFree(1);
+            if (idx < 0) { nm.DisconnectClient(clientId); return; }
 
             Occupy(idx, clientId, SlotOwner.RemoteHuman);
             AssignBotClasses();
@@ -332,6 +399,7 @@ namespace SeoYuGi.Net
                 {
                     Slots[i].owner = SlotOwner.Bot; // 이탈 → 봇 승격, 게임 안 깨짐
                     Slots[i].clientId = 0;
+                    Slots[i].ready = false;
                     left.Add(Slots[i].unitId);
                 }
             AssignBotClasses();
@@ -432,6 +500,7 @@ namespace SeoYuGi.Net
                 w.WriteValueSafe((byte)s.owner);
                 w.WriteValueSafe(s.clientId);
                 w.WriteValueSafe((byte)(s.manual ? 1 : 0));
+                w.WriteValueSafe((byte)(s.ready ? 1 : 0));
             }
             w.WriteValueSafe((byte)(Commander ? 1 : 0));
             nm.CustomMessagingManager.SendNamedMessageToAll(MsgLobby, w);
@@ -455,6 +524,8 @@ namespace SeoYuGi.Net
                 r.ReadValueSafe(out slots[i].clientId);
                 r.ReadValueSafe(out byte manual);
                 slots[i].manual = manual != 0;
+                r.ReadValueSafe(out byte ready);
+                slots[i].ready = ready != 0;
             }
             r.ReadValueSafe(out byte commander);
             Commander = commander != 0;

@@ -38,10 +38,11 @@
         /// 매치 난이도 — 러너가 매치 시작 시 설정. ForClass가 이 값으로 수치를 스케일.
         public static AiDifficulty Difficulty = AiDifficulty.Normal;
 
-        public static AiConfig ForClass(ClassId cls)
+        /// <param name="scaleDifficulty">false면 난이도 무시(보통 고정) — 아군 봇. "하"를 골랐다고 내 분대까지 멍청해지면 안 된다 (2026-09-06).</param>
+        public static AiConfig ForClass(ClassId cls, bool scaleDifficulty = true)
         {
             var cfg = ForClassBase(cls);
-            ApplyDifficulty(cfg);
+            if (scaleDifficulty) ApplyDifficulty(cfg);
             // 가시성 패스 (2026-09-05): 6유닛 리얼타임이라 사건 밀도가 화면을 압도 —
             // 전 난이도 공통으로 행동 템포를 15% 늦춰 동시 이벤트 수를 줄인다 (난이도 차등은 유지).
             cfg.AttackInterval *= 1.15f;

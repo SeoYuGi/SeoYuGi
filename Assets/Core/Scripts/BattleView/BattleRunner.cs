@@ -1151,7 +1151,7 @@ namespace SeoYuGi.BattleView
                 foreach (var slot in matchSetup.slots)
                     if (slot.unitId == uid)
                     {
-                        aiDrivers.Add(new AiSlotDriver(uid, slot.cls, slot.team, intentSink, predictor));
+                        aiDrivers.Add(new AiSlotDriver(uid, slot.cls, slot.team, intentSink, predictor, null, slot.team != playerTeam));
                         hud.PushEvent($"{slot.callsign} 이탈. 봇이 대신합니다", new Color(0.7f, 0.75f, 0.85f));
                         break;
                     }
@@ -1335,11 +1335,11 @@ namespace SeoYuGi.BattleView
             }
             else
             {
-                // 상대 못 찾음 → 봇전. 지휘관 모드로 — Multi 그대로 두면 무전·무전 타임·지휘가 전부 꺼진
-                // "지휘관 봇전에서 지휘만 빠진" 중복 모드가 됐다 (2026-09-06). 사람 대 사람일 때만 로비 토글이 정한다.
-                GameModeState.Current = GameMode.Commander;
-                hud.ShowSubtitle("상대를 찾지 못했습니다. 봇전으로 시작합니다.", 3f);
-                PickRandomMap();
+                // 봇전 폴백 폐지 (2026-09-06) — 싱글과 분리한 의미가 없어진다. 매칭 서버에 못 붙으면 타이틀로.
+                // (방은 QuickMatch가 이미 만든다 — 상대는 로비에서 기다리고, 준비를 눌러야 호스트가 시작할 수 있다)
+                NetBoot.Shutdown();
+                hud.ShowSubtitle("매칭 서버에 연결할 수 없습니다. 네트워크를 확인하세요.", 3f);
+                ShowTitle();
             }
         }
 
@@ -1347,6 +1347,7 @@ namespace SeoYuGi.BattleView
 
         void ShowLobby()
         {
+            SeoYuGi.Ai.AiConfig.Difficulty = SeoYuGi.Ai.AiDifficulty.Normal; // 멀티는 난이도 없음 — 싱글 픽창 설정이 새어 들어오지 않게 (2026-09-06)
             lobbyPopup = UIManager.Instance.ShowPopupUI<UILobbyPopup>();
             lobbyPopup.OnLeave = () => { NetBoot.Shutdown(); ShowTitle(); };
             lobbyPopup.OnStart = () =>
@@ -1967,7 +1968,8 @@ namespace SeoYuGi.BattleView
                     // 지휘는 "인간 지휘관이 있는 팀"의 봇에게. 싱글 지휘관 = 내 팀만, 지휘관 대전 = 양 팀 (각자 자기 인간).
                     bool commandable = GameModeState.IsCommander && TeamHasHuman(s.team);
                     var driver = new AiSlotDriver(s.unitId, s.cls, s.team, intentSink, predictor,
-                        commandable ? teamOrders[s.team] : null);
+                        commandable ? teamOrders[s.team] : null,
+                        scaleDifficulty: s.team != playerTeam); // 난이도는 적팀 봇만 — 아군 봇은 항상 보통 (2026-09-06)
                     driver.OnPredictedShot += (attackerId, cell) =>
                     {
                         var target = new Coord(cell.X, cell.Y);

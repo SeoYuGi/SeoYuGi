@@ -94,12 +94,13 @@ namespace SeoYuGi.BattleView
             if (radio == null)
             {
                 radio = gameObject.AddComponent<RadioWindow>();
-                radio.Init(() => Orders.LastAck);
-                radio.OnPreset += i =>
+                radio.Init(() => Orders.LastAck,
+                    () => OrderPresets.For(Round != null ? Round.Zones.Count : 0)); // 거점 지목은 맵의 거점 수만큼
+                radio.OnPreset += p =>
                 {
                     var squad = CommandableUnitIds();
                     if (squad.Count == 0) return;
-                    Orders.Apply(OrderPresets.Build(i, squad, Round != null ? Round.Zones.Count : 0));
+                    Orders.Apply(OrderPresets.Build(p, squad, Round != null ? Round.Zones.Count : 0));
                     battleAudio.PlaySfx("S2_TelegraphAlly", 0.7f); // 무전 발신음 — 전용 SFX 나오기 전까지 대용
                 };
             }
@@ -641,7 +642,7 @@ namespace SeoYuGi.BattleView
                 : $"상대팀이 {letter} 거점을 점령했습니다", teamColors[owner], 2.8f);
             hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[owner]);
 
-            var center = gridView.CoordToWorld(zone.Center);
+            var center = ZoneWorldCenter(zone);
             ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f)); // 링 제거 — 기둥 전용 (가독성 패스)
         }
 
@@ -944,7 +945,7 @@ namespace SeoYuGi.BattleView
                 }
                 float w = (maxX - minX + 1) * gridView.TileSize;
                 float d = (maxY - minY + 1) * gridView.TileSize;
-                var disc = ZoneCaptureDisc.Create(transform, gridView.CoordToWorld(z.Center), w, d);
+                var disc = ZoneCaptureDisc.Create(transform, ZoneWorldCenter(z), w, d);
                 zoneDiscs.Add(disc);
                 roundObjects.Add(disc.gameObject);
             }
@@ -1004,7 +1005,7 @@ namespace SeoYuGi.BattleView
                 battleAudio.PlayVoice(ours ? "Voice_ZoneCaptured" : "Voice_ZoneLost"); // 음성만 (자막은 배너가)
 
                 // 탈환 완료 순간 — 빛기둥 (링은 충격파 전용으로 회수)
-                var center = gridView.CoordToWorld(zone.Center);
+                var center = ZoneWorldCenter(zone);
                 ImpactVfx.Pillar(center, Color.Lerp(teamColors[zone.owner], Color.white, 0.4f));
                 CameraShaker.Shake(0.2f);
             };
@@ -1463,6 +1464,19 @@ namespace SeoYuGi.BattleView
             viewRegistry.Clear();
         }
 
+        /// <summary>거점 바운딩박스의 월드 중점 — 짝수 크기(4×4) 거점은 Zone.Center(정수 칸)가 반 칸 어긋난다.</summary>
+        Vector3 ZoneWorldCenter(Zone z)
+        {
+            int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+            foreach (var c in z.cells)
+            {
+                if (c.x < minX) minX = c.x; if (c.x > maxX) maxX = c.x;
+                if (c.y < minY) minY = c.y; if (c.y > maxY) maxY = c.y;
+            }
+            return (gridView.CoordToWorld(new Coord(minX, minY))
+                  + gridView.CoordToWorld(new Coord(maxX, maxY))) * 0.5f;
+        }
+
         /// <summary>거점 패치 중앙에 대형 A/B/C 글자 (탱고파이브식).</summary>
         void CreateZoneLabels()
         {
@@ -1471,7 +1485,7 @@ namespace SeoYuGi.BattleView
                 var go = new GameObject($"ZoneLabel_{ZoneLetters[i]}");
                 zoneLabels.Add(go);
                 go.transform.SetParent(transform);
-                go.transform.position = gridView.CoordToWorld(Round.Zones[i].Center) + Vector3.up * 0.06f;
+                go.transform.position = ZoneWorldCenter(Round.Zones[i]) + Vector3.up * 0.06f;
                 go.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // 바닥에 눕힘
                 var tm = go.AddComponent<TextMesh>();
                 tm.text = ZoneLetters[i];

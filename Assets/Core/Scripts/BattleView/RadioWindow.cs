@@ -23,17 +23,19 @@ namespace SeoYuGi.BattleView
 
         public bool IsOpen { get; private set; }
 
-        /// <summary>프리셋 선택 — (인덱스). 러너가 실제 명령으로 펴서 적용한다.</summary>
-        public event Action<int> OnPreset;
+        /// <summary>프리셋 선택. 러너가 실제 명령으로 펴서 적용한다.</summary>
+        public event Action<OrderPresets.Preset> OnPreset;
 
         Func<string> ackProvider;
+        Func<IReadOnlyList<OrderPresets.Preset>> presetProvider;
         float restoreScale = 1f;
         GUIStyle titleStyle, presetStyle, ackStyle, hintStyle;
         bool stylesReady;
 
-        public void Init(Func<string> lastAck)
+        public void Init(Func<string> lastAck, Func<IReadOnlyList<OrderPresets.Preset>> presets)
         {
             ackProvider = lastAck;
+            presetProvider = presets;
         }
 
         /// <summary>러너가 매 프레임 호출 — 지휘관 모드가 아니거나 전투 중이 아니면 enabled=false로 둔다.</summary>
@@ -76,18 +78,18 @@ namespace SeoYuGi.BattleView
             stylesReady = true;
             titleStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 20, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft,
+                fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft,
                 normal = { textColor = new Color(0.55f, 0.9f, 1f) }
             };
-            presetStyle = new GUIStyle(GUI.skin.button) { fontSize = 17, fontStyle = FontStyle.Bold };
+            presetStyle = new GUIStyle(GUI.skin.button) { fontSize = 20, fontStyle = FontStyle.Bold };
             ackStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 16, alignment = TextAnchor.MiddleLeft, wordWrap = true,
+                fontSize = 18, alignment = TextAnchor.MiddleLeft, wordWrap = true,
                 normal = { textColor = new Color(0.75f, 0.95f, 0.8f) }
             };
             hintStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 13, alignment = TextAnchor.MiddleLeft,
+                fontSize = 15, alignment = TextAnchor.MiddleLeft,
                 normal = { textColor = new Color(0.55f, 0.62f, 0.72f) }
             };
             GameFonts.Apply(titleStyle, GameFonts.Title);
@@ -101,38 +103,54 @@ namespace SeoYuGi.BattleView
             if (!IsOpen) return;
             EnsureStyles();
 
-            const float W = 420f, PadX = 18f;
-            float h = Screen.height;
-            var box = new Rect(24f, h * 0.5f - 190f, W, 380f);
+            var presets = presetProvider != null ? presetProvider() : null;
+            int n = presets != null ? presets.Count : 0;
 
-            // 어두운 판 — 전투 화면과 분리
+            // 화면 중앙 — 구석에 있으면 전투에 시선이 묶여 안 보인다는 피드백 (2026-09-05)
+            const float BtnH = 56f, GapY = 12f, GapX = 14f, PadX = 26f;
+            int cols = n > 5 ? 2 : 1;
+            int rows = cols == 1 ? n : (n + 1) / 2;
+            float btnW = 300f;
+            float W = PadX * 2 + btnW * cols + GapX * (cols - 1);
+            float headerH = 92f, footerH = 56f;
+            float H = headerH + rows * (BtnH + GapY) + footerH;
+
+            var box = new Rect((Screen.width - W) * 0.5f, (Screen.height - H) * 0.5f, W, H);
+
+            // 화면 전체를 살짝 눌러 무전창에 시선을 모은다
             var prev = GUI.color;
-            GUI.color = new Color(0.02f, 0.04f, 0.08f, 0.93f);
+            GUI.color = new Color(0f, 0f, 0f, 0.45f);
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+
+            GUI.color = new Color(0.35f, 0.85f, 1f, 0.55f);            // 테두리
+            GUI.DrawTexture(new Rect(box.x - 2f, box.y - 2f, box.width + 4f, box.height + 4f), Texture2D.whiteTexture);
+            GUI.color = new Color(0.02f, 0.04f, 0.08f, 0.97f);         // 판
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             GUI.color = prev;
 
-            float y = box.y + 16f;
-            GUI.Label(new Rect(box.x + PadX, y, W - PadX * 2, 28f), "무전", titleStyle);
-            y += 30f;
-            GUI.Label(new Rect(box.x + PadX, y, W - PadX * 2, 20f),
+            float y = box.y + 20f;
+            GUI.Label(new Rect(box.x + PadX, y, box.width - PadX * 2, 34f), "무전", titleStyle);
+            y += 36f;
+            GUI.Label(new Rect(box.x + PadX, y, box.width - PadX * 2, 24f),
                 "팀원에게 지시한다 · TAB 또는 ESC로 닫기", hintStyle);
-            y += 28f;
+            y = box.y + headerH;
 
-            var presets = OrderPresets.All;
-            for (int i = 0; i < presets.Length; i++)
+            for (int i = 0; i < n; i++)
             {
-                var r = new Rect(box.x + PadX, y, W - PadX * 2, 40f);
+                int col = cols == 1 ? 0 : i % cols;
+                int row = cols == 1 ? i : i / cols;
+                var r = new Rect(box.x + PadX + col * (btnW + GapX),
+                                 y + row * (BtnH + GapY), btnW, BtnH);
                 if (GUI.Button(r, presets[i].label, presetStyle))
                 {
-                    OnPreset?.Invoke(i);
+                    OnPreset?.Invoke(presets[i]);
                     Close();
                 }
-                y += 46f;
             }
 
             string ack = ackProvider != null ? ackProvider() : "";
             if (!string.IsNullOrEmpty(ack))
-                GUI.Label(new Rect(box.x + PadX, box.yMax - 44f, W - PadX * 2, 36f), "> " + ack, ackStyle);
+                GUI.Label(new Rect(box.x + PadX, box.yMax - 44f, box.width - PadX * 2, 34f), "> " + ack, ackStyle);
         }
     }
 }

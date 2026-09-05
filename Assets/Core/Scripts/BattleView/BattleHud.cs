@@ -429,7 +429,7 @@ namespace SeoYuGi.BattleView
         int countdownNum; // 라운드 시작 3·2·1 — 0이면 숨김
         float countdownChangedAt;  // 숫자가 바뀐 시각 — 펀치·링 게이지 기준
         float countdownGoUntil;    // "출격!" 번쩍 끝나는 시각
-        GUIStyle countStyle, countTitleStyle;
+        GUIStyle countStyle;
         bool CountdownVisible => countdownNum > 0 || Time.time < countdownGoUntil;
 
         /// <summary>라운드 시작 카운트다운 — 중앙 대형 숫자. 0 = 숨김 (마지막엔 "출격!" 0.6초).</summary>
@@ -441,7 +441,7 @@ namespace SeoYuGi.BattleView
             countdownChangedAt = Time.time;
         }
 
-        /// <summary>3·2·1 연출 (2026-09-06 "성의 없다"): 가로 어두운 띠 + ROUND 제목·규칙 + 120pt 숫자 펀치(1.6→1배) +
+        /// <summary>3·2·1 연출 (2026-09-06 "성의 없다"): 가로 어두운 띠 + 120pt 숫자 펀치(1.6→1배) +
         /// 1초마다 줄어드는 링 게이지 + 끝에 "출격!" 번쩍. 카운트 중엔 채팅·킬피드·공지·패널을 안 그린다 (OnGUI).</summary>
         void DrawCountdown()
         {
@@ -450,7 +450,6 @@ namespace SeoYuGi.BattleView
             if (countStyle == null)
             {
                 countStyle = new GUIStyle(bannerStyle) { fontSize = 120, alignment = TextAnchor.MiddleCenter };
-                countTitleStyle = new GUIStyle(bannerStyle) { fontSize = 22, alignment = TextAnchor.MiddleCenter };
             }
             float cx = W / 2f, cy = H / 2f;
             var gold = new Color(1f, 0.85f, 0.25f);
@@ -461,12 +460,7 @@ namespace SeoYuGi.BattleView
             Fill(new Rect(0, cy - 110f, W, 2f), new Color(gold.r, gold.g, gold.b, 0.6f * goT));
             Fill(new Rect(0, cy + 108f, W, 2f), new Color(gold.r, gold.g, gold.b, 0.6f * goT));
 
-            // ④ 라운드 제목 + 규칙 한 줄
-            if (match != null)
-                ShadowLabel(new Rect(0, cy - 104f, W, 26f), $"ROUND {match.CurrentRound} / {MatchSystem.MaxRounds}",
-                    countTitleStyle, new Color(0.85f, 0.9f, 1f, goT));
-            if (!string.IsNullOrEmpty(roundRuleChip))
-                ShadowLabel(new Rect(0, cy + 78f, W, 26f), roundRuleChip, countTitleStyle, new Color(1f, 0.85f, 0.45f, goT));
+            // 라운드 제목·규칙 줄은 뺐다 — 상단바 ROUND 줄·규칙 칩과 중복 (2026-09-06 "지저분")
 
             string text; Color col; float k;
             if (go)

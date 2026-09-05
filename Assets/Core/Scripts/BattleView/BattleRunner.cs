@@ -335,33 +335,24 @@ namespace SeoYuGi.BattleView
             ShowPickBackground();
 
             var popup = UIManager.Instance.ShowPopupUI<UITitlePopup>();
-            popup.OnSingle = PickRandomMap;
-            popup.OnHost = async () =>
+            popup.OnMatch = () => StartCoroutine(MatchmakeRoutine(popup));
+        }
+
+        /// <summary>매칭 연출 — 상대를 찾다가 인원 부족분은 AI로 채워 시작.
+        /// 실사람 매칭(Matchmaker)이 붙으면 여기서 세션 참가 → 로비로 분기한다.</summary>
+        System.Collections.IEnumerator MatchmakeRoutine(UITitlePopup popup)
+        {
+            popup.ShowSearching();
+            float t = 0f;
+            const float SearchTime = 2.5f;
+            while (t < SearchTime)
             {
-                hud.ShowSubtitle("방 생성 중...", 10f);
-                if (await NetBoot.HostRelayAsync())
-                {
-                    NetLobby.Begin();
-                    ShowLobby();
-                    hud.ShowSubtitle($"조인 코드: {NetBoot.JoinCode}", 6f);
-                }
-                else { hud.ShowSubtitle("방 생성 실패 — Relay 설정 확인", 4f); ShowTitle(); }
-            };
-            popup.OnJoin = () =>
-            {
-                var join = UIManager.Instance.ShowPopupUI<UIJoinCodePopup>();
-                join.OnBack = ShowTitle;
-                join.OnJoin = async code =>
-                {
-                    hud.ShowSubtitle("접속 중...", 10f);
-                    if (await NetBoot.JoinRelayAsync(code))
-                    {
-                        NetLobby.Begin();
-                        ShowLobby();
-                    }
-                    else { hud.ShowSubtitle("접속 실패 — 코드 확인", 4f); ShowTitle(); }
-                };
-            };
+                popup.SetSearchDots(1 + (int)(t * 2f) % 3);
+                t += Time.deltaTime;
+                yield return null;
+            }
+            UIManager.Instance.ClosePopupUI(popup);
+            PickRandomMap(); // 봇으로 채운 매치 — 실사람 매칭 연결 시 이 분기를 세션 결과로 대체
         }
 
         UILobbyPopup lobbyPopup;

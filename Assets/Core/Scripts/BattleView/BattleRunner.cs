@@ -1273,43 +1273,55 @@ namespace SeoYuGi.BattleView
 
         System.Collections.IEnumerator MatchmakeRoutine(UITitlePopup popup)
         {
-            // 매칭 대기 화면 폐지 (2026-09-06) — 방을 파거나 파진 방에 들어가는 것이라 "상대를 찾는 중"이 아니다.
-            // 바로 로비로 들어가 "서버 연결 중"만 보이고, 상대는 로비 안에서 기다린다. 나가기(ESC)가 곧 연결 취소.
+            // 접속 대기는 타이틀의 회전 링으로 — 문구는 "멀티 서버 접속 중" (2026-09-06). 방을 파거나 열린 방에 들어가는
+            // 몇 초(퀵조인 탐색 8s + 세션 생성)가 원래 이 시간이다. 연결되면 로비로, 상대는 로비 안에서 기다린다.
             matchmakeCancelled = false;
-            UIManager.Instance.ClosePopupUI(popup);
+            popup.OnCancelSearch = () => matchmakeCancelled = true;
+            popup.ShowSearching();
             NetLobby.Clear(); // 지난 세션 슬롯이 비치지 않게
-            ShowLobby();
-            var lobby = lobbyPopup;
-            lobby.SetStatus("서버 연결 중...");
-            var leave = lobby.OnLeave;
-            lobby.OnLeave = () => { matchmakeCancelled = true; leave?.Invoke(); };
-
-            var task = NetBoot.QuickMatchAsync(); // 빈 방 합류 or 방 생성 (퀵조인 탐색 8s 포함)
+            var task = NetBoot.QuickMatchAsync(); // 빈 방 합류 or 방 생성
             const float Timeout = 20f; // 이 안에 못 끝나면 네트워크 문제
             float t = 0f;
-            while (!task.IsCompleted && t < Timeout && !matchmakeCancelled) { t += Time.deltaTime; yield return null; }
-            if (matchmakeCancelled) { NetBoot.Shutdown(); yield break; } // 로비는 Leave가 이미 닫았다
+            while (!task.IsCompleted && t < Timeout && !matchmakeCancelled)
+            {
+                popup.SetSearchDots(1 + (int)(t * 2f) % 3);
+                t += Time.deltaTime;
+                yield return null;
+            }
 
-            bool matched = task.IsCompleted && !task.IsFaulted && task.Result;
+            bool matched = !matchmakeCancelled && task.IsCompleted && !task.IsFaulted && task.Result;
             if (matched)
             {
                 // 세션은 잡혀도 SDK가 NGO를 비동기로 시작한다 — 리스닝 전에 NetLobby.Begin()을 부르면
                 // CustomMessagingManager가 null (NRE). 실제 호스트/클라가 뜰 때까지 대기. (2026-09-05)
                 float t2 = 0f;
-                while (t2 < 10f && !NetBoot.IsOnline && !matchmakeCancelled) { t2 += Time.deltaTime; yield return null; }
-                if (matchmakeCancelled) { NetBoot.Shutdown(); yield break; }
+                while (t2 < 10f && !NetBoot.IsOnline && !matchmakeCancelled)
+                {
+                    popup.SetSearchDots(1 + (int)((t + t2) * 2f) % 3);
+                    t2 += Time.deltaTime;
+                    yield return null;
+                }
                 if (!NetBoot.IsOnline) { Debug.LogWarning("세션 성사됐지만 NGO 미시작(10s)"); matched = false; }
             }
 
+            popup.OnCancelSearch = null;
+            if (matchmakeCancelled)
+            {
+                // ESC 취소 — 이미 세션이 잡혔을 수 있으니 정리하고 타이틀 버튼으로 복귀
+                popup.HideSearching();
+                NetBoot.Shutdown();
+                yield break;
+            }
+
+            UIManager.Instance.ClosePopupUI(popup);
             if (matched)
             {
-                NetLobby.Begin();   // 슬롯 생성·핸들러 등록 (호스트는 여기서 브로드캐스트, 클라는 곧 sy_lobby 수신)
-                lobby.RefreshNow(); // 로비가 연결보다 먼저 열렸으니 지금 채운다 — 호스트/클라 역할도 이 시점에 확정
+                NetLobby.Begin();
+                ShowLobby(); // 연결 성사 — 로비. 상대 칸은 "?"로 시작해 상대가 들어오면 채워진다
             }
             else
             {
                 // 봇전 폴백 없음 (2026-09-06) — 싱글과 분리한 의미가 없어진다. 매칭 서버에 못 붙으면 타이틀로.
-                UIManager.Instance.ClosePopupUI(lobby);
                 NetBoot.Shutdown();
                 hud.ShowSubtitle("매칭 서버에 연결할 수 없습니다. 네트워크를 확인하세요.", 3f);
                 ShowTitle();

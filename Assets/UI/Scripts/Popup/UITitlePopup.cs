@@ -228,7 +228,7 @@ public class UITitlePopup : UIPopup
     public void SetSearchDots(int dots)
     {
         if (searchText != null)
-            searchText.text = "상대를 찾는 중" + new string('.', dots) + "\n<size=18>상대가 들어오면 로비로 이동합니다</size>";
+            searchText.text = "멀티 서버 접속 중" + new string('.', dots) + "\n<size=18>방을 만들거나 열린 방에 들어갑니다</size>";
     }
 
     void Pick()

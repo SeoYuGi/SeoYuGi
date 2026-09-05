@@ -24,14 +24,20 @@ public class UITitlePopup : UIPopup
 
     static readonly Color Cyan = new Color(0.35f, 0.85f, 1f);
 
-    // 시안 좌표(1336×753) → 캔버스 기준 해상도(1920×1080) 환산 = ×1.437
-    const float BtnW = 388f, BtnH = 86f, BtnGap = 114f;
-    const float ColumnX = 362f;   // 버튼 중심 x (좌측 정렬 열)
-    const float FirstY = 24f;     // 첫 버튼 중심 y (화면 중앙 기준) — 시안 실측. 202는 로고를 덮었다
+    // 버튼 위치는 화면이 아니라 '배경 이미지' 기준의 비율이다.
+    // 배경이 레터박스로 들어가면 화면 기준 좌표는 여백만큼 어긋나므로,
+    // 버튼을 배경의 자식으로 넣고 정규화 앵커로 붙인다 — 해상도·비율이 바뀌어도 그림 위 같은 자리다.
+    // 값은 합성 시안(1336×753) 실측을 이미지 크기로 나눈 것.
+    const float BtnCx = 0.1882f;   // 버튼 중심 x
+    const float BtnW = 0.2013f;    // 버튼 폭
+    const float BtnH = 0.0797f;    // 버튼 높이
+    const float BtnGap = 0.1062f;  // 버튼 간격
+    const float FirstCy = 0.5219f; // 첫 버튼 중심 y (아래 기준)
 
     Text searchText;
     RectTransform searchRing;   // 매칭 대기 회전 링
     readonly Image[] btnGlows = new Image[4];
+    RectTransform bgRect;   // 배경 이미지 — 버튼의 부모
     bool searching;
 
     public override void Init()
@@ -44,11 +50,11 @@ public class UITitlePopup : UIPopup
         var prefabTitle = transform.Find("Title");
         if (prefabTitle != null) prefabTitle.gameObject.SetActive(false); // 로고는 배경에 박혀 있다
 
-        BuildBackground();
+        bgRect = BuildBackground();
 
         // 프리팹에 없는 네 번째. Init이 두 번 돌아도 새로 만들지 않는다 —
         // 겹쳐 만들면 같은 버튼이 두 벌 그려진다.
-        var existingQuit = transform.Find("BtnQuit");
+        var existingQuit = transform.Find("BtnQuit") ?? (bgRect != null ? bgRect.Find("BtnQuit") : null);
         var quit = existingQuit != null ? existingQuit.gameObject : MakeButtonObject("BtnQuit");
         StyleButton(Get<GameObject>((int)Buttons.BtnSingle), 0, "멀티 모드", () => Pick());
         StyleButton(Get<GameObject>((int)Buttons.BtnHost), 1, "지휘관 모드 (싱글)", () => OnCommander?.Invoke());
@@ -59,26 +65,37 @@ public class UITitlePopup : UIPopup
     // ── 배치 ─────────────────────────────────────────────
 
     /// <summary>
-    /// 배경 아트 — 팝업 맨 뒤에 화면 가득. 로고·캐릭터가 이미 그려져 있다.
-    /// AspectRatioFitter.EnvelopeParent = "cover" — 비율을 지키며 화면을 덮고 넘치는 쪽만 잘린다.
-    /// 늘려서 채우면(preserveAspect=false) 창 비율에 따라 캐릭터가 찌그러진다.
+    /// 배경 아트 — 원본 비율을 그대로 지키고, 화면과 비율이 다르면 남는 쪽은 검게 둔다.
+    /// FitInParent("contain")이라 그림이 잘리지 않는다 — cover로 덮으면 넓은 화면에서
+    /// 확대돼 좌측 로고가 화면 밖으로 밀려난다.
+    /// 버튼은 이 오브젝트의 자식이 되어 그림과 함께 움직인다.
     /// </summary>
-    void BuildBackground()
+    RectTransform BuildBackground()
     {
-        var old = transform.Find("Background");
-        if (old != null) Destroy(old.gameObject); // Init 재실행 시 겹쳐 깔리지 않게
+        var oldLetter = transform.Find("Letterbox");
+        if (oldLetter != null) DestroyImmediate(oldLetter.gameObject); // Init 재실행 대비
+
+        // 여백용 검은 바탕 — 배경보다 뒤, 화면 전체
+        var back = new GameObject("Letterbox", typeof(RectTransform), typeof(Image));
+        var brt = (RectTransform)back.transform;
+        brt.SetParent(transform, false);
+        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+        brt.offsetMin = Vector2.zero; brt.offsetMax = Vector2.zero;
+        brt.SetAsFirstSibling();
+        var bimg = back.GetComponent<Image>();
+        bimg.color = Color.black;
+        bimg.raycastTarget = false;
 
         var tex = Resources.Load<Texture2D>("UI/BG_Main");
-        if (tex == null) return;
+        if (tex == null) return null;
 
         var go = new GameObject("Background", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
         var rt = (RectTransform)go.transform;
-        rt.SetParent(transform, false);
+        rt.SetParent(brt, false);           // 검은 바탕 안에서 비율을 맞춘다
         rt.anchorMin = Vector2.zero;
         rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero;
         rt.offsetMax = Vector2.zero;
-        rt.SetAsFirstSibling(); // 버튼보다 뒤
 
         var img = go.GetComponent<Image>();
         img.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
@@ -86,8 +103,9 @@ public class UITitlePopup : UIPopup
         img.raycastTarget = false;
 
         var fit = go.GetComponent<AspectRatioFitter>();
-        fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent; // 원본 비율 유지, 남는 쪽은 검정
         fit.aspectRatio = (float)tex.width / tex.height;
+        return rt;
     }
 
     GameObject MakeButtonObject(string name)
@@ -109,10 +127,15 @@ public class UITitlePopup : UIPopup
         BindEvent(btn, _ => { if (!searching) onClick?.Invoke(); });
 
         var rt = (RectTransform)btn.transform;
-        rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f); // 좌측 기준 — 해상도가 바뀌어도 왼쪽에 붙는다
+        // 배경의 자식으로 두고 정규화 앵커로 붙인다 — 레터박스로 그림이 줄거나 움직여도
+        // 버튼이 그림 위 같은 자리를 지킨다. 화면 기준 좌표면 여백만큼 어긋난다.
+        if (bgRect != null) rt.SetParent(bgRect, false);
+        float cy = FirstCy - index * BtnGap;
+        rt.anchorMin = new Vector2(BtnCx - BtnW / 2f, cy - BtnH / 2f);
+        rt.anchorMax = new Vector2(BtnCx + BtnW / 2f, cy + BtnH / 2f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = new Vector2(ColumnX, FirstY - index * BtnGap);
-        rt.sizeDelta = new Vector2(BtnW, BtnH);
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
         rt.SetAsLastSibling(); // 배경 위로
 
         var plate = Resources.Load<Texture2D>("UI/Frame_MainButton");
@@ -177,13 +200,13 @@ public class UITitlePopup : UIPopup
         Get<GameObject>((int)Buttons.BtnSingle).SetActive(false);
         Get<GameObject>((int)Buttons.BtnHost).SetActive(false);
         Get<GameObject>((int)Buttons.BtnJoin).SetActive(false);
-        var quit = transform.Find("BtnQuit");
+        var quit = transform.Find("BtnQuit") ?? (bgRect != null ? bgRect.Find("BtnQuit") : null);
         if (quit != null) quit.gameObject.SetActive(false);
 
         if (searchText == null)
         {
             searchText = MakeText("Searching", "", 30, FontStyle.Normal, new Color(0.6f, 0.9f, 1f),
-                new Vector2(0f, 0.5f), new Vector2(ColumnX, FirstY + 40f), new Vector2(700f, 60f), GameFonts.Title);
+                new Vector2(BtnCx, FirstCy), new Vector2(0f, 0f), new Vector2(700f, 60f), GameFonts.Title);
 
             // 검정 배경 키잉 로드 — 링 텍스처는 plain black 위에 생성돼 그냥 쓰면 검정 사각형이 보인다
             var ringTex = BattleHud.LoadKeyed("UI/Ring_Zone");
@@ -194,9 +217,9 @@ public class UITitlePopup : UIPopup
             {
                 var go = new GameObject("SearchRing", typeof(RectTransform), typeof(Image));
                 searchRing = (RectTransform)go.transform;
-                searchRing.SetParent(transform, false);
-                searchRing.anchorMin = searchRing.anchorMax = new Vector2(0f, 0.5f);
-                searchRing.anchoredPosition = new Vector2(ColumnX, FirstY - 80f);
+                searchRing.SetParent(bgRect != null ? bgRect : transform, false);
+                searchRing.anchorMin = searchRing.anchorMax = new Vector2(BtnCx, FirstCy - BtnGap);
+                searchRing.anchoredPosition = Vector2.zero;
                 searchRing.sizeDelta = new Vector2(150f, 150f);
                 var img = go.GetComponent<Image>();
                 img.sprite = ringSprite;
@@ -239,7 +262,7 @@ public class UITitlePopup : UIPopup
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Text));
         var rt = (RectTransform)go.transform;
-        rt.SetParent(transform, false);
+        rt.SetParent(bgRect != null ? bgRect : transform, false); // 그림과 함께 움직이게
         rt.anchorMin = rt.anchorMax = anchor;
         rt.anchoredPosition = pos; rt.sizeDelta = sizeDelta;
         var t = go.GetComponent<Text>();

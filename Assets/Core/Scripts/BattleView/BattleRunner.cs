@@ -1252,6 +1252,7 @@ namespace SeoYuGi.BattleView
                 // 튜토리얼 — 지휘관 봇전에 가이드 3단계(거점 → 조작 → 지휘)를 강제로 붙인다. 규칙 변형은 생략.
                 Guide.StartTutorial();
                 GameModeState.Current = GameMode.Commander;
+                SeoYuGi.Ai.AiConfig.Difficulty = SeoYuGi.Ai.AiDifficulty.Easy; // 튜토리얼은 하급 고정 — 픽창 난이도 바도 안 보인다 (2026-09-06)
                 UIManager.Instance.ClosePopupUI(popup);
                 PickRandomMap();
             };
@@ -1662,6 +1663,24 @@ namespace SeoYuGi.BattleView
             throw new ArgumentException($"matchSetup에 없는 unitId {unitId}");
         }
 
+        /// <summary>스폰 칸 — 훈련장 허수아비만 맵 중앙(가장 가까운 걸을 수 있는 칸). 스폰 배열 자리는 구석이라
+        /// 기술 연습 동선이 한쪽에 몰렸다 (2026-09-06 "허수아비 맵 중앙"). 유닛 추가·뷰 바인드·제자리 복귀가 같은 값을 본다.</summary>
+        Coord SpawnOf(int unitId)
+        {
+            if (!GameModeState.Training || unitId != TrainingDummyId || Battle == null) return map.Spawns[unitId];
+            var g = Battle.Grid;
+            var center = new Coord(g.Width / 2, g.Height / 2);
+            for (int r = 0; r < Mathf.Max(g.Width, g.Height); r++)
+                for (int dx = -r; dx <= r; dx++)
+                    for (int dy = -r; dy <= r; dy++)
+                    {
+                        if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue; // 링 r만
+                        var c = new Coord(center.x + dx, center.y + dy);
+                        if (g.InBounds(c) && g.IsWalkable(c) && !c.Equals(map.Spawns[playerUnitId])) return c;
+                    }
+            return map.Spawns[unitId];
+        }
+
         Predictor NewPredictor()
         {
             var cfg = new PredictionConfig { MapWidth = map.Width, MapHeight = map.Height };
@@ -1755,7 +1774,7 @@ namespace SeoYuGi.BattleView
 
             Battle = new BattleState(grid);
             foreach (var s in matchSetup.slots)
-                Battle.AddUnit(new UnitState(s.unitId, s.team, map.Spawns[s.unitId], s.cls));
+                Battle.AddUnit(new UnitState(s.unitId, s.team, SpawnOf(s.unitId), s.cls));
 
             Move = new MoveSystem(Battle, moveConfig);
             Combat = new CombatSystem(Battle, combatConfig);
@@ -1771,7 +1790,10 @@ namespace SeoYuGi.BattleView
                 decaySeconds = roundConfig.decaySeconds,
                 roundSeconds = roundConfig.roundSeconds + (Rule != null ? Rule.RoundSecondsDelta : 0f)
             };
-            Round = new RoundSystem(Battle, roundCfg, map.Zones) { Rule = Rule };
+            // 훈련장은 거점 없음 (2026-09-06) — 빈 목록을 명시해 넘긴다 (null이면 기본 거점을 깐다)
+            IEnumerable<IEnumerable<Coord>> zoneGroups = map.Zones;
+            if (GameModeState.Training) zoneGroups = new List<IEnumerable<Coord>>();
+            Round = new RoundSystem(Battle, roundCfg, zoneGroups) { Rule = Rule };
             Round.SyncZoneActive();
             Combat.Rule = Rule;
             Move.Rule = Rule;
@@ -1831,10 +1853,13 @@ namespace SeoYuGi.BattleView
                 gridViewBuilt = true;
                 gridView.Build(grid);
                 var allZoneCells = new List<Coord>();
-                foreach (var zone in map.Zones)
-                    allZoneCells.AddRange(zone);
+                if (!GameModeState.Training) // 훈련장 — 거점 바닥·A/B/C 라벨 없음 (2026-09-06)
+                {
+                    foreach (var zone in map.Zones)
+                        allZoneCells.AddRange(zone);
+                    CreateZoneLabels();
+                }
                 gridView.MarkZones(allZoneCells);
-                CreateZoneLabels();
                 SetupCamera(); // 맵 크기가 라운드 중간에 바뀔 수 있어 재프레이밍
             }
             gridView.ClearBaseTints(); // 이전 라운드 거점 소유 틴트 제거
@@ -1869,7 +1894,7 @@ namespace SeoYuGi.BattleView
                 view.name = $"Unit_{s.unitId}_{s.cls}";
                 // 클래스별 덩치 차이 — 모델 들어오기 전 임시 구분 (Bind 전에 적용해야 기준 스케일로 잡힘)
                 view.transform.localScale *= ViewScale(s.cls);
-                view.Bind(s.unitId, teamColors[s.team], gridView, map.Spawns[s.unitId]);
+                view.Bind(s.unitId, teamColors[s.team], gridView, SpawnOf(s.unitId));
                 view.AttachClassAccent(ClassHue(s.cls)); // 발밑 클래스 링 — 캐릭터 구분 (스킬 팔레트와 동기)
                 viewRegistry.Register(view);
                 roundObjects.Add(view.gameObject);
@@ -2459,7 +2484,7 @@ namespace SeoYuGi.BattleView
             Time.timeScale = 1f; // 안전 복원 — 히트스톱·빨리감기 잔재가 남아 게임이 멈춘 듯 보이는 사고 방지 (2026-09-05 프리즈 보고)
             if (GameModeState.Training)
             {
-                trainingDummyHome = map.Spawns[TrainingDummyId];
+                trainingDummyHome = SpawnOf(TrainingDummyId);
                 trainingLastHitAt = Time.time;
                 hud.ShowAnnounce("훈련장. F1~F5 캐릭터 교체 / 허수아비는 죽지 않음 / ESC 메뉴로 나가기", Color.white, 6f);
             }
@@ -2931,7 +2956,7 @@ namespace SeoYuGi.BattleView
                     hud.ShowBriefing(endedRound, winnerTeam, null, ZoneOwners(), AliveCount(playerTeam), AliveCount(1 - playerTeam));
                     battleAudio.PlayBgm("B3_Briefing");
                     battleAudio.SetTypingLoop(true);
-                    PlayVoiceLine("Voice_PredictionApplied", "예측 모델 적용");
+                    // "예측 모델 적용" 음성·자막은 은퇴 — AI 학습 컨셉 잔재 (2026-09-06)
                 }));
             }
         }

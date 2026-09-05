@@ -125,7 +125,8 @@ public class UIClassSelectPopup : UIPopup
         botManual[0] = botManual[1] = false;
         AutoBalanceBots(); // 시작부터 밸런스 조합 — 봇 슬롯을 직접 바꾸면 그 선택이 유지된다
         BuildTeamSlots();
-        BuildDifficultyBar();
+        // 훈련장(허수아비뿐)·튜토리얼(하급 고정)은 난이도 고를 게 없다 (2026-09-06)
+        if (!GameModeState.Training && !Guide.TutorialMode) BuildDifficultyBar();
         RefreshTeamSlots();
     }
 

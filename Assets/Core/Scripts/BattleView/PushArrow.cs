@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace SeoYuGi.BattleView
@@ -19,16 +19,17 @@ namespace SeoYuGi.BattleView
         Material mat;
 
         /// <summary>from→to 바닥 화살표. wallCrash면 촉 대신 충돌 표시. 반환 오브젝트는 호출부가 수명 관리.</summary>
-        public static PushArrow Create(Transform parent, Vector3 from, Vector3 to, Color color, bool wallCrash)
+        public static PushArrow Create(Transform parent, Vector3 from, Vector3 to, Color color,
+            bool wallCrash, float width = 1f)
         {
             var go = new GameObject("PushArrow");
             go.transform.SetParent(parent);
             var arrow = go.AddComponent<PushArrow>();
-            arrow.Build(from, to, color, wallCrash);
+            arrow.Build(from, to, color, wallCrash, width);
             return arrow;
         }
 
-        void Build(Vector3 from, Vector3 to, Color color, bool wallCrash)
+        void Build(Vector3 from, Vector3 to, Color color, bool wallCrash, float width)
         {
             var a = new Vector3(from.x, Mathf.Max(from.y, to.y) + Height, from.z);
             var b = new Vector3(to.x, a.y, to.z);
@@ -47,6 +48,10 @@ namespace SeoYuGi.BattleView
             mat = new Material(Shader.Find("Sprites/Default")); // 알파 블렌드 — 매트
             mat.color = color;
             rend.material = mat;
+
+            // 회전 뒤 가로만 늘린다 — 진행 방향 길이는 그대로 두고 굵기만 계층화
+            if (!Mathf.Approximately(width, 1f))
+                transform.localScale = new Vector3(width, 1f, 1f);
         }
 
         /// <summary>로컬 +Z가 진행 방향. 자루 사각형 + 삼각 촉.</summary>

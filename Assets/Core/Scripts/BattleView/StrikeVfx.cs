@@ -56,29 +56,60 @@ namespace SeoYuGi.BattleView
 
         /// <summary>
         /// 예고 스킬 아이콘 — 조준 칸 바닥에 눕혀 그린다(빌보드 없음, 그리드와 같이 읽힌다).
-        /// 매트한 알파 블렌드 — 발광은 정보를 묻는다. 아이콘이 없으면 조용히 생략.
+        /// UI 아이콘은 어두운 패널 위 흰 실루엣 전제라 밝은 바닥에 그냥 놓으면 묻힌다.
+        /// 그래서 3겹으로 깐다: 팀색 테두리 판 → 어두운 속판 → 흰 아이콘.
+        /// 아이콘은 틴트하지 않는다 — 팀 색은 테두리가 말하고, 형상은 흰색이 제일 잘 읽힌다.
         /// </summary>
         static void SkillIcon(Transform parent, SkillKind kind, Vector3 aimWorld, Color color)
         {
             var tex = Resources.Load<Texture2D>("UI/" + SkillIconName(kind));
             if (tex == null) return;
 
+            var rim = color; rim.a = 0.9f;
+            Plate(parent, DiscTex(), aimWorld, 0.085f, 0.88f, rim);                                  // 팀색 테두리
+            Plate(parent, DiscTex(), aimWorld, 0.088f, 0.74f, new Color(0.04f, 0.05f, 0.08f, 0.88f)); // 어두운 속판
+            Plate(parent, tex, aimWorld, 0.091f, 0.52f, new Color(1f, 1f, 1f, 0.98f));               // 흰 아이콘
+        }
+
+        /// <summary>바닥에 눕힌 사각 쿼드 한 장 — 아이콘 판 3겹의 공용 부품.</summary>
+        static void Plate(Transform parent, Texture2D tex, Vector3 world, float lift, float size, Color color)
+        {
             var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
             UnityEngine.Object.Destroy(go.GetComponent<Collider>()); // 클릭 레이캐스트 방해 금지
-            go.name = "SkillIcon";
+            go.name = "SkillIconPlate";
             go.transform.SetParent(parent, false);
-            go.transform.position = aimWorld + Vector3.up * 0.09f; // 밀침 화살표(0.07)보다 살짝 위
+            go.transform.position = world + Vector3.up * lift;
             go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-            go.transform.localScale = Vector3.one * 0.52f;
+            go.transform.localScale = Vector3.one * size;
 
             var mat = new Material(Shader.Find("Sprites/Default")); // 알파 — 매트
             mat.mainTexture = tex;
-            var c = Color.Lerp(color, Color.white, 0.35f); c.a = 0.85f;
-            mat.color = c;
+            mat.color = color;
             var rend = go.GetComponent<Renderer>();
             rend.material = mat;
             rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             rend.receiveShadows = false;
+        }
+
+        static Texture2D discTex;
+
+        /// <summary>아이콘 받침용 원판 — 절차 생성 1회. 가장자리 안티에일리어싱.</summary>
+        static Texture2D DiscTex()
+        {
+            if (discTex != null) return discTex;
+            const int n = 64;
+            var t = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            t.wrapMode = TextureWrapMode.Clamp;
+            float c = (n - 1) * 0.5f;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                t.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp01(c - d)));
+            }
+            t.Apply();
+            discTex = t;
+            return discTex;
         }
 
         /// <summary>스킬 → 아이콘 리소스명. ClassCard의 카드용 표와 같은 매핑(레이어가 달라 각자 보유).</summary>

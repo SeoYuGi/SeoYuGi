@@ -110,6 +110,11 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<int, UnitHpBar> hpBars = new Dictionary<int, UnitHpBar>();
         readonly HashSet<int> blinkSnapIds = new HashSet<int>(); // 점멸 직후 — 슬라이드 대신 번쩍+스냅
         readonly Dictionary<int, GameObject> strikeTelegraphFx = new Dictionary<int, GameObject>(); // 예고 마커·레이저·투사체 — 판정 시 파괴
+
+        // 칸당 밀침 화살표 1개. 코어는 먼저 판정된 예고가 유닛을 밀어내고 뒤 예고는 빈 칸을 때리므로
+        // (Resolve의 GetUnitAt 검사), impactTime이 가장 빠른 예고만 그리는 게 실제 결과와 일치한다.
+        readonly Dictionary<Coord, (PushArrow arrow, float impactTime)> pushArrowByCell =
+            new Dictionary<Coord, (PushArrow, float)>();
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
         readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
         ThreatWarning threatWarning; // "내 칸에 예고 떨어짐" 경고 — 매치 내내 1개, 라운드 무관
@@ -1058,16 +1063,30 @@ namespace SeoYuGi.BattleView
                     // 연계의 전제: 밀릴 자리가 미리 보여야 폭격 유닛이 그 자리를 선점할 수 있다.
                     if (fx != null && strike.pushCells > 0 && strike.pushDir != Coord.Zero)
                     {
-                        var arrowColor = StrikeVfx.TeamColor(mineStrike);
-                        arrowColor.a = 0.7f;
                         foreach (var c in strike.cells)
                         {
                             if (!mineStrike && !playerVisibleFn(c)) continue;
-                            if (Battle.Grid.GetUnitAt(c) == SeoYuGi.Battle.Cell.NoUnit) continue; // Prediction.Cell과 이름 충돌 — 정규화
+                            int victimId = Battle.Grid.GetUnitAt(c);
+                            if (victimId == SeoYuGi.Battle.Cell.NoUnit) continue; // Prediction.Cell과 이름 충돌 — 정규화
+
+                            // 이 칸에 이미 더 빨리 터지는 예고의 화살표가 있으면 그게 진짜다 — 덧그리지 않는다
+                            if (pushArrowByCell.TryGetValue(c, out var prev) && prev.arrow != null)
+                            {
+                                if (prev.impactTime <= strike.impactTime) continue;
+                                Destroy(prev.arrow.gameObject); // 내가 더 먼저 터진다 — 이전 것을 대체
+                            }
+
                             var dest = Combat.PreviewPush(c, strike.pushDir, strike.pushCells, out bool crash);
                             if (dest == c && !crash) continue; // 못 밀린다 — 그릴 게 없다
-                            PushArrow.Create(fx.transform, gridView.CoordToWorld(c),
-                                gridView.CoordToWorld(dest), arrowColor, crash);
+
+                            // 초점 계층: 내가 밀리는 게 제일 급하고, 우리 팀 공격은 연계 재료, 나머지는 배경
+                            bool onMe = victimId == playerUnitId;
+                            var col = StrikeVfx.TeamColor(mineStrike);
+                            col.a = onMe ? 0.85f : mineStrike ? 0.6f : 0.3f;
+                            float w = onMe ? 1.15f : mineStrike ? 1f : 0.7f;
+
+                            pushArrowByCell[c] = (PushArrow.Create(fx.transform, gridView.CoordToWorld(c),
+                                gridView.CoordToWorld(dest), col, crash, w), strike.impactTime);
                         }
                     }
 
@@ -1339,6 +1358,7 @@ namespace SeoYuGi.BattleView
             foreach (var kv in strikeTelegraphFx)
                 if (kv.Value != null) Destroy(kv.Value);
             strikeTelegraphFx.Clear();
+            pushArrowByCell.Clear();
             viewRegistry.Clear();
         }
 

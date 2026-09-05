@@ -350,9 +350,9 @@ namespace SeoYuGi.BattleView
             var dest = combat.PreviewPush(from, dir, pushCells, out bool crash);
             if (dest == from && !crash) return;
 
-            var color = aimImpactColor; color.a = 0.75f;
+            var color = aimImpactColor; color.a = 0.9f; // 내 조준이 화면에서 가장 진해야 한다
             aimPushArrow = PushArrow.Create(transform, gridView.CoordToWorld(from),
-                gridView.CoordToWorld(dest), color, crash);
+                gridView.CoordToWorld(dest), color, crash, 1.2f);
         }
 
         void ClearPushPreview()

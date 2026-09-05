@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using SeoYuGi.Battle;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
@@ -151,7 +151,7 @@ namespace SeoYuGi.UI
         {
             Txt(card, label, R(15, scale), FontStyle.Bold, DimText, TextAnchor.MiddleLeft,
                 new Vector2(-W / 2f + 18f * scale, y), new Vector2(56f, 22f), GameFonts.Hud);
-            var dotSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
+            var dotSprite = DotSprite();
             float d0 = 84f * scale, gap = 26f * scale, r = 14f * scale;
             for (int d = 0; d < 5; d++)
             {
@@ -199,6 +199,29 @@ namespace SeoYuGi.UI
 
         static string Colored(string s, Color c) => $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{s}</color>";
         static Sprite ToSprite(Texture2D t) => Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f));
+
+        static Sprite dotSprite;
+
+        /// <summary>스탯 도트용 원형 스프라이트. 내장 Knob.psd는 에디터 전용이라 절차 생성.</summary>
+        static Sprite DotSprite()
+        {
+            if (dotSprite != null) return dotSprite;
+
+            const int n = 32;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            var c = (n - 1) * 0.5f;
+            for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                float a = Mathf.Clamp01(c - d);   // 가장자리 1px 안티에일리어싱
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+            tex.Apply();
+            tex.filterMode = FilterMode.Bilinear;
+            dotSprite = ToSprite(tex);
+            return dotSprite;
+        }
 
         static void MakeNeonBorder(Transform card, Color color, float scale)
         {

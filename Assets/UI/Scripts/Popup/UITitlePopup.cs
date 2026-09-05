@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -13,7 +13,8 @@ public class UITitlePopup : UIPopup
 {
     enum Buttons { BtnSingle, BtnHost, BtnJoin }
 
-    public Action OnMatch; // 매칭 시작 (실사람 매칭, 부족분 봇)
+    public Action OnMatch;     // 멀티 — 실사람 매칭, 부족분 봇
+    public Action OnCommander; // 지휘관 모드 — 봇전 + 팀원 무전 지휘
 
     static readonly Color Cyan = new Color(0.35f, 0.85f, 1f);
     static readonly Color DimText = new Color(0.55f, 0.62f, 0.72f);
@@ -29,8 +30,8 @@ public class UITitlePopup : UIPopup
     {
         Bind<GameObject>(typeof(Buttons));
         BindEvent(Get<GameObject>((int)Buttons.BtnSingle), _ => Pick());
-        Get<GameObject>((int)Buttons.BtnHost).SetActive(false);
         Get<GameObject>((int)Buttons.BtnJoin).SetActive(false);
+        StyleCommanderButton(); // 숨어 있던 BtnHost 재활용 — 프리팹은 건드리지 않는다
 
         var dim = transform.Find("Dim")?.GetComponent<Image>();
         if (dim != null) dim.color = new Color(0f, 0f, 0f, 0.3f);
@@ -104,9 +105,41 @@ public class UITitlePopup : UIPopup
         }
     }
 
+    /// <summary>지휘관 모드 버튼 — 프리팹에 이미 있으나 꺼져 있던 BtnHost를 되살려 쓴다.</summary>
+    void StyleCommanderButton()
+    {
+        var btn = Get<GameObject>((int)Buttons.BtnHost);
+        btn.SetActive(true);
+        BindEvent(btn, _ => { if (!searching) OnCommander?.Invoke(); });
+
+        var rt = (RectTransform)btn.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = new Vector2(0f, -212f); // 매칭 버튼(-130) 아래
+        rt.sizeDelta = new Vector2(340f, 58f);
+
+        var img = btn.GetComponent<Image>();
+        img.sprite = null;
+        img.color = new Color(0.03f, 0.05f, 0.1f, 0.92f);
+
+        var ol = btn.GetComponent<Outline>();
+        if (ol == null) ol = btn.AddComponent<Outline>();
+        ol.effectColor = new Color(0.35f, 0.85f, 1f, 0.45f); // 매칭 버튼보다 약하게 — 주 버튼이 아니다
+        ol.effectDistance = new Vector2(2f, -2f);
+
+        var label = btn.GetComponentInChildren<Text>();
+        if (label != null)
+        {
+            label.text = "지휘관 모드";
+            label.fontSize = 22;
+            label.fontStyle = FontStyle.Bold;
+            label.color = Color.Lerp(Color.white, Cyan, 0.45f);
+            if (GameFonts.Title != null) label.font = GameFonts.Title;
+        }
+    }
+
     void BuildFooter()
     {
-        MakeText("Footer", "3판 2선승 · 라운드 120초 · 인원이 부족하면 AI가 채웁니다", 14, FontStyle.Normal,
+        MakeText("Footer", "3판 2선승 · 라운드 120초 · 지휘관 모드에서는 T로 팀원에게 무전한다", 14, FontStyle.Normal,
             new Color(DimText.r, DimText.g, DimText.b, 0.8f),
             new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(900f, 22f), GameFonts.Hud);
     }
@@ -118,6 +151,7 @@ public class UITitlePopup : UIPopup
     {
         searching = true;
         Get<GameObject>((int)Buttons.BtnSingle).SetActive(false);
+        Get<GameObject>((int)Buttons.BtnHost).SetActive(false); // 매칭 중엔 모드 전환 불가
         if (searchText == null)
         {
             searchText = MakeText("Searching", "", 26, FontStyle.Normal, new Color(0.6f, 0.9f, 1f),

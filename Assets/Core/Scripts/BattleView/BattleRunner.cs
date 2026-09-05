@@ -80,6 +80,47 @@ namespace SeoYuGi.BattleView
         HackSystem hackSystem; // 해킹 궁게이지 — 매치당 1개, 라운드 넘겨 유지 (기획서 '해킹', 구 디코이)
         QuickChat quickChat;   // 빠른채팅 — 숫자키 1~8. 멀티에서 팀원에게 전달될 예정
         readonly List<AiSlotDriver> aiDrivers = new List<AiSlotDriver>();
+
+        /// <summary>지휘관 모드 — 내 팀 봇에게 내린 상시 명령. 멀티 모드에선 항상 비어 있다(= 완전 자율).</summary>
+        public CommandState Orders { get; } = new CommandState();
+
+        RadioWindow radio; // 지휘관 모드 전용 무전창. 멀티 모드에선 비활성.
+
+        /// <summary>
+        /// 무전창 준비 — 지휘관 모드에서만 활성. 프리셋은 LLM을 거치지 않고 바로 명령이 된다.
+        /// </summary>
+        void EnsureRadio()
+        {
+            if (radio == null)
+            {
+                radio = gameObject.AddComponent<RadioWindow>();
+                radio.Init(() => Orders.LastAck);
+                radio.OnPreset += i =>
+                {
+                    var squad = CommandableUnitIds();
+                    if (squad.Count == 0) return;
+                    Orders.Apply(OrderPresets.Build(i, squad, Round != null ? Round.Zones.Count : 0));
+                    battleAudio.PlaySfx("S2_TelegraphAlly", 0.7f); // 무전 발신음 — 전용 SFX 나오기 전까지 대용
+                };
+            }
+            radio.enabled = GameModeState.IsCommander;
+            if (!radio.enabled) radio.Close(); // 모드가 바뀌었는데 시간이 느린 채로 남지 않게
+        }
+
+        /// <summary>지휘 대상 — 내 팀에서 나를 뺀 살아있는 봇.</summary>
+        List<int> CommandableUnitIds()
+        {
+            var list = new List<int>();
+            if (matchSetup?.slots == null) return list;
+            foreach (var s in matchSetup.slots)
+            {
+                if (s.team != playerTeam || s.unitId == playerUnitId) continue;
+                if (s.owner != SlotOwner.Bot) continue;
+                var u = Battle.GetUnit(s.unitId);
+                if (u != null && u.alive) list.Add(s.unitId);
+            }
+            return list;
+        }
         readonly List<bool> zoneContestedPrev = new List<bool>(); // 거점 경합 상승 엣지 — S33 1회 재생용
 
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
@@ -414,7 +455,18 @@ namespace SeoYuGi.BattleView
             ShowPickBackground();
 
             var popup = UIManager.Instance.ShowPopupUI<UITitlePopup>();
-            popup.OnMatch = () => StartCoroutine(MatchmakeRoutine(popup));
+            popup.OnMatch = () =>
+            {
+                GameModeState.Current = GameMode.Multi;
+                StartCoroutine(MatchmakeRoutine(popup));
+            };
+            popup.OnCommander = () =>
+            {
+                // 지휘관 모드 — 매칭 없이 바로 봇전. 팀원 2기를 무전으로 지휘한다.
+                GameModeState.Current = GameMode.Commander;
+                UIManager.Instance.ClosePopupUI(popup);
+                PickRandomMap();
+            };
         }
 
         /// <summary>매칭 — 매치메이커로 실사람을 찾고, 못 채우면 봇전으로 폴백.
@@ -982,8 +1034,11 @@ namespace SeoYuGi.BattleView
                 {
                     // 상대팀에 인간이 있는 봇만 예측 뇌 — "AI는 인간을 학습해 노린다"
                     bool enemyHasHuman = s.team == 0 ? humanOnTeam1 : humanOnTeam0;
+                    // 지휘는 내 팀 봇에게만. 적 봇은 지휘관 모드에서도 그대로 자율이다.
+                    bool commandable = GameModeState.IsCommander && s.team == playerTeam;
                     var driver = new AiSlotDriver(s.unitId, s.cls, intentSink,
-                        enemyHasHuman ? predictor : null);
+                        enemyHasHuman ? predictor : null,
+                        commandable ? Orders : null);
                     driver.OnPredictedShot += (attackerId, cell) =>
                     {
                         var target = new Coord(cell.X, cell.Y);
@@ -1647,6 +1702,8 @@ namespace SeoYuGi.BattleView
 
         void StartNextRound()
         {
+            Orders.Clear(); // 새 라운드 = 명령 백지. 지난 판 지시가 넘어오지 않는다
+            EnsureRadio();
             predictor.SetRound(Match.CurrentRound); // R1 관찰 → R2 적용 → R3 선점
             BuildRound();
         }
@@ -1724,6 +1781,9 @@ namespace SeoYuGi.BattleView
                 hud.SetCountdown(0);
                 input.enabled = true;
             }
+
+            // 무전 (T) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
+            if (radio != null && radio.enabled) radio.HandleHotkey();
 
             // 해킹 (H) — 궁게이지 만충 시, 5초간 적 예측 AI 교란 + 적 전원 위치 표시. 클라는 Pending.
             if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)

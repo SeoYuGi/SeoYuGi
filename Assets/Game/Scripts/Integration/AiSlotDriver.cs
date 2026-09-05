@@ -1,4 +1,4 @@
-using SeoYuGi.Ai;
+﻿using SeoYuGi.Ai;
 using SeoYuGi.Battle;
 using SeoYuGi.Prediction;
 
@@ -18,11 +18,13 @@ namespace SeoYuGi.Integration
         /// <summary>예측 사격 성공 제출 (unitId, 목표 칸) — 적중/실패 연출 배선용.</summary>
         public event System.Action<int, SeoYuGi.Prediction.Cell> OnPredictedShot;
 
-        public AiSlotDriver(int unitId, UnitClass cls, IIntentSink sink, Predictor predictor = null)
+        /// <param name="orders">지휘관 모드에서 플레이어가 내린 상시 명령. null이면 완전 자율.</param>
+        public AiSlotDriver(int unitId, UnitClass cls, IIntentSink sink, Predictor predictor = null,
+            CommandState orders = null)
         {
             this.unitId = unitId;
             this.sink = sink;
-            brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor);
+            brain = new AiBrain(unitId, AiConfig.ForClass((ClassId)(int)cls), predictor, orders);
         }
 
         public void Tick(IWorldView world)

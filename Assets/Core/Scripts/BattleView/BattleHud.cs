@@ -668,7 +668,9 @@ namespace SeoYuGi.BattleView
             var bannerColor = new Color(0.2f, 0.75f, 0.85f, 0.85f); // 기본 = 탱고파이브 시안
             if ((u == null || !u.alive) && skipHint)
             {
-                msg = skipActive ? "▶▶ 빨리감기 중 (6×) — SPACE: 해제" : "격파됨 — SPACE: 라운드 결과까지 빨리감기";
+                msg = skipActive ? "▶▶ 빨리감기 중 (6×) — SPACE: 해제"
+                    : GameModeState.IsCommander ? "격파됨 — Enter 무전·숫자키로 분대 지휘 계속 · SPACE 빨리감기"
+                    : "격파됨 — SPACE: 라운드 결과까지 빨리감기";
                 if (skipActive) bannerColor = new Color(1f, 0.78f, 0.25f, 0.9f); // 호박색 — 비정상 속도 표시
             }
             else if (!string.IsNullOrEmpty(eventText) && Time.time < eventUntil)

@@ -146,12 +146,7 @@ namespace SeoYuGi.BattleView
 
         void SendFreeText(string text)
         {
-            if (Spectating)
-            {
-                hud.ShowSubtitle("전사했습니다. 무전을 보낼 수 없습니다.", 2f);
-                if (radio != null) radio.SetWaiting(false);
-                return;
-            }
+            // 전사해도 무전은 살아 있다 — 관전하며 남은 분대를 지휘한다 (2026-09-05 "죽었을 때도 지휘")
             var squad = CommandableUnitIds();
             if (squad.Count == 0) { if (radio != null) radio.SetWaiting(false); return; }
             ShowRadioLine(playerUnitId, text); // 내가 보낸 무전 — 말풍선 + 채팅 로그
@@ -361,26 +356,34 @@ namespace SeoYuGi.BattleView
         {
             var sb = new System.Text.StringBuilder();
             var me = Battle.GetUnit(playerUnitId);
-            if (me != null)
-                sb.Append("지휘관 위치: (").Append(me.pos.x).Append(',').Append(me.pos.y).Append(")\n");
-            sb.Append("아군 분대:\n");
+            var mySlot = FindSlot(playerUnitId);
+            sb.Append("지휘관(나, \"").Append(mySlot.callsign).Append("\")");
+            if (me != null && me.alive) sb.Append(" 위치: (").Append(me.pos.x).Append(',').Append(me.pos.y).Append(")");
+            else sb.Append(" — 전사, 관전 중 지휘");
+            sb.Append('\n');
+            // 호칭은 뭐로 불러도 대응해야 한다 (2026-09-05): 별명·동물 이름·기계 이름·클래스명·역할 전부 나열.
+            sb.Append("아군 분대 (unitId: \"별명\" = 다른 호칭들):\n");
             foreach (var id in squad)
             {
-                var r = FindRoster(id);
+                var s = FindSlot(id);
                 var u = Battle.GetUnit(id);
-                sb.Append(id).Append(": ").Append(ClassNames.For(r.team, r.cls))
-                  .Append(" (").Append(RoleWord(r.cls)).Append(") HP ")
-                  .Append(u.hp).Append('/').Append(u.maxHp)
+                sb.Append(id).Append(": \"").Append(s.callsign).Append("\" = ")
+                  .Append(ClassNames.For(0, s.cls)).Append('/').Append(ClassNames.For(1, s.cls)).Append('/')
+                  .Append(s.cls).Append('/').Append(RoleWord(s.cls))
+                  .Append(" | HP ").Append(u.hp).Append('/').Append(u.maxHp)
                   .Append(" 위치 (").Append(u.pos.x).Append(',').Append(u.pos.y).Append(")")
-                  .Append(" 성격: ").Append(Personas.PromptBlock(r.cls)).Append('\n');
+                  .Append(" | 성격: ").Append(Personas.PromptBlock(s.cls)).Append('\n');
             }
             // 적은 편성만 준다 — 위치·HP는 시야 밖 정보라 새면 안 된다 (실제 사격도 시야 규칙을 탄다)
-            sb.Append("적군 (생존, 위치 불명):\n");
+            sb.Append("적군 (생존, 위치 불명 — unitId: \"별명\" = 다른 호칭들):\n");
             foreach (var id in enemies)
             {
-                var r = FindRoster(id);
-                sb.Append(id).Append(": ").Append(ClassNames.For(r.team, r.cls))
-                  .Append(" (").Append(RoleWord(r.cls)).Append(")\n");
+                var s = FindSlot(id);
+                sb.Append(id).Append(": \"").Append(s.callsign).Append("\" = ")
+                  .Append(ClassNames.For(0, s.cls)).Append('/').Append(ClassNames.For(1, s.cls)).Append('/')
+                  .Append(s.cls).Append('/').Append(RoleWord(s.cls));
+                if (s.IsHuman) sb.Append(" — 상대 지휘관(사람이 조종)");
+                sb.Append('\n');
             }
             if (Round != null)
                 for (int i = 0; i < Round.Zones.Count; i++)
@@ -505,6 +508,7 @@ namespace SeoYuGi.BattleView
         readonly System.Random personaRng = new System.Random(); // 분대원 말버릇·복종 주사위 (연출용 — 결정론 불필요)
         int radioSpeakerRotation;     // 프리셋 응답 발화자 돌려쓰기 — 매번 같은 놈만 말하지 않게
         bool radioOpenPrev;           // 무전창 열림 엣지 — 싱글 지휘관 브리핑 트리거
+        bool spectatingPrev;          // 전사 엣지 — "지휘는 계속" 안내 1회
         readonly HashSet<TelegraphStrike> predictedStrikes = new HashSet<TelegraphStrike>();
 
         void Awake()
@@ -760,7 +764,7 @@ namespace SeoYuGi.BattleView
         /// <summary>분대 브리핑 — 분대원 한 명이 한 문장 보고. 키 없음·실패는 침묵. 12초 쿨.</summary>
         void RequestSquadBriefing()
         {
-            if (!GameModeState.IsCommander || Spectating || phase != Phase.Playing) return;
+            if (!GameModeState.IsCommander || phase != Phase.Playing) return; // 전사 후에도 브리핑은 온다
             if (Time.unscaledTime < nextBriefingAt) return;
             var squad = CommandableUnitIds();
             if (squad.Count == 0) return;
@@ -2537,11 +2541,15 @@ namespace SeoYuGi.BattleView
 
             // 무전 채팅바 (Enter) — 지휘관 모드에서만. 열려 있는 동안 시간이 늦춰진다.
             // 관전 중(전사)에는 아예 열리지 않는다 — 프리셋·자유서술·음성 모두 같이 막힌다.
-            if (radio != null && radio.enabled && !Spectating) radio.HandleHotkey();
-            if (Spectating && radio != null && radio.IsOpen) radio.Close();
-            if (voice != null) voice.enabled = GameModeState.IsCommander && !Spectating;
+            if (radio != null && radio.enabled) radio.HandleHotkey(); // 전사 후에도 무전 가능 — 관전 지휘
+            if (voice != null) voice.enabled = GameModeState.IsCommander;
 
             // 타이핑 중 — 한글 물리키가 게임키와 겹친다 (ㅂ/ㅈ=카메라, ㅗ=해킹). 게임 입력 전부 잠금.
+            bool spectatingNow = Spectating;
+            if (spectatingNow && !spectatingPrev && GameModeState.IsCommander)
+                hud.PushEvent("전사 — 무전(Enter)·숫자키로 분대 지휘는 계속됩니다", StrikeVfx.MineNeon);
+            spectatingPrev = spectatingNow;
+
             bool radioOpen = radio != null && radio.IsOpen;
             if (radioOpen && !radioOpenPrev && !NetBoot.IsOnline) RequestSquadBriefing(); // 싱글 지휘관 — Enter로 무전 열면 분대가 먼저 보고
             radioOpenPrev = radioOpen;

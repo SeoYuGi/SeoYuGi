@@ -6,7 +6,11 @@ namespace SeoYuGi.Battle
     [Serializable]
     public class CombatConfig
     {
-        public int attackDamage = 1;
+        public int attackDamage = 1;                // 클래스별 값(ClassDef.basicAttackDamage)이 있으면 그쪽이 이긴다
+
+        // 연계 — 그림자 도약 직후 발톱 (2026-09-05)
+        public float comboWindowSeconds = 1f;       // 도약 후 이 시간 안에 발톱을 쓰면 연계
+        public float comboTelegraphScale = 0.33f;   // 연계 시 예고 배율 (발톱 2.4s → 0.8s)
         public float attackTelegraphSeconds = 1.7f; // 모든 공격은 예고 후 판정 — 즉발 없음. 0.7은 '반응'할 시간일 뿐 '결정'할 시간이 아니었다 — 연계를 짜려면 창이 필요하다 (2026-09-05)
         public float attackCooldownSeconds = 2f;    // 일반공격 쿨다운 — 구 AP 경제의 스로틀 대체
 

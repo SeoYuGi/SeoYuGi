@@ -337,6 +337,7 @@ namespace SeoYuGi.BattleView
         readonly Dictionary<Coord, (PushArrow arrow, float impactTime)> pushArrowByCell =
             new Dictionary<Coord, (PushArrow, float)>();
         readonly List<ZoneCaptureDisc> zoneDiscs = new List<ZoneCaptureDisc>(); // 거점 점거 원형 게이지
+        readonly List<ZoneBorderRing> zoneBorders = new List<ZoneBorderRing>(); // 거점 테두리 띠 — 소유 표시
         readonly List<HealPackView> healPackViews = new List<HealPackView>();   // 힐팩 픽업 연출
         ThreatWarning threatWarning; // "내 칸에 예고 떨어짐" 경고 — 매치 내내 1개, 라운드 무관
 
@@ -1179,6 +1180,11 @@ namespace SeoYuGi.BattleView
                 var disc = ZoneCaptureDisc.Create(transform, ZoneWorldCenter(z), w, d);
                 zoneDiscs.Add(disc);
                 roundObjects.Add(disc.gameObject);
+
+                // 거점 테두리 띠 — 멀리서도 소유가 읽히게 (중립 흰 / 점령 팀색)
+                var ring = ZoneBorderRing.Create(transform, ZoneWorldCenter(z), w, d);
+                zoneBorders.Add(ring);
+                roundObjects.Add(ring.gameObject);
             }
 
             foreach (var s in matchSetup.slots)
@@ -1402,9 +1408,9 @@ namespace SeoYuGi.BattleView
                         }
                     }
 
-                    // 폭탄 배달 — 왕복 비행 (시뮬 위치는 출발 칸 그대로, 연출만 난다)
-                    if (telegraphAttacker.unitClass == UnitClass.Grenadier && Combat.IsFlying(telegraphAttacker)
-                        && strike.cells.Count > 1)
+                    // 폭탄 배달·낚아채기 — 왕복 비행 (시뮬 위치는 출발 칸 그대로, 연출만 난다).
+                    // 비행 여부로 판단한다 — 낚아채기는 단일 칸이라 예전 cells.Count > 1 조건에 걸리지 않았다.
+                    if (telegraphAttacker.unitClass == UnitClass.Grenadier && Combat.IsFlying(telegraphAttacker))
                     {
                         var flier = viewRegistry.Get(strike.attackerId);
                         if (flier != null && flier.gameObject.activeInHierarchy)
@@ -1724,6 +1730,7 @@ namespace SeoYuGi.BattleView
             roundObjects.Clear();
             hpBars.Clear();
             zoneDiscs.Clear();
+            zoneBorders.Clear();
             healPackViews.Clear();
             blinkSnapIds.Clear();
             foreach (var kv in strikeTelegraphFx)
@@ -1882,6 +1889,7 @@ namespace SeoYuGi.BattleView
                 case SkillKind.Claw: return "S16_Smash";
                 case SkillKind.Burst: return "S19_Burst";
                 case SkillKind.BombDeliver: return "S19_Burst";
+                case SkillKind.Snatch: return "S19_Burst"; // 전용 SFX 나오기 전까지 대용
                 case SkillKind.KnockShot: return "S20_Snipe";
                 case SkillKind.Snipe: return "S20_Snipe";
                 default: return "S3_Hit";
@@ -2208,6 +2216,7 @@ namespace SeoYuGi.BattleView
                 var z = Round.Zones[i];
                 float frac = z.capturingTeam >= 0 ? z.progress / roundConfig.captureSeconds : 0f;
                 zoneDiscs[i].SetProgress(frac, z.capturingTeam >= 0 ? teamColors[z.capturingTeam] : Color.clear);
+                if (i < zoneBorders.Count) zoneBorders[i].SetOwnerColor(z.owner, teamColors); // 테두리 = 소유 상태
                 if (z.capturingTeam >= 0 && z.progress > 0f) anyCapturing = true;
 
                 // 경합 감지 — 양 팀이 같은 거점을 밟는 순간 1회 긴장음 (게이지 동결의 청각 신호)

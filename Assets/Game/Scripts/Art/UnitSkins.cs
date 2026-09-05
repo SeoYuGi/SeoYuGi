@@ -176,17 +176,8 @@ namespace SeoYuGi.Art
             if (cube != null) cube.enabled = false;
         }
 
-        // URP Lit 과 glTFast(glTF/PbrMetallicRoughness) 양쪽 프로퍼티 이름을 다 본다 —
-        // GLB가 어느 셰이더로 임포트됐는지는 프로젝트 설정에 따라 갈린다.
-        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-        static readonly int GltfBaseColorId = Shader.PropertyToID("baseColorFactor");
-        static readonly int MetallicId = Shader.PropertyToID("_Metallic");
-        static readonly int GltfMetallicId = Shader.PropertyToID("metallicFactor");
-        static readonly int SmoothnessId = Shader.PropertyToID("_Smoothness");
-        static readonly int GltfRoughnessId = Shader.PropertyToID("roughnessFactor");
-
-        /// <summary>강철 색조. 알베도 텍스처에 곱해지므로 원래 무늬가 금속 각인처럼 남는다.</summary>
-        static readonly Color SteelTint = new Color(0.62f, 0.66f, 0.72f);
+        /// <summary>은색 강철 색조.</summary>
+        static readonly Color SteelTint = new Color(0.76f, 0.8f, 0.88f);
 
         /// <summary>
         /// 기계 동물 — 팀1은 같은 동물 모델을 쓰되 표면만 금속으로 바꾼다.
@@ -223,21 +214,26 @@ namespace SeoYuGi.Art
             if (m.HasProperty(BaseColorId)) m.SetColor(BaseColorId, Tint(m.GetColor(BaseColorId)));
             else if (m.HasProperty(GltfBaseColorId)) m.SetColor(GltfBaseColorId, Tint(m.GetColor(GltfBaseColorId)));
 
-            if (m.HasProperty(MetallicId)) m.SetFloat(MetallicId, 0.85f);
-            if (m.HasProperty(GltfMetallicId)) m.SetFloat(GltfMetallicId, 0.85f);
+            if (m.HasProperty(MetallicId)) m.SetFloat(MetallicId, 0.95f);
+            if (m.HasProperty(GltfMetallicId)) m.SetFloat(GltfMetallicId, 0.95f);
 
-            if (m.HasProperty(SmoothnessId)) m.SetFloat(SmoothnessId, 0.6f);
-            if (m.HasProperty(GltfRoughnessId)) m.SetFloat(GltfRoughnessId, 0.4f); // roughness = 1 - smoothness
+            if (m.HasProperty(SmoothnessId)) m.SetFloat(SmoothnessId, 0.78f); // 하이라이트가 쨍해야 밤 씬에서도 쇠로 읽힌다
+            if (m.HasProperty(GltfRoughnessId)) m.SetFloat(GltfRoughnessId, 0.22f); // roughness = 1 - smoothness
 
             metalCache[src] = m;
             return m;
         }
 
-        /// <summary>원래 색의 명암은 살리고 채도만 죽여 강철 색조를 입힌다.</summary>
+        /// <summary>
+        /// 원래 색의 명암은 살리되 바닥을 들어올려 강철 색조를 입힌다.
+        /// 순수 곱(× lum)은 어두운 털 텍스처에서 원래 회갈색과 구분이 안 됐다 —
+        /// 최소 0.55를 보장해 어두운 무늬도 은색 위 패널 라인 정도로만 남긴다.
+        /// </summary>
         static Color Tint(Color c)
         {
             float lum = c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
-            return new Color(SteelTint.r * lum, SteelTint.g * lum, SteelTint.b * lum, c.a);
+            float lift = 0.55f + 0.6f * lum;
+            return new Color(SteelTint.r * lift, SteelTint.g * lift, SteelTint.b * lift, c.a);
         }
 
         /// <summary>모델 변형(<이름>_anim/_atk) 로드 + 배치 + 클립 재생. 없으면 null.</summary>

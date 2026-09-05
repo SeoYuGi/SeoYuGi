@@ -799,6 +799,7 @@ namespace SeoYuGi.BattleView
                 case SkillKind.Claw: return "발톱 쥐어짜기";
                 case SkillKind.Burst: return "파열탄";
                 case SkillKind.BombDeliver: return "폭탄 배달";
+                case SkillKind.Snatch: return "낚아채기";
                 case SkillKind.KnockShot: return "넉백샷";
                 case SkillKind.Snipe: return "조준 사격";
                 default: return "스킬";

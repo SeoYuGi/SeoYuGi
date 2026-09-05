@@ -59,6 +59,9 @@ namespace SeoYuGi.Battle
 
         readonly List<TelegraphStrike> strikes = new List<TelegraphStrike>();
 
+        /// <summary>판정 대기 중인 예고 — 테스트·연출 조회용 (읽기 전용).</summary>
+        public IReadOnlyList<TelegraphStrike> PendingStrikes => strikes;
+
         public CombatSystem(BattleState state, CombatConfig config)
         {
             State = state;
@@ -149,7 +152,7 @@ namespace SeoYuGi.Battle
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             unit.attackReadyAt = State.time + Config.attackCooldownSeconds;
-            int damage = Config.attackDamage
+            int damage = (def.basicAttackDamage > 0 ? def.basicAttackDamage : Config.attackDamage)
                 + (unit.attackBuffUntil > State.time ? Config.blinkBuffBonus : 0);
             Place(new TelegraphStrike
             {
@@ -192,6 +195,7 @@ namespace SeoYuGi.Battle
                 case SkillKind.Blink: result = CastBlink(unit, target, skill); break;
                 case SkillKind.Burst: result = CastBurst(unit, target, skill); break;
                 case SkillKind.BombDeliver: result = CastBombDeliver(unit, target, skill); break;
+                case SkillKind.Snatch: result = CastSnatch(unit, target, skill); break;
                 case SkillKind.KnockShot: result = CastKnockShot(unit, target, skill); break;
                 case SkillKind.Snipe: result = CastSnipe(unit, target, skill); break;
                 default: result = ActDenied.BadTarget; break;
@@ -218,6 +222,16 @@ namespace SeoYuGi.Battle
             if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
 
             var d = target - unit.pos;
+
+            // 연계: 그림자 도약 직후의 발톱은 선딜이 줄어든다. 도약으로 붙자마자 긋는 그림이고,
+            // 예고가 짧아진 만큼 상대의 회피 창도 좁아진다 — 연계의 보상이 여기 있다.
+            float telegraph = skill.telegraphSeconds;
+            if (skill.kind == SkillKind.Claw && unit.comboWindowUntil >= State.time)
+            {
+                telegraph *= Config.comboTelegraphScale;
+                unit.comboWindowUntil = -1f; // 한 번만 — 창을 소모한다
+            }
+
             Place(new TelegraphStrike
             {
                 attackerId = unit.id,
@@ -225,7 +239,7 @@ namespace SeoYuGi.Battle
                 team = unit.team,
                 cells = { target },
                 aimCell = target,
-                impactTime = State.time + skill.telegraphSeconds,
+                impactTime = State.time + telegraph,
                 damage = skill.damage,
                 pushDir = pushCells > 0 ? new Coord(Math.Sign(d.x), Math.Sign(d.y)) : Coord.Zero,
                 pushCells = pushCells,
@@ -324,6 +338,7 @@ namespace SeoYuGi.Battle
             State.Grid.MoveOccupant(unit.pos, target); // 점멸 — 벽 무시 순간이동
             unit.pos = target;
             unit.attackBuffUntil = State.time + Config.blinkBuffSeconds;
+            unit.comboWindowUntil = State.time + Config.comboWindowSeconds; // 도약 → 발톱 연계 창
             return ActDenied.None;
         }
 
@@ -379,6 +394,53 @@ namespace SeoYuGi.Battle
             }
             Place(strike);
             return ActDenied.None;
+        }
+
+        /// <summary>
+        /// 낚아채기 — 날아가 적을 발에 걸고 돌아와 시전자 앞칸에 내려놓는다.
+        /// 폭탄 배달과 같은 왕복 비행 연출을 쓰되(뷰는 예고 시간을 그대로 따른다), 결과가 다르다:
+        /// 광역 폭발 대신 대상 하나를 시전자 쪽으로 끌어온다.
+        /// 앞칸이 막혀 있으면 옮기지 않고 피해만 준다 — 그러지 않으면 유닛이 겹친다.
+        /// </summary>
+        ActDenied CastSnatch(UnitState unit, Coord target, SkillDef skill)
+        {
+            if (Coord.Manhattan(unit.pos, target) > EffRange(unit, skill) || target == unit.pos) return ActDenied.BadTarget;
+            if (!State.Grid.IsWalkableTerrain(target)) return ActDenied.BadTarget;
+
+            unit.flyingUntil = State.time + skill.telegraphSeconds; // 비행 중 무적·행동 불가
+
+            Place(new TelegraphStrike
+            {
+                attackerId = unit.id,
+                kind = skill.kind,
+                team = unit.team,
+                cells = { target },      // 단일 칸 — 광역이 아니다
+                aimCell = target,
+                impactTime = State.time + skill.telegraphSeconds,
+                damage = skill.damage
+            });
+            return ActDenied.None;
+        }
+
+        /// <summary>
+        /// 낚아챈 대상을 시전자 앞칸으로 옮긴다. 앞칸 = 대상이 있던 방향으로 한 칸.
+        /// 막혀 있으면 그대로 둔다 — 호출부가 피해는 이미 준 뒤다.
+        /// </summary>
+        void SnatchPull(UnitState attacker, UnitState victim)
+        {
+            var d = victim.pos - attacker.pos;
+            var dir = new Coord(Math.Sign(d.x), Math.Sign(d.y));
+            if (dir == Coord.Zero) return;
+
+            var landing = attacker.pos + dir;
+            if (landing == victim.pos) return;                        // 이미 앞칸에 있다
+            if (!State.Grid.IsWalkableTerrain(landing)) return;       // 벽·구덩이
+            if (State.Grid.GetUnitAt(landing) != Cell.NoUnit) return; // 누가 서 있다
+
+            bool falls = State.Grid.IsHighland(victim.pos) && !State.Grid.IsHighland(landing);
+            State.Grid.MoveOccupant(victim.pos, landing);
+            victim.pos = landing;
+            if (falls) OnWallCrash?.Invoke(victim.id); // 고지에서 끌려 내려오면 낙하 연출
         }
 
         ActDenied CastKnockShot(UnitState unit, Coord target, SkillDef skill)
@@ -513,6 +575,7 @@ namespace SeoYuGi.Battle
                     }
                     break;
                 }
+                case SkillKind.Snatch:      // 같은 맨해튼 범위 — 지정 규칙이 같다
                 case SkillKind.BombDeliver:
                 {
                     int range = EffRange(unit, skill);
@@ -605,6 +668,11 @@ namespace SeoYuGi.Battle
                     cells.Add(hover);
                     foreach (var dir in Coord.Directions4)
                         if (State.Grid.IsWalkableTerrain(hover + dir)) cells.Add(hover + dir);
+                    return true;
+                case SkillKind.Snatch: // 단일 칸 — 광역이 아니라 대상 하나를 집는다
+                    if (Coord.Manhattan(unit.pos, hover) > EffRange(unit, skill) || hover == unit.pos ||
+                        !State.Grid.IsWalkableTerrain(hover)) return false;
+                    cells.Add(hover);
                     return true;
                 case SkillKind.Snipe:
                     if (!CanSnipe(unit, hover, EffRange(unit, skill))) return false;
@@ -706,6 +774,10 @@ namespace SeoYuGi.Battle
                 }
                 if (strike.pushCells > 0 && unit.alive)
                     Push(unit, strike.pushDir, strike.pushCells, strike.wallBonusDamage);
+
+                // 낚아채기 — 밀침의 반대. 시전자 쪽으로 끌어와 앞칸에 내려놓는다.
+                if (strike.kind == SkillKind.Snatch && unit.alive && attacker != null && attacker.alive)
+                    SnatchPull(attacker, unit);
             }
 
             // 적중 = 예측 성공 → 보상 훅 (해킹 게이지 충전 등은 구독자 소관)
@@ -777,7 +849,7 @@ namespace SeoYuGi.Battle
             switch (kind)
             {
                 case SkillKind.ShieldPush: cells = 2; wallBonus = 1; self = false; return;
-                case SkillKind.Smash: cells = 1; wallBonus = 0; self = false; return;
+                case SkillKind.Smash: cells = 5; wallBonus = 1; self = false; return;   // 던져버리기 — 멀리 날리고 벽에 처박으면 추가 피해
                 case SkillKind.KnockShot: cells = 2; wallBonus = 0; self = true; return;   // 본인이 반대로 후퇴
                 default: cells = 0; wallBonus = 0; self = false; return;
             }

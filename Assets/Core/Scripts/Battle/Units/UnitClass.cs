@@ -15,13 +15,14 @@
     public enum SkillKind
     {
         ShieldPush, // 방패 밀어붙이기: 인접8 예고 → 피해1 + 2칸 밀침(벽꿍 +1)
-        Smash,      // 강타: 인접8 예고 → 피해2 + 1칸 밀침
+        Smash,      // 던져버리기: 예고 → 피해2 + 5칸 던짐(벽꿍 +1). 열거형 이름은 구 '강타' 시절 유산
         Dash,       // 돌파: 직선·대각 즉발 대시, 경로 적 피해+밀침+0.8s 스턴, 유닛 통과(벽 불가)
         Scream,     // 비명 교란: 인접8 적 전원, 짧은 예고 후 스턴
         Blink,      // 그림자 도약: 5×5 내 점멸 + 일반공격 버프, 적 시야 밖이면 고스트 없음
         Claw,       // 발톱 쥐어짜기: 인접8 예고 → 피해3
         Burst,      // 파열탄: 5×5 내 지정 예고 → 십자 5칸 피해1 (자폭 없음)
         BombDeliver,// 폭탄 배달: 맨해튼4 내 지정, 1초 비행(무적) 후 착지 + 십자 5칸 피해2
+        Snatch,     // 낚아채기: 날아가 적을 발에 걸고 돌아와 시전자 앞칸에 내려놓는다. 앞칸이 막혔으면 피해만
         KnockShot,  // 넉백샷: 인접8 즉발 피해1 + 본인 반대로 2칸 후퇴(벽 막힘·낙하 자기 부담)
         Snipe,       // 조준 사격: 직선 4방 최대 5칸 관통 예고 → 피해3, 벽 차단(고지 사수는 관통)
         BasicAttack  // 평타 — 스킬 슬롯엔 없다. 예고 아이콘 표시용 꼬리표 (뒤에 붙여 기존 값 불변)
@@ -52,6 +53,10 @@
         public int maxHp;
         public int sightRange;
         public AttackShape attackShape;
+
+        /// <summary>클래스별 평타 피해. 0이면 CombatConfig.attackDamage(공용 기본값)를 쓴다.</summary>
+        public int basicAttackDamage;
+
         public MoveProfile move;
         public SkillDef[] skills; // [0] = 스킬1(짧은 쿨), [1] = 스킬2(긴 쿨·고위력)
     }
@@ -85,7 +90,7 @@
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.ShieldPush, telegraphSeconds = 2f, damage = 1, range = 2, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 2f, damage = 2, range = 2, cooldownSeconds = 8f }
+                    new SkillDef { kind = SkillKind.Smash, telegraphSeconds = 2f, damage = 2, range = 2, cooldownSeconds = 8f } // 던져버리기 — 밀침 5칸은 PushSpecOf
                 }
             },
             new ClassDef
@@ -115,17 +120,18 @@
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 3, cooldownSeconds = 6f },
-                    new SkillDef { kind = SkillKind.BombDeliver, telegraphSeconds = 2.6f, damage = 2, range = 5, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Snatch, telegraphSeconds = 1.6f, damage = 1, range = 5, cooldownSeconds = 10f } // 위치 강제 이동이 강력해 피해는 낮게, 비행은 빠르게
                 }
             },
             new ClassDef
             {
                 id = UnitClass.Sniper, maxHp = 5, sightRange = 5, attackShape = AttackShape.Square2,
+                basicAttackDamage = 2, // HP 5로 제일 무르고 접근당하면 죽는다 — 사거리로 버는 만큼 한 방이 무거워야 (2026-09-05)
                 move = new MoveProfile { freeRange = 1, maxRange = 3, gaugeRegenPerSecond = 0.60f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.4f },
                 skills = new[]
                 {
                     new SkillDef { kind = SkillKind.KnockShot, telegraphSeconds = 0f, damage = 1, range = 2, cooldownSeconds = 7f },
-                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 2.4f, damage = 3, range = 6, cooldownSeconds = 10f }
+                    new SkillDef { kind = SkillKind.Snipe, telegraphSeconds = 2.4f, damage = 4, range = 6, cooldownSeconds = 10f }
                 }
             }
         };

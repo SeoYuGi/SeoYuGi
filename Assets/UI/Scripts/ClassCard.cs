@@ -216,7 +216,7 @@ namespace SeoYuGi.UI
         {
             SkillKind.ShieldPush => "방패 밀기", SkillKind.Smash => "강타", SkillKind.Dash => "돌파",
             SkillKind.Scream => "비명", SkillKind.Blink => "도약", SkillKind.Claw => "발톱",
-            SkillKind.Burst => "파열탄", SkillKind.BombDeliver => "폭탄 배달",
+            SkillKind.Burst => "파열탄", SkillKind.BombDeliver => "폭탄 배달", SkillKind.Snatch => "낚아채기",
             SkillKind.KnockShot => "넉백샷", SkillKind.Snipe => "저격", _ => k.ToString()
         };
 
@@ -224,7 +224,7 @@ namespace SeoYuGi.UI
         {
             SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "밀침·벽충돌", SkillKind.Dash => "대시·충돌 스턴",
             SkillKind.Scream => "주변 1초 스턴", SkillKind.Blink => "2칸 점멸", SkillKind.Claw => "고위력 근접",
-            SkillKind.Burst => "십자 5칸", SkillKind.BombDeliver => "원거리 투척",
+            SkillKind.Burst => "십자 5칸", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적을 끌어옴",
             SkillKind.KnockShot => "밀쳐내는 사격", SkillKind.Snipe => "1열 관통", _ => ""
         };
 
@@ -235,7 +235,8 @@ namespace SeoYuGi.UI
             SkillKind.Snipe => "Icon_Skill_Snipe", SkillKind.ShieldPush => "Icon_Skill_ShieldPush",
             SkillKind.Claw => "Icon_Skill_Claw", SkillKind.KnockShot => "Icon_Skill_KnockShot",
             SkillKind.Scream => "Icon_Skill_Scream",
-            SkillKind.BombDeliver => "Icon_Skill_BombDeliver", _ => "Icon_Skill_Generic"
+            SkillKind.BombDeliver => "Icon_Skill_BombDeliver", SkillKind.Snatch => "Icon_Skill_BombDeliver",
+            _ => "Icon_Skill_Generic"
         };
 
         static string Colored(string s, Color c) => $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{s}</color>";

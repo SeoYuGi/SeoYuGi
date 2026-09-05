@@ -80,6 +80,7 @@ namespace SeoYuGi.BattleView
                     FxQuad.Burst(VfxTextures.Spark, origin + Vector3.up * 0.3f, hi, 8, 0.7f, 3.4f);
                     break;
 
+                case SkillKind.Snatch:      // 낚아채기 — 같은 배달 모션이라 시전 연출도 공유
                 case SkillKind.BombDeliver: // 폭탄 배달 — 상승 광구 + 링 (카툰 구름 제거, 비행 연출은 UnitView)
                     FxQuad.One(VfxTextures.Glow, origin + Vector3.up * 0.3f, hi, 2.2f, 1.3f, 0.75f,
                         velocity: Vector3.up * 2.4f);

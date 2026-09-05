@@ -218,11 +218,19 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>퀵챗 = 무전 명령 (지휘관 모드) — 숫자키 채팅 문구대로 팀 봇이 움직인다. 8~0(사교)은 채팅만.</summary>
+        float nextPresetAt; // 프리셋 명령 최소 간격 — 연타 도배 방지 (2026-09-06). 자유 무전(2.5초)과 별개 카운터
+
         void ApplyQuickChatOrder(int lineId)
         {
             if (!GameModeState.IsCommander) return;
+            if (Time.unscaledTime < nextPresetAt)
+            {
+                hud.ShowSubtitle("무전 과열. 잠시 뒤 다시.", 1f);
+                return;
+            }
             var squad = CommandableUnitIds();
             if (squad.Count == 0) return;
+            nextPresetAt = Time.unscaledTime + 2f;
             int zoneCount = Round != null ? Round.Zones.Count : 0;
 
             OrderPresets.Preset p;

@@ -142,6 +142,27 @@ namespace SeoYuGi.BattleView
             OnActionDenied?.Invoke();
         }
 
+        static readonly List<Coord> NoCells = new List<Coord>();
+        readonly Dictionary<string, Texture2D> iconCache = new Dictionary<string, Texture2D>();
+
+        /// <summary>조준 커서 아이콘 — 공격은 Icon_Attack, 스킬은 Icon_Skill_<종류> (없으면 Generic). HUD 슬롯과 같은 그림.</summary>
+        Texture2D AimIcon(int skillIdx)
+        {
+            string path = "UI/Icon_Attack";
+            if (aim != AimMode.Attack)
+            {
+                var u = moveSystem.State.GetUnit(selectedUnitId);
+                var skills = ClassCatalog.Get(u.unitClass).skills;
+                path = "UI/Icon_Skill_" + (skillIdx < skills.Length ? skills[skillIdx].kind.ToString() : "Generic");
+            }
+            if (!iconCache.TryGetValue(path, out var tex))
+            {
+                tex = Resources.Load<Texture2D>(path) ?? Resources.Load<Texture2D>("UI/Icon_Skill_Generic");
+                iconCache[path] = tex;
+            }
+            return tex;
+        }
+
         /// <summary>마우스 아래 칸 — 휠클릭 핑 등 외부 조회용.</summary>
         public bool TryGetHoverCell(out Coord cell) => TryHoverCell(out cell);
 
@@ -263,16 +284,18 @@ namespace SeoYuGi.BattleView
 
             if (selectedUnitId != -1 && aim != AimMode.None)
             {
-                gridView.ClearRangeOutline(); // 조준 모드 — 이동 구역 테두리·발자국은 끈다
-                // 조준 모드: 이동 범위 대신 조준 가능 칸(틸) + 발사 시 맞는 칸(틸-흰)
+                // 조준 모드 (2026-09-05 윤곽 전환): 사거리 = 흰 윤곽선, 판정 칸 = 밝은 윤곽선, 커서 칸 = 공격/스킬 아이콘.
+                // 칸 채움(흰 네모)·펄스 마커는 폐지 — 거점 바닥 위에서 안 읽혔고 이동 구역 표시와 문법이 달랐다.
                 int skillIdx = aim == AimMode.Skill2 ? 1 : 0;
                 if (aim == AimMode.Attack) combat.GetAttackRange(selectedUnitId, aimRange);
                 else combat.GetSkillRange(selectedUnitId, skillIdx, aimRange);
-                // 진입 순간 0.3초 흰색 플래시 → 은은한 저휘도로 정착 (2026-09-05 "잠깐 뜨고" 절충 —
-                // 완전 페이드는 조준 중 사거리 판단 근거가 사라져 비추)
-                float settle = Mathf.SmoothStep(1f, 0.42f, Mathf.Clamp01((Time.time - aimOpenedAt) / 0.3f));
+                // 진입 순간 0.3초 밝게 → 은은한 저휘도로 정착 (조준 중 사거리 판단 근거는 남긴다)
+                float settle = Mathf.SmoothStep(1f, 0.55f, Mathf.Clamp01((Time.time - aimOpenedAt) / 0.3f));
                 var rangeCol = new Color(aimRangeColor.r * settle, aimRangeColor.g * settle, aimRangeColor.b * settle, aimRangeColor.a);
-                foreach (var c in aimRange) { cells.Add(c); colors.Add(rangeCol); }
+                gridView.BeginOutlines();
+                gridView.AddOutline(aimRange, rangeCol, 0.13f);
+                UpdateMarkers(NoCells, aimImpactColor); // 구 마커 전부 숨김
+                var icon = AimIcon(skillIdx);
 
                 if (TryHoverCell(out var hover))
                 {
@@ -281,25 +304,24 @@ namespace SeoYuGi.BattleView
                         : combat.GetSkillImpact(selectedUnitId, skillIdx, hover, aimImpact);
                     if (valid)
                     {
-                        foreach (var c in aimImpact) { cells.Add(c); colors.Add(aimImpactColor); }
-                        UpdateMarkers(aimImpact, aimImpactColor);
+                        gridView.AddOutline(aimImpact, aimImpactColor, 0.14f); // 맞는 칸들 — 밝은 윤곽
+                        gridView.ShowCursorIcon(hover, icon, aimImpactColor);
                         ShowPushPreview(hover);
                     }
                     else
                     {
-                        // 못 쏘는 곳 — 호버 칸에 회색 마커로 "여긴 안 됨" 표시
                         aimImpact.Clear();
-                        aimImpact.Add(hover);
-                        UpdateMarkers(aimImpact, aimInvalidColor);
+                        gridView.ShowCursorIcon(hover, icon, aimInvalidColor); // 못 쏘는 곳 — 아이콘만 파랗게(클릭하면 이동)
                         ClearPushPreview();
                     }
                 }
                 else
                 {
                     aimImpact.Clear();
-                    UpdateMarkers(aimImpact, aimImpactColor);
+                    gridView.HideFootstep();
                     ClearPushPreview();
                 }
+                gridView.EndOutlines();
             }
             else
             {

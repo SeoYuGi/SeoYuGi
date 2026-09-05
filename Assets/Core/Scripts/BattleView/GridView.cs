@@ -418,13 +418,30 @@ namespace SeoYuGi.BattleView
 
         public void SetRangeOutline(IReadOnlyList<Coord> inner, IReadOnlyList<Coord> outer, Color innerColor, Color outerColor)
         {
+            BeginOutlines();
+            var all = new List<Coord>(inner);
+            all.AddRange(outer);
+            AddOutline(inner, Color.Lerp(innerColor, Color.white, 0.35f), 0.13f);
+            if (outer.Count > 0) AddOutline(all, Color.Lerp(outerColor, Color.white, 0.25f), 0.12f);
+            EndOutlines();
+        }
+
+        // 윤곽 레이어 API — 조준(사거리 윤곽 + 판정 윤곽)처럼 겹치는 여러 영역을 한 프레임에 그릴 때.
+        // Begin → AddOutline(영역, 색) 반복 → End. 프레임마다 다시 그리며 쿼드 풀은 재사용.
+        public void BeginOutlines()
+        {
             outlineUsed = 0;
             if (outlineMpb == null) outlineMpb = new MaterialPropertyBlock();
-            var innerSet = new HashSet<Coord>(inner);
-            var allSet = new HashSet<Coord>(inner);
-            foreach (var c in outer) allSet.Add(c);
-            DrawOutline(innerSet, Color.Lerp(innerColor, Color.white, 0.35f), 0.13f);
-            if (outer.Count > 0) DrawOutline(allSet, Color.Lerp(outerColor, Color.white, 0.25f), 0.12f);
+        }
+
+        public void AddOutline(IReadOnlyList<Coord> cells, Color color, float y = 0.13f)
+        {
+            if (cells.Count == 0) return;
+            DrawOutline(new HashSet<Coord>(cells), color, y);
+        }
+
+        public void EndOutlines()
+        {
             for (int i = outlineUsed; i < outlineSegs.Count; i++)
                 if (outlineSegs[i].gameObject.activeSelf) outlineSegs[i].gameObject.SetActive(false);
         }
@@ -482,25 +499,27 @@ namespace SeoYuGi.BattleView
         }
 
         /// <summary>호버 칸 발자국 — 이동 가능 칸 위에 마우스가 있을 때. 색 = 그 칸의 구역(파랑/노랑).</summary>
-        public void ShowFootstep(Coord c, Color color)
+        public void ShowFootstep(Coord c, Color color) => ShowCursorIcon(c, BattleHud.LoadKeyed("UI/Icon_Move"), color);
+
+        /// <summary>호버 칸 아이콘 — 이동(발자국)·공격·스킬 아이콘을 커서 칸에. "여기다"가 커서 위치에서 읽힌다.</summary>
+        public void ShowCursorIcon(Coord c, Texture2D tex, Color color)
         {
             if (footstep == null)
             {
                 var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                go.name = "Footstep";
+                go.name = "CursorIcon";
                 Destroy(go.GetComponent<Collider>());
                 go.transform.SetParent(transform);
                 var r = go.GetComponent<Renderer>();
-                var tex = BattleHud.LoadKeyed("UI/Icon_Move");
                 var sh = Shader.Find("Sprites/Default");
                 footstepMat = sh != null ? new Material(sh) : r.sharedMaterial;
-                if (tex != null) footstepMat.mainTexture = tex;
                 r.sharedMaterial = footstepMat;
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 r.receiveShadows = false;
                 footstep = go.transform;
             }
             footstep.gameObject.SetActive(true);
+            if (footstepMat.mainTexture != tex) footstepMat.mainTexture = tex;
             footstep.position = CoordToWorld(c) + Vector3.up * 0.15f;
             footstep.rotation = Quaternion.Euler(90f, 0f, 0f);
             float s = tileSize * (0.62f + Mathf.PingPong(Time.time * 1.6f, 0.08f));

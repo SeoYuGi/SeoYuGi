@@ -23,6 +23,7 @@ public class UITitlePopup : UIPopup
 
     public Action OnMatch;     // 멀티 — 실사람 매칭, 부족분 봇
     public Action OnCommander; // 지휘관 모드 — 봇전 + 팀원 무전 지휘
+    public Action OnTutorial;  // 튜토리얼 — 가이드 붙은 지휘관 봇전 (거점 → 조작 → 지휘 3단계)
     public Action OnSettings;  // 설정 (없으면 버튼이 조용히 비활성)
 
     static readonly Color Cyan = new Color(0.35f, 0.85f, 1f);
@@ -70,6 +71,7 @@ public class UITitlePopup : UIPopup
         hits[1] = HitArea(Get<GameObject>((int)Buttons.BtnHost), 1, () => OnCommander?.Invoke());
         hits[2] = HitArea(Get<GameObject>((int)Buttons.BtnJoin), 2, () => OnSettings?.Invoke());
         hits[3] = HitArea(quit, 3, Quit);
+        CreateTutorialButton(); // 그림엔 없는 다섯 번째 — 우하단 작은 판 (2026-09-05)
     }
 
     // ── 배치 ─────────────────────────────────────────────
@@ -232,6 +234,43 @@ public class UITitlePopup : UIPopup
     }
 
     InputField nickInput;
+
+    /// <summary>튜토리얼 버튼 — 우하단 작은 판. 배경 그림에 자리가 없어 런타임으로 그린다.</summary>
+    void CreateTutorialButton()
+    {
+        var parent = bgRect != null ? bgRect : (RectTransform)transform;
+        var existing = parent.Find("BtnTutorial");
+        if (existing != null) DestroyImmediate(existing.gameObject); // Init 재실행 대비
+
+        var go = new GameObject("BtnTutorial", typeof(RectTransform), typeof(Image));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = rt.anchorMax = new Vector2(0.87f, 0.075f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(200f, 44f);
+        var img = go.GetComponent<Image>();
+        img.color = new Color(0.02f, 0.05f, 0.1f, 0.88f);
+        img.raycastTarget = true;
+        var ol = go.AddComponent<Outline>();
+        ol.effectColor = new Color(Cyan.r, Cyan.g, Cyan.b, 0.7f);
+        ol.effectDistance = new Vector2(1.5f, -1.5f);
+
+        var tgo = new GameObject("Label", typeof(RectTransform), typeof(Text));
+        var trt = (RectTransform)tgo.transform;
+        trt.SetParent(rt, false);
+        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+        trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
+        var t = tgo.GetComponent<Text>();
+        t.text = "튜토리얼";
+        t.fontSize = 20;
+        t.fontStyle = FontStyle.Bold;
+        t.color = Cyan;
+        t.alignment = TextAnchor.MiddleCenter;
+        t.font = GameFonts.Title != null ? GameFonts.Title : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        t.raycastTarget = false;
+
+        BindEvent(go, _ => { if (!searching) OnTutorial?.Invoke(); });
+    }
 
     /// <summary>메인화면 닉네임 입력 (2026-09-05 "메인에서 하게") — 좌하단 작은 칸.
     /// PlayerPrefs에 저장만 하고, 적용은 로비가 열릴 때 자동 전송(UILobbyPopup.Refresh)이 맡는다.</summary>

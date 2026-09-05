@@ -23,6 +23,16 @@ namespace SeoYuGi.BattleView
         /// <summary>이 매치가 가이드를 진행 중인가 (②③) — 러너가 매치 시작에 정한다.</summary>
         public static bool Active { get; private set; }
 
+        /// <summary>타이틀 "튜토리얼" 버튼으로 들어온 매치 — 첫 판 여부와 무관하게 가이드를 돈다.
+        /// 심사장 PC는 이미 여러 판 돌아 첫 판 플래그가 꺼져 있을 수 있어서 이 입구가 필요하다.</summary>
+        public static bool TutorialMode { get; private set; }
+
+        /// <summary>가이드가 붙어야 하는 매치인가 — 첫 판이거나 튜토리얼 입구로 들어왔거나.</summary>
+        public static bool Wanted => TutorialMode || !Done;
+
+        public static void StartTutorial() => TutorialMode = true;
+        public static void EndTutorial() => TutorialMode = false;
+
         public static bool MoveDone { get; private set; }
         public static bool AttackDone { get; private set; }
         public static bool RadioDone { get; private set; }

@@ -43,7 +43,7 @@ namespace SeoYuGi.Battle
             foreach (var unit in state.Units)
             {
                 if (unit.profile == null) unit.profile = config.defaultProfile;
-                unit.moveGauge = unit.profile.freeRange * MoveScale;
+                unit.moveGauge = unit.profile.freeRange * ScaleFor(unit);
             }
         }
 
@@ -60,7 +60,7 @@ namespace SeoYuGi.Battle
                     if (unit.moveCooldown <= 0f)
                     {
                         unit.moveCooldown = 0f;
-                        unit.moveGauge = p.freeRange * MoveScale; // 쿨타임 종료 → 풀 게이지 복귀
+                        unit.moveGauge = p.freeRange * ScaleFor(unit); // 쿨타임 종료 → 풀 게이지 복귀
                     }
                 }
                 else if (unit.regenDelay > 0f)
@@ -69,7 +69,7 @@ namespace SeoYuGi.Battle
                 }
                 else
                 {
-                    unit.moveGauge = Math.Min(p.freeRange * MoveScale,
+                    unit.moveGauge = Math.Min(p.freeRange * ScaleFor(unit),
                         unit.moveGauge + p.gaugeRegenPerSecond * deltaTime);
                 }
             }
@@ -141,9 +141,12 @@ namespace SeoYuGi.Battle
 
         float MoveScale => Rule != null ? Rule.MoveScale : 1f;
 
+        /// <summary>유닛별 이동 배율 — 라운드 규칙 × 둔화(파열탄 피격 중 0.5). 범위 상한·게이지 상한에 같이 적용.</summary>
+        float ScaleFor(UnitState unit) => MoveScale * (unit.slowedUntil > State.time ? 0.5f : 1f);
+
         /// <summary>고지대 위 유닛은 이동 범위 +1 — 시야·사거리 보너스와 한 세트 (2026-09-05).</summary>
         int MaxRange(UnitState unit) =>
-            (int)Math.Round((unit.profile.maxRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0)) * MoveScale);
+            Math.Max(1, (int)Math.Round((unit.profile.maxRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0)) * ScaleFor(unit)));
 
         HashSet<Coord> OtherUnitCells(int exceptUnitId)
         {

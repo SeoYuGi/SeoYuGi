@@ -21,7 +21,7 @@ namespace SeoYuGi.UI
             ("너구리",      "TANKER",    new Color(1f, 0.54f, 0.16f)),
             ("고라니",      "RUNNER",    new Color(0.64f, 0.42f, 1f)),
             ("검은 고양이", "ASSASSIN",  new Color(0.21f, 0.84f, 1f)),
-            ("비둘기",      "GRENADIER", new Color(0.29f, 0.87f, 0.37f)),
+            ("비둘기",      "SUPPORT",   new Color(0.29f, 0.87f, 0.37f)),
             ("까치",        "MARKSMAN",  new Color(0.23f, 0.51f, 0.96f)),
         };
 
@@ -224,7 +224,7 @@ namespace SeoYuGi.UI
         {
             SkillKind.ShieldPush => "전방 밀치기", SkillKind.Smash => "5칸 던지기, 벽꿍", SkillKind.Dash => "대시, 충돌 스턴",
             SkillKind.Scream => "주변 1초 스턴", SkillKind.Blink => "2칸 점멸", SkillKind.Claw => "고위력 근접",
-            SkillKind.Burst => "십자 5칸", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적을 끌어옴",
+            SkillKind.Burst => "십자 폭격, 3초 둔화", SkillKind.BombDeliver => "원거리 투척", SkillKind.Snatch => "적을 끌어옴",
             SkillKind.KnockShot => "밀쳐내는 사격", SkillKind.Snipe => "1열 관통", _ => ""
         };
 

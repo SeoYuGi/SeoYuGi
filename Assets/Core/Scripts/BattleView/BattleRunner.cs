@@ -421,7 +421,7 @@ namespace SeoYuGi.BattleView
                 case UnitClass.Tank: return "근접 탱커";
                 case UnitClass.Balance: return "돌격형";
                 case UnitClass.Assassin: return "암살자";
-                case UnitClass.Grenadier: return "폭격형";
+                case UnitClass.Grenadier: return "서포터";
                 case UnitClass.Sniper: return "저격수";
                 default: return "";
             }
@@ -2056,6 +2056,12 @@ namespace SeoYuGi.BattleView
                         ImpactVfx.Sparks(focus, machine: true, scale: 0.8f); // 빗나간 조준이 흩어짐
                     }
                 }
+            };
+            Combat.OnSlowed += (unitId, seconds) =>
+            {
+                var v = viewRegistry.Get(unitId);
+                if (v != null && v.gameObject.activeInHierarchy)
+                    FloatingText.Spawn(v.transform.position + Vector3.up * 0.3f, "둔화", new Color(0.6f, 0.82f, 1f), 1f, 1.2f);
             };
             Combat.OnStunned += (_, __) => battleAudio.PlaySfx("S30_Stun", 1f); // 스턴 = 둔탁한 퍽 (재생성본 — 고역 없음 검증)
             Combat.OnMissed += (victimId, attackerId) =>

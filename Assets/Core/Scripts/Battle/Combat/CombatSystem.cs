@@ -25,6 +25,7 @@ namespace SeoYuGi.Battle
         public int pushCells;
         public int wallBonusDamage; // 벽/맵 경계에 밀려 부딪히면 추가 피해
         public float stunSeconds;   // 비명 교란: 판정 시 스턴 부여
+        public float slowSeconds;   // 파열탄: 판정 시 둔화 부여 (2026-09-06)
         public SkillKind kind;      // 이 예고가 무슨 스킬인가 — 예고 아이콘용. 평타는 SkillKind.BasicAttack
         public int targetUnitId = Cell.NoUnit; // 유닛 잠금 (낚아채기) — 예고 중 움직여도 따라간다 (2026-09-05)
         public Coord aimCell;       // 시전자가 지정한 칸 — 연출용(조준경·공격선). 광역은 중심, 자기중심 스킬은 시전자 칸
@@ -51,6 +52,7 @@ namespace SeoYuGi.Battle
         public event Action<int, int> OnUnitKilled;                  // (deadId, killerId — NoUnit이면 환경사) — 킬로그용
         public event Action<int, SkillKind> OnSkillCast; // (unitId, kind) — 성공 시
         public event Action<int, float> OnStunned;       // (unitId, seconds)
+        public event Action<int, float> OnSlowed;        // (unitId, seconds) — 둔화 연출용
         public event Action<int, int> OnStunCombo;       // (victimId, attackerId) — 스턴 중 피격 = 연계 보너스 발동
         public event Action<int, int> OnMissed;          // (victimId, attackerId) — 엄폐/은신으로 회피 성공
 
@@ -376,6 +378,7 @@ namespace SeoYuGi.Battle
                 team = unit.team,
                 aimCell = target,
                 impactTime = State.time + skill.telegraphSeconds,
+                slowSeconds = skill.slowSeconds, // 맞은 적 둔화 — 서포터 컨셉
                 damage = skill.damage * HighlandScale(unit)
             };
             strike.cells.Add(target);
@@ -868,6 +871,11 @@ namespace SeoYuGi.Battle
                 {
                     unit.stunnedUntil = State.time + strike.stunSeconds;
                     OnStunned?.Invoke(unit.id, strike.stunSeconds);
+                }
+                if (strike.slowSeconds > 0f && unit.alive)
+                {
+                    unit.slowedUntil = Math.Max(unit.slowedUntil, State.time + strike.slowSeconds);
+                    OnSlowed?.Invoke(unit.id, strike.slowSeconds);
                 }
                 if (strike.pushCells > 0 && unit.alive)
                     Push(unit, strike.pushDir, strike.pushCells, strike.wallBonusDamage);

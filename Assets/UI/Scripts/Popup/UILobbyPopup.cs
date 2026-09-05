@@ -28,7 +28,7 @@ public class UILobbyPopup : UIPopup
         ("너구리",      "TANKER",    new Color(1f, 0.54f, 0.16f)),
         ("고라니",      "RUNNER",    new Color(0.64f, 0.42f, 1f)),
         ("검은 고양이", "ASSASSIN",  new Color(0.21f, 0.84f, 1f)),
-        ("비둘기",      "GRENADIER", new Color(0.29f, 0.87f, 0.37f)),
+        ("비둘기",      "SUPPORT",   new Color(0.29f, 0.87f, 0.37f)),
         ("까치",        "MARKSMAN",  new Color(0.23f, 0.51f, 0.96f)),
     };
 

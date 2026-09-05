@@ -44,6 +44,7 @@
         public int range;
         public float cooldownSeconds;
         public float stunSeconds;      // Scream·Dash — 판정/충돌 시 스턴 부여
+        public float slowSeconds;      // Burst — 판정 시 둔화(이동 범위·게이지 절반). 비둘기 서포터 컨셉 (2026-09-06)
     }
 
     /// <summary>클래스 정적 스탯. 스킬 실행은 CombatSystem.</summary>
@@ -126,7 +127,7 @@
                 move = new MoveProfile { freeRange = 2, maxRange = 4, gaugeRegenPerSecond = 0.80f, regenDelaySeconds = 0f, yellowCooldownSeconds = 1.3f },
                 skills = new[]
                 {
-                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 3, cooldownSeconds = 6f },
+                    new SkillDef { kind = SkillKind.Burst, telegraphSeconds = 2.4f, damage = 1, range = 3, cooldownSeconds = 6f, slowSeconds = 3f }, // 맞은 적 3초 둔화 — 낚아채기와 묶어 "자리 통제" 서포터
                     new SkillDef { kind = SkillKind.Snatch, telegraphSeconds = 1.0f, damage = 1, range = 5, cooldownSeconds = 10f } // 위치 강제 이동이 강력해 피해는 낮게, 비행은 빠르게
                 }
             },

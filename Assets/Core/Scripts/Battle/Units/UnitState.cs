@@ -28,6 +28,8 @@
         public float attackBuffUntil = -1f;
         // 스턴 종료 시각 (비명 교란). >= 현재 시각이면 이동·행동 불가.
         public float stunnedUntil = -1f;
+        // 둔화 종료 시각 (파열탄). 지속 중 이동 범위·게이지 절반 — 행동은 가능.
+        public float slowedUntil = -1f;
         // 비행 종료 시각 (폭탄 배달·낚아채기). >= 현재 시각이면 무적 + 이동·행동 불가.
         public float flyingUntil = -1f;
         // 연계 창 종료 시각. 그림자 도약 직후 짧게 열리고, 그 안에 발톱을 쓰면 선딜이 줄어든다.

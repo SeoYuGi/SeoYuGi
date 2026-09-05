@@ -328,6 +328,9 @@ namespace SeoYuGi.BattleView
         int prevMyZones = -1, prevEnemyZones = -1; // 거점 우세 경보 엣지 (판세 피드백)
         readonly Dictionary<int, (int streak, float until)> killStreaks = new Dictionary<int, (int, float)>(); // 멀티킬 콜아웃 (7초 창)
         readonly Dictionary<int, int> roundKills = new Dictionary<int, int>();  // 라운드 전적 (2026-09-05)
+        readonly Dictionary<int, int> matchKills = new Dictionary<int, int>();  // 매치 누적 — 매치엔드 통계·MVP
+        readonly Dictionary<int, int> matchDeaths = new Dictionary<int, int>();
+        int spectateUnitId = -1; // 관전 중 따라가는 아군 — 죽으면 다음 아군으로
         readonly Dictionary<int, int> roundDeaths = new Dictionary<int, int>();
 
         /// <summary>빠른채팅 숫자키 매핑 — QuickChat.Lines와 순서가 1:1.</summary>
@@ -871,6 +874,7 @@ namespace SeoYuGi.BattleView
             Match.RecordRoundResult(winner); // 결정론 — 호스트와 같은 스코어로 수렴
             if (matchOver)
             {
+                hud.SetMatchStats(BuildMatchStats());
                 hud.ShowMatchEnd();
                 phase = Phase.MatchOver;
                 bool myWin = winner == playerTeam;
@@ -1816,6 +1820,8 @@ namespace SeoYuGi.BattleView
             prevMyZones = prevEnemyZones = -1; // 거점 우세 경보 리셋
             killStreaks.Clear(); // 멀티킬 스트릭 리셋
             roundKills.Clear(); roundDeaths.Clear(); // 라운드 전적 리셋
+            if (Match.CurrentRound <= 1) { matchKills.Clear(); matchDeaths.Clear(); } // 새 매치 — 누적도 백지
+            spectateUnitId = -1;
             countdownUntil = Time.time + 3f; // 라운드 시작 3·2·1 — 그동안 시뮬·조작 정지
             countdownRunning = true;
 
@@ -1828,6 +1834,7 @@ namespace SeoYuGi.BattleView
             battleAudio.PlayBgm(Match.CurrentRound >= 3 ? "B2_Round3" : "B1_Round1");
             battleAudio.PlaySfx("S13_RoundStart", 1.5f);
             PlayVoiceLine("Voice_RoundStart", "라운드 개시");
+            hud.SetRoundRule(Rule != null ? Rule.title : null); // 상시 칩 — 자막을 놓쳐도 규칙이 보인다 (2026-09-05)
             if (Rule != null)
             {
                 // 규칙은 라운드 개시 자막 뒤에 이어 붙인다 — 전술을 정하기 전에 읽혀야 한다
@@ -1926,6 +1933,46 @@ namespace SeoYuGi.BattleView
             return lines.ToArray();
         }
 
+        /// <summary>매치엔드 초상 통계 — 슬롯 순서대로 (콜사인·클래스·팀·매치 누적 K/D).</summary>
+        BattleHud.MatchStatEntry[] BuildMatchStats()
+        {
+            var list = new List<BattleHud.MatchStatEntry>();
+            if (matchSetup != null)
+                foreach (var slot in matchSetup.slots)
+                {
+                    matchKills.TryGetValue(slot.unitId, out int k);
+                    matchDeaths.TryGetValue(slot.unitId, out int d);
+                    list.Add(new BattleHud.MatchStatEntry
+                    { name = slot.callsign, cls = (int)slot.cls, team = slot.team, kills = k, deaths = d });
+                }
+            return list.ToArray();
+        }
+
+        /// <summary>죽은 뒤 — 살아 있는 아군 시점으로 카메라 전환 (2026-09-05 관전 개선).
+        /// dir = 0 첫 아군 / +1 다음 / -1 이전 (관전 중 ←/→ 순환).</summary>
+        void SpectateFollowAlly(int dir = 0)
+        {
+            var cam = Camera.main != null ? Camera.main.GetComponent<SeoYuGi.Art.TacticalCamera>() : null;
+            if (cam == null || matchSetup == null) return;
+
+            var alive = new List<(int unitId, string name)>();
+            foreach (var slot in matchSetup.slots)
+            {
+                if (slot.team != playerTeam || slot.unitId == playerUnitId) continue;
+                var u = Battle.GetUnit(slot.unitId);
+                if (u == null || !u.alive || viewRegistry.Get(slot.unitId) == null) continue;
+                alive.Add((slot.unitId, slot.callsign));
+            }
+            if (alive.Count == 0) return;
+
+            int idx = alive.FindIndex(a => a.unitId == spectateUnitId);
+            idx = idx < 0 ? 0 : (idx + dir + alive.Count) % alive.Count;
+
+            spectateUnitId = alive[idx].unitId;
+            cam.Spectate(viewRegistry.Get(spectateUnitId).transform);
+            hud.ShowAnnounce($"{alive[idx].name} 시점 관전  ( ← / → 전환 )", new Color(0.7f, 0.8f, 0.9f), 1.6f);
+        }
+
         void ShowKill(int deadId, int killerId)
         {
             var dead = Battle?.GetUnit(deadId);
@@ -1940,8 +1987,16 @@ namespace SeoYuGi.BattleView
                 feedColor = Color.Lerp(teamColors[killer.team], Color.white, 0.35f);
             }
             roundDeaths[deadId] = roundDeaths.TryGetValue(deadId, out var dcnt) ? dcnt + 1 : 1;
+            matchDeaths[deadId] = matchDeaths.TryGetValue(deadId, out var mdc) ? mdc + 1 : 1;
             if (killer != null)
+            {
                 roundKills[killerId] = roundKills.TryGetValue(killerId, out var kcnt) ? kcnt + 1 : 1;
+                matchKills[killerId] = matchKills.TryGetValue(killerId, out var mkc) ? mkc + 1 : 1;
+            }
+
+            // 관전 시점 전환 (2026-09-05): 내가 죽거나, 따라가던 아군이 죽으면 다음 산 아군에게
+            if (deadId == playerUnitId || (Spectating && deadId == spectateUnitId))
+                SpectateFollowAlly();
 
             hud.AddKill(killerName, victimName, feedColor);
             hud.PushEvent(killerName != null ? $"{killerName}이(가) {victimName} 처치!" : $"{victimName} 처치됨",
@@ -2036,7 +2091,7 @@ namespace SeoYuGi.BattleView
                 case SkillKind.Claw: return "S16_Smash";
                 case SkillKind.Burst: return "S19_Burst";
                 case SkillKind.BombDeliver: return "S19_Burst";
-                case SkillKind.Snatch: return "S19_Burst"; // 전용 SFX 나오기 전까지 대용
+                case SkillKind.Snatch: return "S35_Snatch"; // 휙-턱 전용 합성음 (2026-09-05)
                 case SkillKind.KnockShot: return "S20_Snipe";
                 case SkillKind.Snipe: return "S20_Snipe";
                 default: return "S3_Hit";
@@ -2087,6 +2142,7 @@ namespace SeoYuGi.BattleView
 
             if (matchOver)
             {
+                hud.SetMatchStats(BuildMatchStats());
                 hud.ShowMatchEnd();
                 phase = Phase.MatchOver;
                 bool myWin = Match.MatchWinner == playerTeam;
@@ -2217,6 +2273,13 @@ namespace SeoYuGi.BattleView
                 if (!IsNetClient && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
                     RestartMatch();
                 return;
+            }
+
+            // 관전 중 ←/→ = 아군 시점 순환 (2026-09-05 "화살표로 바꿔") — 라운드 진행 중(죽은 뒤)에만 유효
+            if (Spectating && Keyboard.current != null)
+            {
+                if (Keyboard.current.rightArrowKey.wasPressedThisFrame) SpectateFollowAlly(+1);
+                else if (Keyboard.current.leftArrowKey.wasPressedThisFrame) SpectateFollowAlly(-1);
             }
 
             // 라운드 시작 카운트다운 — 호스트·클라 모두 시뮬·조작 정지, 중앙에 3·2·1

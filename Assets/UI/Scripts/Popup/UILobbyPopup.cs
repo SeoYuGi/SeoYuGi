@@ -127,7 +127,6 @@ public class UILobbyPopup : UIPopup
         OnEscape = Leave; // ESC = 나가기 (뒤로)
 
         CreateTeamSwapButton(); // 상대팀 슬롯은 숨겨져 있어 클릭 이동이 불가 — 버튼으로 (2026-09-05 "상대팀으로도")
-        CreateNicknameInput();  // 닉네임 설정 (2026-09-05) — PlayerPrefs 저장, 콜사인 대체
 
         codeText = transform.Find("CodeText")?.GetComponent<Text>();
         statusText = transform.Find("StatusText")?.GetComponent<Text>();
@@ -148,6 +147,21 @@ public class UILobbyPopup : UIPopup
                     new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
         }
         return cardSprites[cls];
+    }
+
+    static readonly Sprite[] machineSprites = new Sprite[5];
+
+    /// <summary>기계팀 전용 회색 아트 (Card_*_M) — 없으면 원본 폴백.</summary>
+    static Sprite MachineCardSprite(int cls)
+    {
+        if (machineSprites[cls] == null)
+        {
+            var tex = Resources.Load<Texture2D>("UI/" + CardArt[cls] + "_M");
+            if (tex != null)
+                machineSprites[cls] = Sprite.Create(tex,
+                    new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+        }
+        return machineSprites[cls] != null ? machineSprites[cls] : CardSprite(cls);
     }
 
     /// <summary>Resources/UI 아트가 있으면 입힘 — 없으면 플랫 컬러 폴백 (프리팹 재빌드 불필요).</summary>
@@ -180,6 +194,9 @@ public class UILobbyPopup : UIPopup
                 var img = Get<GameObject>((int)b).GetComponent<Image>();
                 img.sprite = btnSprite;
                 img.color = Color.white;
+                img.preserveAspect = false; // 키잉 후 비율이 바뀌어 프레임이 납작해지며 글씨가 삐져나왔다 (2026-09-05)
+                var bl = Get<GameObject>((int)b).GetComponentInChildren<Text>();
+                if (bl != null) { bl.fontSize = 17; bl.alignment = TextAnchor.MiddleCenter; } // 프레임 금속 밴드 안에 여유 있게
             }
     }
 
@@ -221,42 +238,11 @@ public class UILobbyPopup : UIPopup
         OnLeave?.Invoke();
     }
 
-    InputField nickInput;
     bool nickSynced; // 슬롯 배정 전 전송 유실 대비 — Refresh에서 내 슬롯 확인 후 1회 재전송
 
-    /// <summary>닉네임 입력칸 — ChatInput을 복제해 스킨을 물려받고 그 위에 배치.
-    /// 엔터로 확정: PlayerPrefs 저장 + 호스트에 콜사인 교체 요청 (킬피드·콜아웃까지 반영).</summary>
-    void CreateNicknameInput()
-    {
-        if (chatInput == null) return;
-        var go = Instantiate(chatInput.gameObject, chatInput.transform.parent);
-        go.name = "NickInput";
-        var rt = go.GetComponent<RectTransform>();
-        var src = chatInput.GetComponent<RectTransform>();
-        float lift = src.sizeDelta.y + 10f;
-        rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, lift);
-        // 닉네임 칸이 들어온 만큼 채팅 컬럼 전체(로그·배경·빠른채팅)를 위로 —
-        // QC만 올리면 로그와 겹친다 (2026-09-05 "채팅도 겹쳐")
-        foreach (var n in new[] { "ChatBack", "ChatLog", "QC1", "QC2", "QC3", "QC4", "QC5", "QC6" })
-        {
-            var t = transform.Find(n) as RectTransform;
-            if (t != null) t.anchoredPosition += new Vector2(0f, lift);
-        }
-        nickInput = go.GetComponent<InputField>();
-        nickInput.onEndEdit.RemoveAllListeners();
-        nickInput.characterLimit = 10;
-        string saved = PlayerPrefs.GetString("sy_nickname", "");
-        nickInput.text = saved;
-        var ph = nickInput.placeholder as Text;
-        if (ph != null) ph.text = "닉네임 (엔터로 확정)";
-        nickInput.onEndEdit.AddListener(v =>
-        {
-            v = v?.Trim();
-            if (string.IsNullOrEmpty(v)) return;
-            PlayerPrefs.SetString("sy_nickname", v);
-            NetLobby.RequestName(v);
-        });
-    }
+    // 닉네임 입력은 메인화면(UITitlePopup)으로 이전 (2026-09-05) — 저장된 닉네임의
+    // 자동 적용(Refresh의 nickSynced 1회 전송)은 그대로 이 팝업이 맡는다.
+
 
     /// <summary>팀 변경 버튼 — BtnLeave를 복제해 스킨·크기를 그대로 물려받는다 (프리팹 수정 없이 런타임 생성).
     /// 상대팀 첫 빈 봇 슬롯으로 이동을 요청한다. 상대팀이 인간으로 가득이면 안내만.</summary>
@@ -269,7 +255,15 @@ public class UILobbyPopup : UIPopup
         var src = template.GetComponent<RectTransform>();
         rt.anchoredPosition = src.anchoredPosition + new Vector2(0f, src.sizeDelta.y + 14f);
         var label = go.GetComponentInChildren<Text>();
-        if (label != null) label.text = "팀 변경 ⇄";
+        if (label != null) { label.text = "팀 변경 ⇄"; label.fontSize = 17; label.alignment = TextAnchor.MiddleCenter; }
+        // 복제 시점이 ApplySkin보다 앞이라 민짜로 남는다 — 버튼 판 스킨 직접 적용 (2026-09-05)
+        var plate = UISkin.ButtonPlate();
+        var img2 = go.GetComponent<Image>();
+        if (plate != null && img2 != null) { img2.sprite = plate; img2.color = Color.white; img2.preserveAspect = false; }
+        // 복제본에 딸려온 여분 배경(검정 판) 끄기 — Image만으론 안 잡혀서(RawImage 등) 그래픽 전부,
+        // 글자(Text)와 루트 판만 남긴다 (2026-09-05)
+        foreach (var extra in go.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+            if (extra.gameObject != go && !(extra is Text)) extra.enabled = false;
         BindEvent(go, _ =>
         {
             var slots = NetLobby.Slots;
@@ -351,7 +345,8 @@ public class UILobbyPopup : UIPopup
             if (slotPortraits[i] != null)
             {
                 bool hidden = myTeam >= 0 && s.team != myTeam;
-                var sprite = hidden ? null : CardSprite((int)s.cls);
+                // 기계팀(팀1)은 전용 회색 아트 — 로비에서부터 "로봇 편"이 그림으로 읽힌다 (2026-09-05)
+                var sprite = hidden ? null : (s.team == 1 ? MachineCardSprite((int)s.cls) : CardSprite((int)s.cls));
                 slotPortraits[i].sprite = sprite;
                 slotPortraits[i].color = sprite == null ? new Color(1f, 1f, 1f, 0f)
                     : s.owner == SlotOwner.Bot ? new Color(0.7f, 0.7f, 0.7f) : Color.white;

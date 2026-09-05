@@ -17,8 +17,14 @@ public static class UISkin
             new Vector2(0.5f, 0.5f));
     }
 
-    /// <summary>버튼 플레이트 — 생성 이미지의 상하 검은 여백 제거 (글로우 포함 중앙 밴드).</summary>
-    public static Sprite ButtonPlate() => Load("UI/Frame_ButtonWide", new Rect(0.03f, 0.26f, 0.94f, 0.48f));
+    /// <summary>버튼 플레이트 — 검정 캔버스 키잉+내용 크롭 (2026-09-05 "투명 png가 아니야?").
+    /// 밴드 크롭만으론 프레임 둘레 검정이 남았다 — LoadKeyed가 검정→투명 + 내용 바운딩 크롭까지 처리.</summary>
+    public static Sprite ButtonPlate()
+    {
+        var tex = SeoYuGi.BattleView.BattleHud.LoadKeyed("UI/Frame_ButtonWide");
+        if (tex == null) return null;
+        return Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+    }
 
     /// <summary>슬롯 프레임 — 가장자리 소폭 크롭.</summary>
     public static Sprite SlotFrame() => Load("UI/Frame_LobbySlot", new Rect(0.02f, 0.02f, 0.96f, 0.96f));

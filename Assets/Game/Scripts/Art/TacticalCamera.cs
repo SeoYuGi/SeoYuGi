@@ -137,6 +137,14 @@ namespace SeoYuGi.Art
             }
         }
 
+        /// <summary>관전 — 지정 트랜스폼(아군 유닛)을 추적 타깃으로. 죽은 뒤 러너가 호출 (2026-09-05).</summary>
+        public void Spectate(Transform t)
+        {
+            if (t == null) return;
+            target = t;
+            Locked = true;
+        }
+
         bool TryFindTarget()
         {
             if (runner == null || runner.Battle == null) return false;

@@ -235,7 +235,7 @@ namespace SeoYuGi.UI
             SkillKind.Snipe => "Icon_Skill_Snipe", SkillKind.ShieldPush => "Icon_Skill_ShieldPush",
             SkillKind.Claw => "Icon_Skill_Claw", SkillKind.KnockShot => "Icon_Skill_KnockShot",
             SkillKind.Scream => "Icon_Skill_Scream",
-            SkillKind.BombDeliver => "Icon_Skill_BombDeliver", SkillKind.Snatch => "Icon_Skill_BombDeliver",
+            SkillKind.BombDeliver => "Icon_Skill_BombDeliver", SkillKind.Snatch => "Icon_Skill_Snatch",
             _ => "Icon_Skill_Generic"
         };
 

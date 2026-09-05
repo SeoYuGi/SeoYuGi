@@ -588,6 +588,15 @@ namespace SeoYuGi.BattleView
             ShadowLabel(new Rect(W / 2f + 12, 97, 88, 18), $"{enZ} 적", zsStyle, enemyColor);
             GUI.Label(new Rect(W / 2f - 100, 114, 200, 14),
                 $"ROUND {match.CurrentRound}/{MatchSystem.MaxRounds}", roundStyle);
+            if (!string.IsNullOrEmpty(roundRuleChip))
+            {
+                // 라운드 변형 규칙 상시 칩 (2026-09-05) — 시작 자막을 놓치면 "점령 안 되는 버그"가 된다
+                var chipStyle2 = new GUIStyle(roundStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 13 };
+                var chipRect = new Rect(W / 2f - 110, 131, 220, 20);
+                Fill(chipRect, new Color(0.04f, 0.06f, 0.1f, 0.85f));
+                Edge(chipRect, new Color(1f, 0.78f, 0.25f, 0.5f));
+                ShadowLabel(chipRect, $"◆ {roundRuleChip}", chipStyle2, new Color(1f, 0.85f, 0.45f));
+            }
         }
 
         void DrawTeamStatus(Rect r, int team, Color color, bool rightAlign)
@@ -670,7 +679,7 @@ namespace SeoYuGi.BattleView
             else return;
 
             // 프레임 사선 컷 여백만큼 텍스트를 안쪽에 — 텍스트가 프레임을 뚫지 않게
-            var box = new Rect(W / 2f - 240, 118, 480, 34);
+            var box = new Rect(W / 2f - 240, 158, 480, 34); // 118 → 158: ROUND 라벨·규칙 칩(131)과 겹침 (2026-09-05)
             GUI.color = bannerColor;
             if (texBanner != null)
             {
@@ -993,6 +1002,8 @@ namespace SeoYuGi.BattleView
             float boxY = H - 100f - boxH;
             if (overlay == Overlay.Briefing) // 브리핑 패널과 겹침 방지 — 패널 바로 아래로 (2026-09-05)
                 boxY = Mathf.Min(H - boxH - 10f, briefingBottomY + 12f);
+            else if (overlay == Overlay.MatchEnd) // MVP 페이지 문구와 겹침 방지 — 화면 맨 아래로 (2026-09-05)
+                boxY = H - boxH - 16f;
             var box = new Rect(W / 2f - boxW / 2f, boxY, boxW, boxH);
             NeonPanel(box, new Color(0.55f, 0.95f, 1f));
             GUI.color = new Color(0.55f, 0.95f, 1f);
@@ -1091,6 +1102,25 @@ namespace SeoYuGi.BattleView
             }
         }
 
+        string roundRuleChip; // 라운드 변형 규칙 상시 표시 — null이면 평범한 라운드
+        public void SetRoundRule(string title) => roundRuleChip = title;
+
+        /// <summary>매치엔드 통계 한 줄 — 초상+닉네임+K/D. 러너가 매치 종료 직전 채운다.</summary>
+        public struct MatchStatEntry { public string name; public int cls; public int team; public int kills, deaths; }
+        MatchStatEntry[] matchStats;
+        public void SetMatchStats(MatchStatEntry[] entries) => matchStats = entries;
+
+        static readonly string[] CardArtNames = { "Card_Tank", "Card_Balance", "Card_Assassin", "Card_Grenadier", "Card_Sniper" };
+        static readonly Texture2D[] cardArts = new Texture2D[5];
+        static Texture2D CardArt(int cls)
+        {
+            if (cls < 0 || cls >= 5) return null;
+            if (cardArts[cls] == null) cardArts[cls] = Resources.Load<Texture2D>("UI/" + CardArtNames[cls]);
+            return cardArts[cls];
+        }
+
+        static float Frac01(float x) { x = Mathf.Sin(x) * 43758.5453f; return x - Mathf.Floor(x); }
+
         float matchEndAt = -1f; // 오버레이 진입 시각 — 등장 애니메이션 기준
 
         static Texture2D radialTex;
@@ -1124,7 +1154,7 @@ namespace SeoYuGi.BattleView
 
             // 상·하 팀색 밴드가 중앙에서 바깥으로 열린다 (0.4초)
             float open = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(age / 0.4f));
-            float bandH = 124f; // 하단 임무 문구가 테두리 라인에 닿았다 — 여백 확보 (2026-09-05)
+            float bandH = 196f; // 초상 통계 스트립이 들어가며 재확장 (2026-09-05)
             float cy = H / 2f;
             Fill(new Rect(0, cy - bandH, W * open, 3f), accent);
             Fill(new Rect(W - W * open, cy + bandH - 3f, W * open, 3f), accent);
@@ -1172,10 +1202,162 @@ namespace SeoYuGi.BattleView
             ShadowLabel(new Rect(0, cy + 40f, W, 30f),
                 $"{match.GetWins(playerTeam)}  :  {match.GetWins(1 - playerTeam)}",
                 new GUIStyle(timerStyle) { fontSize = 28 }, new Color(1f, 1f, 1f, scoreA));
-            ShadowLabel(new Rect(0, cy + 74f, W, 24f),
-                myWin ? "도시 관리 AI 소탕 완료  ·  R — 새 매치" : "작전 실패 — 재정비하라  ·  R — 새 매치",
-                new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
-                new Color(0.75f, 0.8f, 0.88f, scoreA));
+            // 페이지 전환 (2026-09-05 "다음 페이지에서 MVP"): 4초간 결과 페이지 → MVP 전체 화면
+            float mvpT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - 4f) / 0.5f));
+
+            if (matchStats != null && mvpT < 1f)
+            {
+                // ── 1페이지: 초상 통계 스트립 — 내 팀 왼쪽 원본색 / 기계팀 회색 틴트
+                float stripA = scoreA * (1f - mvpT);
+                const float P = 58f, Gap = 16f, GroupGap = 60f;
+                int mineN = 0, foeN = 0;
+                foreach (var e in matchStats) { if (e.team == playerTeam) mineN++; else foeN++; }
+                float totalW = (mineN + foeN) * (P + Gap) - Gap + GroupGap;
+                float x = W / 2f - totalW / 2f;
+                float py = cy + 72f;
+
+                var nameStyle2 = new GUIStyle(roundStyle) { fontSize = 12, alignment = TextAnchor.MiddleCenter };
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    for (int i = 0; i < matchStats.Length; i++)
+                    {
+                        var e = matchStats[i];
+                        if ((pass == 0) != (e.team == playerTeam)) continue;
+                        var art = MatchPortrait(e.cls, e.team, out bool tintGray);
+                        var pr = new Rect(x, py, P, P);
+                        Fill(new Rect(pr.x - 2, pr.y - 2, P + 4, P + 4), new Color(0.03f, 0.05f, 0.09f, 0.9f * stripA));
+                        if (art != null)
+                        {
+                            GUI.color = tintGray ? new Color(0.5f, 0.52f, 0.56f, stripA) : new Color(1f, 1f, 1f, stripA);
+                            GUI.DrawTextureWithTexCoords(pr, art, new Rect(0.22f, 0.5f, 0.56f, 0.42f));
+                            GUI.color = Color.white;
+                        }
+                        Edge(pr, new Color(accent.r, accent.g, accent.b, 0.35f * stripA));
+                        ShadowLabel(new Rect(pr.x - 6, pr.yMax + 1f, P + 12, 14f), e.name, nameStyle2,
+                            new Color(0.92f, 0.95f, 1f, stripA));
+                        ShadowLabel(new Rect(pr.x - 6, pr.yMax + 15f, P + 12, 13f), $"{e.kills}킬 {e.deaths}데스",
+                            new GUIStyle(nameStyle2) { fontSize = 11 }, new Color(0.62f, 0.68f, 0.78f, stripA));
+                        x += P + Gap;
+                    }
+                    x += GroupGap;
+                }
+                ShadowLabel(new Rect(0, cy + 168f, W, 24f),
+                    myWin ? "도시 관리 AI 소탕 완료" : "작전 실패 — 재정비하라",
+                    new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
+                    new Color(0.75f, 0.8f, 0.88f, scoreA * (1f - mvpT)));
+            }
+
+            if (matchStats != null && matchStats.Length > 0 && mvpT > 0f)
+            {
+                // ── 2페이지: MVP 시네마틱 (2026-09-05 "간지나게") — 스포트라이트 + 대각 빔 + 브래킷 + 광택 스윕
+                int mvp = 0;
+                for (int i = 1; i < matchStats.Length; i++)
+                    if (matchStats[i].kills > matchStats[mvp].kills ||
+                        (matchStats[i].kills == matchStats[mvp].kills && matchStats[i].deaths < matchStats[mvp].deaths))
+                        mvp = i;
+                var m = matchStats[mvp];
+                var gold = new Color(1f, 0.85f, 0.3f);
+                float rise = (1f - mvpT) * 46f; // 등장 — 아래에서 떠오르며 정착
+
+                Fill(new Rect(0, 0, W, H), new Color(0.01f, 0.02f, 0.04f, 0.92f * mvpT));
+
+                // 대각 금빛 빔 두 줄 — 무대 조명
+                var mtx = GUI.matrix;
+                GUIUtility.RotateAroundPivot(-16f, new Vector2(W / 2f, H / 2f));
+                Fill(new Rect(W / 2f - 460f, -100f, 150f, H + 200f), new Color(gold.r, gold.g, gold.b, 0.05f * mvpT));
+                Fill(new Rect(W / 2f + 290f, -100f, 110f, H + 200f), new Color(gold.r, gold.g, gold.b, 0.04f * mvpT));
+                GUI.matrix = mtx;
+
+                // 떠오르는 금빛 불씨 — 은은하게 (결정적 난수, 매 프레임 같은 궤적)
+                for (int i = 0; i < 22; i++)
+                {
+                    float seed = i * 7.31f;
+                    float ex = W * 0.5f + (Frac01(seed) - 0.5f) * 560f;
+                    float speed = 26f + Frac01(seed * 1.9f) * 34f;
+                    float ey = H - ((age * speed + Frac01(seed * 3.7f) * H) % (H * 0.9f));
+                    float ea = (0.05f + 0.2f * Frac01(seed * 5.1f)) * mvpT;
+                    Fill(new Rect(ex, ey, 3f, 3f), new Color(gold.r, gold.g, gold.b, ea));
+                }
+
+                ShadowLabel(new Rect(0, H * 0.085f + rise * 0.4f, W, 40f), "M  V  P",
+                    new GUIStyle(bannerStyle) { fontSize = 34 }, new Color(gold.r, gold.g, gold.b, mvpT));
+                float ulW = 210f * mvpT;
+                Fill(new Rect(W / 2f - ulW / 2f, H * 0.085f + 46f + rise * 0.4f, ulW, 2f), new Color(gold.r, gold.g, gold.b, 0.85f * mvpT));
+
+                // 대형 일러스트 — 금빛 스포트라이트 + 이중 프레임 + 코너 브래킷
+                const float IW = 320f, IH = 380f;
+                var big = new Rect(W / 2f - IW / 2f, H * 0.175f + rise, IW, IH);
+                GUI.color = new Color(gold.r, gold.g, gold.b, 0.3f * mvpT);
+                GUI.DrawTexture(new Rect(big.x - 130f, big.y - 90f, IW + 260f, IH + 200f), RadialTex());
+                GUI.color = new Color(1f, 1f, 1f, 0.12f * mvpT); // 중심 흰 광원 — 금색만 쌓이면 탁해진다
+                GUI.DrawTexture(new Rect(big.x - 30f, big.y - 20f, IW + 60f, IH + 60f), RadialTex());
+                GUI.color = Color.white;
+
+                Fill(new Rect(big.x - 5, big.y - 5, IW + 10, IH + 10), new Color(0.02f, 0.03f, 0.06f, 0.95f * mvpT));
+                var bart = MatchPortrait(m.cls, m.team, out bool bigGray);
+                if (bart != null)
+                {
+                    GUI.color = bigGray ? new Color(0.55f, 0.57f, 0.6f, mvpT) : new Color(1f, 1f, 1f, mvpT);
+                    GUI.DrawTextureWithTexCoords(big, bart, new Rect(0.13f, 0.14f, 0.74f, 0.8f));
+                    GUI.color = Color.white;
+                }
+                // 광택 스윕 — 3초마다 빛의 띠가 초상을 훑는다
+                float sweep = (age % 3f) / 3f;
+                if (sweep < 0.5f)
+                {
+                    float sx = big.x - 80f + (IW + 160f) * (sweep * 2f);
+                    GUI.color = new Color(1f, 1f, 1f, 0.13f * mvpT);
+                    GUI.DrawTexture(new Rect(sx, big.y, 70f, IH), RadialTex());
+                    GUI.color = Color.white;
+                }
+                Edge(new Rect(big.x - 2, big.y - 2, IW + 4, IH + 4), new Color(gold.r, gold.g, gold.b, 0.9f * mvpT));
+                Edge(new Rect(big.x - 7, big.y - 7, IW + 14, IH + 14), new Color(gold.r, gold.g, gold.b, 0.25f * mvpT));
+                // 코너 브래킷 — 군용 조준 프레임
+                const float B = 26f, Bt = 3f;
+                var bc = new Color(gold.r, gold.g, gold.b, 0.95f * mvpT);
+                Fill(new Rect(big.x - 12, big.y - 12, B, Bt), bc); Fill(new Rect(big.x - 12, big.y - 12, Bt, B), bc);
+                Fill(new Rect(big.xMax + 12 - B, big.y - 12, B, Bt), bc); Fill(new Rect(big.xMax + 12 - Bt, big.y - 12, Bt, B), bc);
+                Fill(new Rect(big.x - 12, big.yMax + 12 - Bt, B, Bt), bc); Fill(new Rect(big.x - 12, big.yMax + 12 - B, Bt, B), bc);
+                Fill(new Rect(big.xMax + 12 - B, big.yMax + 12 - Bt, B, Bt), bc); Fill(new Rect(big.xMax + 12 - Bt, big.yMax + 12 - B, Bt, B), bc);
+
+                // 이름 — 크게, 금빛 글로우 한 겹 + 역할 EN 라벨
+                var nameStyleBig = new GUIStyle(bannerStyle) { fontSize = 34 };
+                GUI.color = new Color(gold.r, gold.g, gold.b, 0.3f * mvpT);
+                GUI.Label(new Rect(0, big.yMax + 20f + 2f + rise * 0.3f, W, 44f), m.name, nameStyleBig);
+                GUI.color = Color.white;
+                ShadowLabel(new Rect(0, big.yMax + 20f + rise * 0.3f, W, 44f), m.name, nameStyleBig,
+                    new Color(1f, 1f, 1f, mvpT));
+                string[] roleEn = { "TANKER", "RUNNER", "ASSASSIN", "GRENADIER", "MARKSMAN" };
+                string role = m.cls >= 0 && m.cls < 5 ? roleEn[m.cls] : "";
+                ShadowLabel(new Rect(0, big.yMax + 62f + rise * 0.3f, W, 18f), role,
+                    new GUIStyle(roundStyle) { fontSize = 13, alignment = TextAnchor.MiddleCenter },
+                    new Color(gold.r, gold.g, gold.b, 0.75f * mvpT));
+
+                string why = m.kills > 0
+                    ? $"매치 최다 처치 — {m.kills}킬 {m.deaths}데스"
+                    : $"팀의 중심 — {m.deaths}데스로 버텨냈다";
+                ShadowLabel(new Rect(0, big.yMax + 86f + rise * 0.3f, W, 20f), why,
+                    new GUIStyle(roundStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter },
+                    new Color(0.88f, 0.9f, 0.96f, mvpT));
+
+                ShadowLabel(new Rect(0, big.yMax + 116f + rise * 0.3f, W, 20f), "R — 새 매치",
+                    new GUIStyle(roundStyle) { fontSize = 14, alignment = TextAnchor.MiddleCenter },
+                    new Color(0.6f, 0.68f, 0.78f, (0.6f + 0.4f * Mathf.Sin(age * 3f)) * mvpT));
+            }
+        }
+
+        /// <summary>매치엔드 초상 — 기계팀(팀1)은 전용 회색 아트(Card_*_M)가 있으면 그걸, 없으면 원본+회색 틴트.</summary>
+        static Texture2D MatchPortrait(int cls, int team, out bool tintGray)
+        {
+            if (team == 1)
+            {
+                var m = Resources.Load<Texture2D>("UI/" + CardArtNames[Mathf.Clamp(cls, 0, 4)] + "_M");
+                if (m != null) { tintGray = false; return m; }
+                tintGray = true;
+                return CardArt(cls);
+            }
+            tintGray = false;
+            return CardArt(cls);
         }
 
         /// <summary>게이지 바 — 어두운 트랙 + 채움(윗변 하이라이트) + 끝단 캡 + 구간 눈금.

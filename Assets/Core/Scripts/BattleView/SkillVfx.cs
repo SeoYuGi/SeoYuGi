@@ -1,4 +1,5 @@
-﻿using SeoYuGi.Battle;
+﻿using System.Collections.Generic;
+using SeoYuGi.Battle;
 using UnityEngine;
 
 namespace SeoYuGi.BattleView
@@ -140,24 +141,47 @@ namespace SeoYuGi.BattleView
         Renderer rend;
         MaterialPropertyBlock mpb;
 
+        // 풀 (2026-09-05 성능 패스): 이펙트 대형화로 생성량이 늘어 Instantiate/Destroy 부하가 커졌다.
+        // 난전 한 번에 수십 장 — 재사용으로 GC·스파이크를 눌러둔다.
+        static readonly Stack<FxQuad> pool = new Stack<FxQuad>();
+        const int PoolCap = 128;
+
         /// <summary>단발. spinDeg = 초기 회전(베기 각도 등), velocity = 월드 이동.</summary>
         public static void One(Material mat, Vector3 pos, Color color, float scale, float scaleGrow, float life,
             float spinDeg = 0f, Vector3 velocity = default)
         {
             if (mat == null) return; // 텍스처 미도착 — 폴백은 호출부의 기존 연출
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            Object.Destroy(go.GetComponent<Collider>());
-            go.name = "FxQuad";
-            go.transform.position = pos;
 
-            var f = go.AddComponent<FxQuad>();
+            FxQuad f = null;
+            while (pool.Count > 0 && f == null)
+            {
+                f = pool.Pop();
+                if (f == null) continue; // 씬 전환으로 파괴된 개체 — 버린다 (UnityEngine.Object null 체크)
+            }
+            if (f == null)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                Object.Destroy(go.GetComponent<Collider>());
+                go.name = "FxQuad";
+                f = go.AddComponent<FxQuad>();
+                f.rend = go.GetComponent<Renderer>();
+                f.rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                f.rend.receiveShadows = false;
+                f.mpb = new MaterialPropertyBlock();
+            }
+
+            f.gameObject.SetActive(true);
+            f.transform.position = pos;
             f.mat = mat;
+            f.rend.sharedMaterial = mat;
             f.color = VfxTextures.Dim(color); // 매트화 — 모든 절차 VFX가 이 통로를 지난다
             f.fromScale = scale;
             f.toScale = scale * (1f + scaleGrow);
             f.life = life;
+            f.elapsed = 0f;
             f.spinDeg = spinDeg;
             f.velocity = velocity;
+            f.transform.localScale = Vector3.one * scale;
         }
 
         /// <summary>여러 장을 무작위 방향으로 흩뿌림 — 파편 버스트.</summary>
@@ -173,23 +197,16 @@ namespace SeoYuGi.BattleView
             }
         }
 
-        void Start()
-        {
-            rend = GetComponent<Renderer>();
-            rend.sharedMaterial = mat;
-            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            rend.receiveShadows = false;
-            mpb = new MaterialPropertyBlock();
-            transform.localScale = Vector3.one * fromScale;
-        }
-
         void LateUpdate()
         {
             elapsed += Time.unscaledDeltaTime;
             float k = elapsed / life;
             if (k >= 1f)
             {
-                Destroy(gameObject);
+                // 풀로 복귀 — 가득이면 진짜 파괴
+                gameObject.SetActive(false);
+                if (pool.Count < PoolCap) pool.Push(this);
+                else Destroy(gameObject);
                 return;
             }
 

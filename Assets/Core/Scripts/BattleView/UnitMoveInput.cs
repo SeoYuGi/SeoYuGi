@@ -239,7 +239,17 @@ namespace SeoYuGi.BattleView
 
             var result = sink.Submit(BattleIntent.Move(selectedUnitId, dest));
             if (!result.accepted && !result.pending && result.moveDenied == MoveDenied.Locked)
+            {
                 Deny(); // 쿨타임 중 이동 시도 — 버저
+                // 시전 잠금이면 이유를 말해준다 — 새 규칙(시전 중 이동 금지)이 버저만으론 안 읽힌다 (2026-09-05)
+                if (moveSystem.IsCastingFn != null && moveSystem.IsCastingFn(selectedUnitId))
+                {
+                    var su2 = moveSystem.State.GetUnit(selectedUnitId);
+                    if (su2 != null)
+                        FloatingText.Spawn(gridView.CoordToWorld(su2.pos) + Vector3.up * 0.3f, "시전 중!",
+                            new Color(1f, 0.78f, 0.25f), 0.9f, 0.7f);
+                }
+            }
             else if (result.accepted || result.pending)
                 CellFlash.Spawn(gridView.CoordToWorld(dest), blueRangeColor, 0.45f, 0.9f); // 클릭 확인 — "여기로 간다"
             // 성공 시 연출은 MoveSystem.OnUnitMoved → BattleRunner가 재생

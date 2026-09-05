@@ -183,6 +183,7 @@ public class UIClassSelectPopup : UIPopup
         var btn = MakeImage(transform, plate, plate != null ? Color.white : new Color(0.16f, 0.7f, 0.55f),
             new Vector2(0.5f, 0.5f), new Vector2(bx, StripY), new Vector2(180f, ChipH));
         btn.GetComponent<Image>().raycastTarget = true;
+        btn.GetComponent<Image>().preserveAspect = false; // 키잉 플레이트 비율 변화 대응 (2026-09-05)
         BindEvent(btn.gameObject, _ => StartTeam());
         MakeText(btn, "출격  (Enter)", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter,
             new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(180f, ChipH), GameFonts.Hud);

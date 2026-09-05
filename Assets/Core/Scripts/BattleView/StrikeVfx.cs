@@ -148,7 +148,7 @@ namespace SeoYuGi.BattleView
                 case SkillKind.KnockShot: return "Icon_Skill_KnockShot";
                 case SkillKind.Scream: return "Icon_Skill_Scream";
                 case SkillKind.BombDeliver: return "Icon_Skill_BombDeliver";
-                case SkillKind.Snatch: return "Icon_Skill_BombDeliver"; // 같은 배달 모션 — 전용 아이콘 나오기 전까지
+                case SkillKind.Snatch: return "Icon_Skill_Snatch"; // 전용 갈고리 아이콘 (2026-09-05)
                 case SkillKind.BasicAttack: return "Icon_Attack";
                 default: return "Icon_Skill_Generic";
             }

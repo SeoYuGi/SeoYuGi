@@ -113,7 +113,7 @@ namespace SeoYuGi.Net
         {
             name = name?.Trim();
             if (string.IsNullOrEmpty(name)) return;
-            if (name.Length > 10) name = name.Substring(0, 10);
+            if (name.Length > 6) name = name.Substring(0, 6); // 6자 제한 (2026-09-05)
             var nm = NetworkManager.Singleton;
             if (nm.IsHost) { SetName(nm.LocalClientId, name); return; }
             using var w = new FastBufferWriter(128, Allocator.Temp);
@@ -317,6 +317,7 @@ namespace SeoYuGi.Net
                     Slots[dst].callsign = callsign; // 닉네임은 사람을 따라간다 (2026-09-05)
                     break;
                 }
+            AssignBotClasses(); // 팀 변경 — 떠난 팀·새 팀 양쪽 봇이 역할을 다시 맞춘다 (2026-09-05 1:1 지휘 모드)
             Broadcast();
             OnChanged?.Invoke();
         }
@@ -326,7 +327,7 @@ namespace SeoYuGi.Net
         {
             name = name?.Trim();
             if (string.IsNullOrEmpty(name)) return;
-            if (name.Length > 10) name = name.Substring(0, 10);
+            if (name.Length > 6) name = name.Substring(0, 6); // 6자 제한 (2026-09-05)
             for (int i = 0; i < Slots.Length; i++)
                 if (Slots[i].owner != SlotOwner.Bot && Slots[i].clientId == clientId)
                 {

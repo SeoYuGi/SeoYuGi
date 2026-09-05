@@ -74,7 +74,6 @@ namespace SeoYuGi.BattleView
         /// <summary>효과음 1회. maxSeconds 지나면 잘라서 정지 (10초 원본 대응).</summary>
         public void PlaySfx(string name, float maxSeconds = 1.2f)
         {
-            Debug.Log($"[SFX] {name}"); // 임시 진단 (2026-09-05) — 거슬리는 소리 범인 색출용, 확인 후 제거
             PlayOneShot("SFX/" + name, sfxVolume, maxSeconds);
         }
 

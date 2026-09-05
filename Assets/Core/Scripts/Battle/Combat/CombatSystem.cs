@@ -792,10 +792,17 @@ namespace SeoYuGi.Battle
                 }
                 if (IsFlying(unit)) continue;             // 비행 중 무적
 
-                // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다
+                // 탱고파이브식 명중 판정 (2026-09-05): 엄폐(공격 방향의 벽)·은신(공격 팀 시야 밖)은 빗나갈 수 있다.
+                // 빗나감 = "피해"만 무효 — 이동 성분(낚아채기 끌기·밀치기)은 그대로 간다 (2026-09-05
+                // "빗나가면 스킬이동을 포기하네"). 엄폐로 몸은 지켜도 위치는 뺏길 수 있다.
                 if (attacker != null && RollMiss(strike, attacker, unit))
                 {
                     OnMissed?.Invoke(unit.id, strike.attackerId);
+                    if (unit.alive && attacker.alive)
+                    {
+                        if (strike.kind == SkillKind.Snatch) { SnatchPull(attacker, unit); hit = true; }
+                        else if (strike.pushCells > 0) { Push(unit, strike.pushDir, strike.pushCells, 0); hit = true; } // 벽 보너스 피해는 빗나감이라 0
+                    }
                     continue;
                 }
 

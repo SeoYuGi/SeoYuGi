@@ -47,6 +47,7 @@ public class UITitlePopup : UIPopup
 
     public override void Init()
     {
+        CreateNicknameInput(); // 메인화면 콜사인 설정 (2026-09-05)
         Bind<GameObject>(typeof(Buttons));
 
         var dim = transform.Find("Dim")?.GetComponent<Image>();
@@ -230,11 +231,59 @@ public class UITitlePopup : UIPopup
         OnMatch?.Invoke(); // 팝업은 러너가 매칭 연출 후 닫는다
     }
 
+    InputField nickInput;
+
+    /// <summary>메인화면 닉네임 입력 (2026-09-05 "메인에서 하게") — 좌하단 작은 칸.
+    /// PlayerPrefs에 저장만 하고, 적용은 로비가 열릴 때 자동 전송(UILobbyPopup.Refresh)이 맡는다.</summary>
+    void CreateNicknameInput()
+    {
+        var parent = bgRect != null ? bgRect : (RectTransform)transform;
+        var font = GameFonts.Title != null ? GameFonts.Title : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+        MakeText("NickLabel", "닉네임", 15, FontStyle.Normal, new Color(0.55f, 0.75f, 0.85f),
+            new Vector2(0.135f, 0.115f), Vector2.zero, new Vector2(220f, 22f), font);
+
+        var go = new GameObject("NickInput", typeof(RectTransform), typeof(Image));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = rt.anchorMax = new Vector2(0.135f, 0.075f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(220f, 40f);
+        go.GetComponent<Image>().color = new Color(0.02f, 0.05f, 0.1f, 0.88f);
+
+        Text MakeChild(string n, string txt, Color c)
+        {
+            var cgo = new GameObject(n, typeof(RectTransform), typeof(Text));
+            var crt = (RectTransform)cgo.transform;
+            crt.SetParent(rt, false);
+            crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
+            crt.offsetMin = new Vector2(12f, 4f); crt.offsetMax = new Vector2(-12f, -4f);
+            var t = cgo.GetComponent<Text>();
+            t.text = txt; t.fontSize = 18; t.color = c;
+            t.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 (2026-09-05)
+            t.font = font;
+            return t;
+        }
+        var textC = MakeChild("Text", "", new Color(0.9f, 0.96f, 1f));
+        var ph = MakeChild("Placeholder", "닉네임 입력 (엔터)", new Color(0.45f, 0.55f, 0.65f));
+
+        nickInput = go.AddComponent<InputField>();
+        nickInput.textComponent = textC;
+        nickInput.placeholder = ph;
+        nickInput.characterLimit = 6; // 6자 제한 (2026-09-05)
+        nickInput.text = PlayerPrefs.GetString("sy_nickname", "");
+        nickInput.onEndEdit.AddListener(v =>
+        {
+            v = v?.Trim();
+            if (!string.IsNullOrEmpty(v)) PlayerPrefs.SetString("sy_nickname", v);
+        });
+    }
+
     void LateUpdate()
     {
-        if (!searching && Keyboard.current != null &&
+        if (!searching && (nickInput == null || !nickInput.isFocused) && Keyboard.current != null &&
             (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame))
-            Pick(); // 신 Input System — 구 Input API는 이 프로젝트에서 예외를 던진다
+            Pick(); // 신 Input System — 구 Input API는 이 프로젝트에서 예외를 던진다 (닉네임 입력 중엔 무시)
         if (searching && searchRing != null) searchRing.Rotate(0f, 0f, -120f * Time.unscaledDeltaTime);
         if (searching && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             OnCancelSearch?.Invoke(); // ESC = 매칭 취소 → 타이틀 버튼 복귀 (2026-09-05)

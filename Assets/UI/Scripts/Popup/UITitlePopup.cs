@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using SeoYuGi.BattleView; // GameFonts
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -27,7 +27,7 @@ public class UITitlePopup : UIPopup
     // 시안 좌표(1336×753) → 캔버스 기준 해상도(1920×1080) 환산 = ×1.437
     const float BtnW = 388f, BtnH = 86f, BtnGap = 114f;
     const float ColumnX = 362f;   // 버튼 중심 x (좌측 정렬 열)
-    const float FirstY = 202f;    // 첫 버튼 중심 y — 화면 중앙 기준 아래로
+    const float FirstY = 24f;     // 첫 버튼 중심 y (화면 중앙 기준) — 시안 실측. 202는 로고를 덮었다
 
     Text searchText;
     RectTransform searchRing;   // 매칭 대기 회전 링
@@ -46,7 +46,10 @@ public class UITitlePopup : UIPopup
 
         BuildBackground();
 
-        var quit = MakeButtonObject("BtnQuit"); // 프리팹에 없는 네 번째
+        // 프리팹에 없는 네 번째. Init이 두 번 돌아도 새로 만들지 않는다 —
+        // 겹쳐 만들면 같은 버튼이 두 벌 그려진다.
+        var existingQuit = transform.Find("BtnQuit");
+        var quit = existingQuit != null ? existingQuit.gameObject : MakeButtonObject("BtnQuit");
         StyleButton(Get<GameObject>((int)Buttons.BtnSingle), 0, "멀티 모드", () => Pick());
         StyleButton(Get<GameObject>((int)Buttons.BtnHost), 1, "지휘관 모드 (싱글)", () => OnCommander?.Invoke());
         StyleButton(Get<GameObject>((int)Buttons.BtnJoin), 2, "설정", () => OnSettings?.Invoke());
@@ -55,13 +58,20 @@ public class UITitlePopup : UIPopup
 
     // ── 배치 ─────────────────────────────────────────────
 
-    /// <summary>배경 아트 — 팝업 맨 뒤에 화면 가득. 로고·캐릭터가 이미 그려져 있다.</summary>
+    /// <summary>
+    /// 배경 아트 — 팝업 맨 뒤에 화면 가득. 로고·캐릭터가 이미 그려져 있다.
+    /// AspectRatioFitter.EnvelopeParent = "cover" — 비율을 지키며 화면을 덮고 넘치는 쪽만 잘린다.
+    /// 늘려서 채우면(preserveAspect=false) 창 비율에 따라 캐릭터가 찌그러진다.
+    /// </summary>
     void BuildBackground()
     {
+        var old = transform.Find("Background");
+        if (old != null) Destroy(old.gameObject); // Init 재실행 시 겹쳐 깔리지 않게
+
         var tex = Resources.Load<Texture2D>("UI/BG_Main");
         if (tex == null) return;
 
-        var go = new GameObject("Background", typeof(RectTransform), typeof(Image));
+        var go = new GameObject("Background", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
         var rt = (RectTransform)go.transform;
         rt.SetParent(transform, false);
         rt.anchorMin = Vector2.zero;
@@ -72,8 +82,12 @@ public class UITitlePopup : UIPopup
 
         var img = go.GetComponent<Image>();
         img.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-        img.preserveAspect = false; // 화면 비율에 맞춰 채운다 — 시안이 가로형이라 잘림이 적다
+        img.preserveAspect = false; // 크기는 Fitter가 잡는다
         img.raycastTarget = false;
+
+        var fit = go.GetComponent<AspectRatioFitter>();
+        fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+        fit.aspectRatio = (float)tex.width / tex.height;
     }
 
     GameObject MakeButtonObject(string name)
@@ -117,7 +131,9 @@ public class UITitlePopup : UIPopup
         }
         img.raycastTarget = true;
 
-        // 뒤에 깔리는 발광 판 — 알파 펄스
+        // 뒤에 깔리는 발광 판 — 알파 펄스. 있으면 새로 만들지 않는다(Init 재실행 대비).
+        var oldGlow = btn.transform.Find("Glow");
+        if (oldGlow != null) Destroy(oldGlow.gameObject);
         var glowGo = new GameObject("Glow", typeof(RectTransform), typeof(Image));
         var grt = (RectTransform)glowGo.transform;
         grt.SetParent(btn.transform, false);

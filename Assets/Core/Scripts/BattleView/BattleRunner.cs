@@ -87,6 +87,7 @@ namespace SeoYuGi.BattleView
         /// <summary>이번 라운드 규칙. null이면 평범한 라운드 — HUD가 이걸 보고 배너를 띄운다.</summary>
         public RoundRule Rule { get; private set; }
 
+        UITitlePopup titlePopup; // 열려 있는 타이틀 — 다시 열 때 겹치지 않게 닫는다
         RadioWindow radio; // 지휘관 모드 전용 무전 채팅바. 멀티 모드에선 비활성.
         PauseMenu pauseMenu; // ESC 일시정지 — 모드 무관
         VoiceRadio voice;  // 음성 무전 (V 꾹 — push-to-talk). 지휘관 모드 전용.
@@ -712,7 +713,13 @@ namespace SeoYuGi.BattleView
                 new GameObject("@UIManager").AddComponent<UIManager>();
             ShowPickBackground();
 
+            // ShowPopupUI는 부를 때마다 새 인스턴스를 만들어 스택에 쌓는다.
+            // ShowTitle이 여러 경로(시작·로비 이탈·ESC·매치 종료)에서 불리므로
+            // 먼저 열려 있던 타이틀을 닫지 않으면 팝업이 겹쳐 버튼이 두 벌 그려진다.
+            if (titlePopup != null) UIManager.Instance.ClosePopupUI(titlePopup);
+
             var popup = UIManager.Instance.ShowPopupUI<UITitlePopup>();
+            titlePopup = popup;
             popup.OnMatch = () =>
             {
                 GameModeState.Current = GameMode.Multi;

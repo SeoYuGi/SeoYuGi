@@ -224,7 +224,7 @@ namespace SeoYuGi.Battle
             }
             if (result == ActDenied.None)
             {
-                unit.skillReadyAt[skillIndex] = State.time + skill.cooldownSeconds;
+                unit.skillReadyAt[skillIndex] = State.time + skill.cooldownSeconds * (Rule != null ? Rule.CooldownScale : 1f); // 스킬 난장판이면 절반
                 OnSkillCast?.Invoke(unitId, skill.kind);
             }
             return result;

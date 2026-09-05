@@ -349,6 +349,10 @@ namespace SeoYuGi.BattleView
                         line = "시간이 30초 짧습니다. 초반부터 거점을 잡습니다.";
                         orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
                         break;
+                    case RoundRuleKind.HalfCooldown:
+                        line = "스킬 난장판. 기술을 아끼지 않고 붙겠습니다.";
+                        orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.Aggressive }, bots, zoneCount);
+                        break;
                     default: // NoTakeback
                         line = "탈환 불가. 첫 점령이 전부입니다. 빈 거점부터 찍습니다.";
                         orders = OrderPresets.Build(new OrderPresets.Preset { kind = OrderPresets.Kind.EachZone }, bots, zoneCount);
@@ -419,7 +423,7 @@ namespace SeoYuGi.BattleView
             switch (cls)
             {
                 case UnitClass.Tank: return "근접 탱커";
-                case UnitClass.Balance: return "돌격형";
+                case UnitClass.Balance: return "브루저";
                 case UnitClass.Assassin: return "암살자";
                 case UnitClass.Grenadier: return "서포터";
                 case UnitClass.Sniper: return "저격수";
@@ -526,6 +530,8 @@ namespace SeoYuGi.BattleView
         bool radioTimeActive;
         float radioTimeEndsAt;        // 실시간(unscaled) 기준 종료 시각 — 정지 중엔 전투 시계가 안 가므로
         float nextBriefingAt;         // 분대 브리핑 쿨 (실시간) — 무전 타임·무전창 열 때 한 번, 최소 12초 간격
+        float nextEventBriefAt;       // 사건 브리핑 쿨 (2026-09-06) — 거점 상실·아군 위기·거점 침입·지휘관 전사에 분대가 먼저 말한다. 20초 간격
+        int contestedMaskPrev;        // 아군 거점에 적이 들어와 점거 중인 거점 비트 — 진입 순간(엣지)만 보고
         readonly System.Random personaRng = new System.Random(); // 분대원 말버릇·복종 주사위 (연출용 — 결정론 불필요)
         int radioSpeakerRotation;     // 프리셋 응답 발화자 돌려쓰기 — 매번 같은 놈만 말하지 않게
         bool radioOpenPrev;           // 무전창 열림 엣지 — 싱글 지휘관 브리핑 트리거
@@ -925,6 +931,71 @@ namespace SeoYuGi.BattleView
                 radio.OpenGuided();
                 Guide.Finish();
             }
+        }
+
+        /// <summary>
+        /// 사건 브리핑 (2026-09-06) — 유저가 무전을 열지 않아도 분대가 먼저 말을 건다. 거점 상실, 아군 HP 1, 아군 거점 침입, 지휘관 전사.
+        /// 20초 쿨로 도배 방지. 키 없음·실패는 침묵 (프리셋 폴백 없음 — 없어도 게임은 같다).
+        /// </summary>
+        void RequestEventBriefing(string hint)
+        {
+            if (!GameModeState.IsCommander || GameModeState.Training || phase != Phase.Playing || countdownRunning) return;
+            if (Time.unscaledTime < nextEventBriefAt) return;
+            var squad = CommandableUnitIds();
+            if (squad.Count == 0) return;
+            nextEventBriefAt = Time.unscaledTime + 20f;
+            var enemies = new List<int>();
+            foreach (var u in Battle.Units)
+                if (u.alive && u.team != playerTeam) enemies.Add(u.id);
+            LlmRadio.RequestBriefing(SquadBrief(squad, enemies), Round != null ? Round.Zones.Count : 0, squad,
+                (unitId, line) =>
+                {
+                    if (phase != Phase.Playing || Battle?.GetUnit(unitId) == null) return;
+                    ShowRadioLine(unitId, Personas.Mark(playerTeam, line));
+                    battleAudio.PlaySfx("S2_TelegraphAlly", 0.5f);
+                }, hint);
+        }
+
+        /// <summary>
+        /// 카운트다운 잡담 (2026-09-06) — 라운드 개시 3초에 분대원 둘이 한 마디씩. LLM에 규칙·스코어·성격을 주고,
+        /// 실패하면 성격 표의 잡담 한 줄씩으로 폴백. 지시·보고가 아니라 "얘들이 사람처럼 떠든다"가 목적.
+        /// </summary>
+        void RequestCountdownBanter()
+        {
+            if (!GameModeState.IsCommander || GameModeState.Training || phase != Phase.Playing) return;
+            var squad = CommandableUnitIds();
+            if (squad.Count == 0) return;
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("라운드 ").Append(Match.CurrentRound).Append(" / 3. 스코어 아군 ").Append(Match.GetWins(playerTeam))
+              .Append(" : 상대 ").Append(Match.GetWins(1 - playerTeam)).Append('\n');
+            sb.Append(Rule != null ? $"이번 라운드 규칙: {Rule.title}. {Rule.detail}" : "이번 라운드 규칙: 없음 (평범한 라운드)").Append('\n');
+            sb.Append("분대원 (unitId: 별명, 동물, 성격):\n");
+            foreach (var id in squad)
+            {
+                var s = FindSlot(id);
+                sb.Append(id).Append(": ").Append(s.callsign).Append(", ").Append(ClassNames.For(0, s.cls))
+                  .Append(", ").Append(Personas.PromptBlock(s.cls)).Append('\n');
+            }
+
+            void Fallback()
+            {
+                if (phase != Phase.Playing) return;
+                int n = System.Math.Min(2, squad.Count);
+                for (int i = 0; i < n; i++)
+                {
+                    var s = FindSlot(squad[i]);
+                    if (Battle?.GetUnit(squad[i]) != null) ShowRadioLine(squad[i], Personas.Banter(s.cls, playerTeam, personaRng));
+                }
+            }
+
+            bool sent = LlmRadio.RequestBanter(sb.ToString(), squad,
+                (unitId, line) =>
+                {
+                    if (phase != Phase.Playing || Battle?.GetUnit(unitId) == null) return;
+                    ShowRadioLine(unitId, Personas.Mark(playerTeam, line));
+                }, Fallback);
+            if (!sent) Fallback();
         }
 
         /// <summary>분대 브리핑 — 분대원 한 명이 한 문장 보고. 키 없음·실패는 침묵. 12초 쿨.</summary>
@@ -1400,6 +1471,7 @@ namespace SeoYuGi.BattleView
                 ? $"아군이 {letter} 거점을 점령했습니다"
                 : $"상대팀이 {letter} 거점을 점령했습니다", teamColors[owner], 2.8f);
             hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[owner]);
+            if (!ours) RequestEventBriefing($"상대가 {letter} 거점을 점령했다");
 
             var center = ZoneWorldCenter(zone);
             ImpactVfx.Pillar(center, Color.Lerp(teamColors[owner], Color.white, 0.4f)); // 링 제거 — 기둥 전용 (가독성 패스)
@@ -1816,6 +1888,7 @@ namespace SeoYuGi.BattleView
                 hud.ShowAnnounce(ment, teamColors[zone.owner], 2.8f); // 상단 중앙 큰 공지
                 hud.PushEvent(ours ? $"아군이 {letter} 거점 점령!" : $"상대팀이 {letter} 거점 점령!", teamColors[zone.owner]);
                 battleAudio.PlayVoice(ours ? "Voice_ZoneCaptured" : "Voice_ZoneLost"); // 음성만 (자막은 배너가)
+                if (!ours) RequestEventBriefing($"상대가 {letter} 거점을 점령했다");
 
                 // 탈환 완료 순간 — 빛기둥 (링은 충격파 전용으로 회수)
                 var center = ZoneWorldCenter(zone);
@@ -2188,6 +2261,8 @@ namespace SeoYuGi.BattleView
                         dmg >= 3 ? new Color(1f, 0.45f, 0.15f) : new Color(1f, 0.25f, 0.2f), // 큰 딜은 주황빛으로 격상
                         Mathf.Min(0.9f + dmg * 0.22f, 1.7f));                                 // 데미지 비례 크기
                 Debug.Log($"유닛 {unitId} 피해 {dmg} (HP {victim.hp}/{victim.maxHp})");
+                if (victim.team == playerTeam && unitId != playerUnitId && victim.hp == 1 && !GameModeState.Training)
+                    RequestEventBriefing($"아군 {FindSlot(unitId).callsign}의 HP가 1이다"); // 본인이 "빼겠다"거나 옆에서 "커버한다"고 말할 자리
 
                 // 점령 저지 (2026-09-05): 점령 진행 중인 팀원이 거점 위에서 맞으면 게이지가 깎인다.
                 // 코어는 즉시, 화면 게이지는 디스크가 부드럽게 흘러내리며 빨간 플래시로 알린다.
@@ -2384,6 +2459,9 @@ namespace SeoYuGi.BattleView
             spectateUnitId = -1;
             countdownUntil = Time.time + (Guide.Wanted && !NetBoot.IsOnline ? 5.5f : 3f); // 라운드 시작 3·2·1 — 첫 판 가이드는 거점 설명 읽을 시간만큼 더 (온라인은 호스트 시계라 그대로)
             countdownRunning = true;
+            contestedMaskPrev = 0;
+            nextEventBriefAt = 0f;
+            RequestCountdownBanter(); // 분대원 둘이 잡담 — 카운트다운 3초를 살아 있는 시간으로
             if (radioTimeActive) EndRadioTime(); // 라운드 재조립 — 정지 잔재 제거
             nextRadioTimeAt = RadioTimeFirst;
 
@@ -2999,6 +3077,7 @@ namespace SeoYuGi.BattleView
             bool spectatingNow = Spectating;
             if (spectatingNow && !spectatingPrev && GameModeState.IsCommander)
                 hud.PushEvent("전사. 무전(Enter), 숫자키로 분대 지휘는 계속됩니다", StrikeVfx.MineNeon);
+                RequestEventBriefing("지휘관이 전사했다. 남은 분대가 관전 중인 지휘관의 무전을 받는다");
             spectatingPrev = spectatingNow;
 
             bool radioOpen = radio != null && radio.IsOpen;
@@ -3152,6 +3231,19 @@ namespace SeoYuGi.BattleView
                 }
             }
             prevMyZones = myZones; prevEnemyZones = enemyZones;
+
+            // 아군 거점에 적이 들어와 점거 시작 — 진입 순간에만 분대가 알린다 (2026-09-06)
+            int contestedMask = 0;
+            for (int zi = 0; zi < Round.Zones.Count; zi++)
+            {
+                var zz = Round.Zones[zi];
+                if (zz.owner == playerTeam && zz.capturingTeam == 1 - playerTeam && zz.progress > 0f) contestedMask |= 1 << zi;
+            }
+            int entered = contestedMask & ~contestedMaskPrev;
+            if (entered != 0)
+                for (int zi = 0; zi < Round.Zones.Count; zi++)
+                    if ((entered & (1 << zi)) != 0) { RequestEventBriefing($"적이 아군 {ZoneLetters[zi]} 거점에 들어와 점거 중이다"); break; }
+            contestedMaskPrev = contestedMask;
 
             // 거점 점거 원형 게이지 — 점거 중인 팀 색으로 바닥에 차오름
             bool anyCapturing = false;

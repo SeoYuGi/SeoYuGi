@@ -112,6 +112,24 @@ namespace SeoYuGi.Battle
         /// <summary>LLM 시스템 프롬프트용 — 분대원 한 명의 성격 설명.</summary>
         public static string PromptBlock(UnitClass cls) => For(cls).trait;
 
+        /// <summary>기계팀(team 1) 모방 표식 — LLM이 만든 문장에도 같은 표식을 단다.</summary>
+        public static string Mark(int team, string line) => team == 1 ? "[모방] " + line : line;
+
+        /// <summary>카운트다운 잡담 폴백 (LLM 실패·키 없음). 지시도 보고도 아닌, 살아 있는 티 한 줄.</summary>
+        public static string Banter(UnitClass cls, int team, Random rng)
+        {
+            string[] pool;
+            switch (cls)
+            {
+                case UnitClass.Tank: pool = new[] { "어, 어... 이번엔 안 맞을게요.", "그, 그럼요. 앞에 설게요.", "음, 그... 배고프다." }; break;
+                case UnitClass.Balance: pool = new[] { "끼에엑! 빨리 시작해!", "끼엑! 이번엔 내가 먼저 박는다!", "가자아! 끼에엑!" }; break;
+                case UnitClass.Assassin: pool = new[] { "준비됨.", "조용히 간다.", "뒤는 내가." }; break;
+                case UnitClass.Grenadier: pool = new[] { "하... 또 시작이네. 구구.", "앙? 이번엔 좀 쉬운 데 가요. 국.구국.", "엥? 벌써요? 구구." }; break;
+                default: pool = new[] { "사거리 확인. 준비 완료.", "고지대 하나는 챙기죠.", "침착하게. 한 발씩." }; break;
+            }
+            return Mark(team, pool[rng.Next(pool.Length)]);
+        }
+
         /// <summary>기계팀 카운트다운 대사 — 상대 동물을 스캔해 모방한다는 컨셉.</summary>
         public static string MimicLine(UnitClass cls) =>
             $"스캔 완료. 상대 {ClassNames.For(0, cls)} 패턴 모방 개시.";

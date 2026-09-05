@@ -10,7 +10,8 @@ namespace SeoYuGi.Battle
         HighlandPower,  // 고지대에서 쏜 공격 피해 2배
         SwiftFoot,      // 이동 게이지·최대거리 1.5배
         ShortFuse,      // 제한시간 30초 단축
-        NoTakeback      // 탈환 불가 — 한 번 주인이 생긴 거점은 뺏기지 않는다
+        NoTakeback,     // 탈환 불가 — 한 번 주인이 생긴 거점은 뺏기지 않는다
+        HalfCooldown    // 스킬 난장판 — 스킬 쿨타임 절반 (2026-09-06). 정신없이 빠른 템포 라운드
     }
 
     /// <summary>
@@ -42,6 +43,9 @@ namespace SeoYuGi.Battle
         public float MoveScale => kind == RoundRuleKind.SwiftFoot ? 1.5f : 1f;
 
         public float RoundSecondsDelta => kind == RoundRuleKind.ShortFuse ? -30f : 0f;
+
+        /// <summary>스킬 쿨타임 배율 — 스킬 난장판이면 절반. 평타 쿨은 그대로(연타 스팸 방지).</summary>
+        public float CooldownScale => kind == RoundRuleKind.HalfCooldown ? 0.5f : 1f;
 
         /// <summary>탈환 불가 — 주인이 정해진 거점은 그대로 굳는다.</summary>
         public bool NoTakebacks => kind == RoundRuleKind.NoTakeback;
@@ -82,7 +86,8 @@ namespace SeoYuGi.Battle
                 RoundRuleKind.HighlandPower,
                 RoundRuleKind.SwiftFoot,
                 RoundRuleKind.ShortFuse,
-                RoundRuleKind.NoTakeback
+                RoundRuleKind.NoTakeback,
+                RoundRuleKind.HalfCooldown
             };
             if (zoneCount >= 2) pool.Add(RoundRuleKind.ZoneLockdown);
 
@@ -111,6 +116,12 @@ namespace SeoYuGi.Battle
                     {
                         kind = kind, title = "탈환 불가",
                         detail = "한 번 점령된 거점은 되찾을 수 없습니다."
+                    };
+                case RoundRuleKind.HalfCooldown:
+                    return new RoundRule
+                    {
+                        kind = kind, title = "스킬 난장판",
+                        detail = "스킬 쿨타임이 절반으로 줄어듭니다."
                     };
                 default:
                     return new RoundRule

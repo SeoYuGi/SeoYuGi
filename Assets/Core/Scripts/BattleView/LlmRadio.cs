@@ -120,7 +120,7 @@ namespace SeoYuGi.BattleView
         /// onLine(unitId, 문장) — unitId는 squad 안의 값만.
         /// </summary>
         public static void RequestBriefing(string squadBrief, int zoneCount,
-            System.Collections.Generic.IReadOnlyList<int> squad, Action<int, string> onLine)
+            System.Collections.Generic.IReadOnlyList<int> squad, Action<int, string> onLine, string eventHint = null)
         {
             var key = ResolveKey();
             if (key == null || squad == null || squad.Count == 0) return;
@@ -130,6 +130,7 @@ namespace SeoYuGi.BattleView
 "너는 실시간 전술 게임의 아군 분대원 중 하나다. 아래 전장 상황을 보고 지휘관(플레이어)에게 무전으로 " +
 "상황 보고 한 문장을 한다. 위험 또는 기회 딱 하나만 — 예: 잃은 거점, 낮은 HP, 비어 있는 거점, 우세 거점.\n\n" +
 "전장 상황:\n" + squadBrief + "\n\n" +
+(eventHint != null ? "방금 일어난 일: " + eventHint + ". 이 사건에 대해 보고한다 — 지휘관이 이미 화면으로 봤으니 사실 반복이 아니라 분대원 시점의 반응·제안으로.\n\n" : "") +
 $"거점 zoneIndex: {zones}.\n\n" +
 "응답 형식 (JSON 외 텍스트 금지): {\"unitId\":3,\"line\":\"보고 한 문장\"}\n" +
 "unitId는 아군 분대 목록 중 보고하기에 가장 어울리는 분대원(관련 거점에 가까운 쪽, HP 낮으면 본인). " +
@@ -144,7 +145,7 @@ $"거점 zoneIndex: {zones}.\n\n" +
                 ["messages"] = new JArray
                 {
                     new JObject { ["role"] = "system", ["content"] = system },
-                    new JObject { ["role"] = "user", ["content"] = "상황 보고." }
+                    new JObject { ["role"] = "user", ["content"] = eventHint != null ? "사건 보고." : "상황 보고." }
                 }
             };
 
@@ -180,6 +181,81 @@ $"거점 zoneIndex: {zones}.\n\n" +
             };
         }
 
+        /// <summary>
+        /// 카운트다운 잡담 (2026-09-06) — 라운드 시작 3초 동안 분대원 둘이 한 마디씩 주고받는다. 지시도 보고도 아닌 잡담.
+        /// "진짜 살아 있는 것 같게" — 규칙·스코어·지난 라운드에 반응한다. 실패·키 없음이면 onFail (폴백은 러너가 성격 표에서).
+        /// 반환값 false = 요청조차 못 냈다(키 없음).
+        /// </summary>
+        public static bool RequestBanter(string context, System.Collections.Generic.IReadOnlyList<int> squad,
+            Action<int, string> onLine, Action onFail)
+        {
+            var key = ResolveKey();
+            if (key == null || squad == null || squad.Count == 0) return false;
+
+            string system =
+"너는 실시간 전술 게임의 아군 분대원들이다. 라운드 시작 카운트다운 중, 분대원 두 명이 한 마디씩 주고받는 잡담 두 줄을 쓴다. " +
+"지시나 상황 보고가 아니다 — 긴장, 허세, 투정, 지난 라운드 뒷말, 이번 라운드 규칙에 대한 반응 같은 사람 냄새 나는 말. " +
+"두 번째 줄은 첫 줄에 대한 대답이어야 한다. 각 줄 한국어 25자 이내, 각자의 성격 설명과 말버릇을 따른다. 서로 다른 분대원 둘.\n\n" +
+context + "\n\n" +
+"응답 형식 (JSON 외 텍스트 금지): {\"lines\":[{\"unitId\":3,\"line\":\"...\"},{\"unitId\":4,\"line\":\"...\"}]}";
+
+            var body = new JObject
+            {
+                ["model"] = Model,
+                ["max_tokens"] = 160,
+                ["temperature"] = 0.9,
+                ["response_format"] = new JObject { ["type"] = "json_object" },
+                ["messages"] = new JArray
+                {
+                    new JObject { ["role"] = "system", ["content"] = system },
+                    new JObject { ["role"] = "user", ["content"] = "카운트다운 시작." }
+                }
+            };
+
+            var req = new UnityWebRequest(Endpoint, "POST")
+            {
+                uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body.ToString())),
+                downloadHandler = new DownloadHandlerBuffer(),
+                timeout = TimeoutSeconds
+            };
+            req.SetRequestHeader("content-type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + key);
+
+            req.SendWebRequest().completed += _ =>
+            {
+                int shown = 0;
+                try
+                {
+                    if (req.result != UnityWebRequest.Result.Success) return;
+                    var root = JObject.Parse(req.downloadHandler.text);
+                    string text = (string)(root["choices"] as JArray)?[0]?["message"]?["content"];
+                    if (string.IsNullOrEmpty(text)) return;
+                    int start = text.IndexOf('{'), end = text.LastIndexOf('}');
+                    if (start < 0 || end <= start) return;
+                    var lines = JObject.Parse(text.Substring(start, end - start + 1))["lines"] as JArray;
+                    if (lines == null) return;
+                    foreach (var item in lines)
+                    {
+                        if (shown >= 2) break;
+                        string line = item["line"]?.Value<string>();
+                        int unitId = item["unitId"]?.Value<int>() ?? -1;
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        bool known = false;
+                        foreach (var id in squad) if (id == unitId) { known = true; break; }
+                        onLine(known ? unitId : squad[shown % squad.Count], line.Trim());
+                        shown++;
+                    }
+                }
+                catch (Exception e) { Debug.LogWarning($"LlmRadio 잡담 파싱 실패: {e.Message}"); }
+                finally
+                {
+                    req.Dispose();
+                    if (shown == 0) onFail?.Invoke();
+                }
+            };
+            return true;
+        }
+
         /// <summary>HTTP 실패 → 무전 응답 문구. 코드가 보여야 "키 문제인지 회선 문제인지"를 현장에서 가른다.</summary>
         static string FailureAck(UnityWebRequest req)
         {
@@ -209,7 +285,7 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "persist: 명령 지속 범위 — false(기본)면 이번 라운드만, \"매치 내내/게임 내내/계속\" 류면 true(라운드가 바뀌어도 유지).\n\n" +
 "규칙:\n" +
 "- 지휘관이 언급한 분대원에게만 명령한다. 전원을 향한 말이면 전원에게.\n" +
-"- 호칭 대응: 지휘관은 유닛을 별명(\"라니\"), 동물 이름(\"고라니\"), 기계 이름(\"돌격\"), 클래스명(\"Balance\"), 역할(\"돌격형\", \"저격수\"), " +
+"- 호칭 대응: 지휘관은 유닛을 별명(\"라니\"), 동물 이름(\"고라니\"), 기계 이름(\"돌격\"), 클래스명(\"Balance\"), 역할(\"브루저\", \"저격수\"), " +
 "\"상대 지휘관\"·\"상대 플레이어\"·\"저 사람\" 등 무엇으로든 부른다 — 위 목록의 '= 다른 호칭들'과 대조해 unitId를 찾는다. 적 이름도 같은 방식.\n" +
 "- \"피 없는 애\", \"가까운 애\", \"우리 거점\" 같은 표현은 위 전장 상황(HP·좌표·소유)으로 해석해 대상을 고른다.\n" +
 "- \"저격수부터 노려\"처럼 적을 지목하면 해당 분대원(들)의 focusEnemyId에 그 적 unitId를 넣는다. " +
@@ -219,7 +295,10 @@ $"거점 zoneIndex: {zones} — 총 {zoneCount}개.\n\n" +
 "- 분대원에겐 사람 같은 자율성이 있다. 응답에 \"compliance\" 필드를 넣는다: \"obey\"(기본) | " +
 "\"question\"(모호해서 되묻는다 — orders 비움) | \"refuse\"(명백한 자살행위만 — HP 1로 돌격, 혼자서 적 셋이 든 거점 진입 등. " +
 "orders 비우고 ack에 거부 이유 + 대안 한 문장). 거부는 드물어야 한다 — 열에 아홉은 복종.\n" +
-"- ack는 응답하는 분대원(orders[0], 없으면 가장 관련된 분대원)의 '성격' 설명대로 말한다 — 말버릇 포함, 한국어 한 문장 40자 이내. " +
+"- ack는 응답하는 분대원(orders[0], 없으면 가장 관련된 분대원)의 '성격' 설명대로 말한다 — 말버릇 포함, 한국어 한 문장 45자 이내. " +
+"ack에는 자기가 이해한 명령 내용을 자기 말투로 되풀이해 확인한다 — \"알겠습니다\"만 하지 말 것. " +
+"예: 너구리 \"어, 어... A 거점으로 가라는 거지? 간다.\", 비둘기 \"앙? B로 옮기라는 말이에요? 하... 갑니다. 구구.\", 검은냥 \"B로. 이동.\". " +
+"question이면 이해한 부분까지는 말하고 모호한 부분만 되묻는다 — \"A거점으로 이... 이동하라는 거지? 누가?\". " +
 "compliance도 성격을 따른다: 고라니는 자주 refuse하며 돌격을 선언, 비둘기는 되묻고 툴툴대지만 obey, 검은냥은 한두 단어로 obey, " +
 "까치는 명백히 틀린 명령에만 question, 너구리는 더듬으며 obey.";
         }

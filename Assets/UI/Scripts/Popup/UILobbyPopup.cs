@@ -58,11 +58,8 @@ public class UILobbyPopup : UIPopup
     readonly System.Collections.Generic.List<string> chatLog = new System.Collections.Generic.List<string>();
     static readonly Sprite[] cardSprites = new Sprite[5]; // 세션 캐시
 
-    bool bakedUi; // 베이크된 프리팹(SeoYuGi/UI/Bake Lobby Popup Prefab) — 배치·크기는 프리팹이 정답, 코드는 덮어쓰지 않는다
-
     public override void Init()
     {
-        bakedUi = FindDeep(transform, "OpponentBox") != null;
         Bind<GameObject>(typeof(Buttons));
 
         // 캐릭터 그리드 — 클릭 = 선택. 슬롯 클릭 이동은 없음 (칸 고정).
@@ -85,8 +82,7 @@ public class UILobbyPopup : UIPopup
             // 위로는 슬롯 줄(하단 120), 아래로는 상태 문구(-420) 사이. 선택 확대(1.06)까지 안 겹침.
             var rt = (RectTransform)pick.transform;
             SeoYuGi.UI.ClassCard.Build(rt, i, 1f);
-            if (!bakedUi)
-                rt.anchoredPosition = new Vector2((i - 2) * (SeoYuGi.UI.ClassCard.BaseW + 22f), -125f);
+            rt.anchoredPosition = new Vector2((i - 2) * (SeoYuGi.UI.ClassCard.BaseW + 22f), -125f);
         }
 
         for (int i = 0; i < 6; i++)
@@ -94,9 +90,9 @@ public class UILobbyPopup : UIPopup
             var slot = transform.Find($"Slot{i + 1}");
             if (slot == null) continue;
             slotRoots[i] = (RectTransform)slot;
-            if (!bakedUi) slotRoots[i].sizeDelta = new Vector2(SlotW, SlotH);
+            slotRoots[i].sizeDelta = new Vector2(SlotW, SlotH);
             slotLabels[i] = slot.Find("LabelBack/Label")?.GetComponent<Text>();
-            if (slotLabels[i] != null && !bakedUi) slotLabels[i].fontSize = SlotLabelFont; // 좁아진 칸에 "너굴 / 팀원(자동)"이 들어가게
+            if (slotLabels[i] != null) slotLabels[i].fontSize = SlotLabelFont; // 좁아진 칸에 "너굴 / 팀원(자동)"이 들어가게
             slotPortraits[i] = slot.Find("Portrait")?.GetComponent<Image>();
             int slotIdx = i;
             BindEvent(slot.gameObject, _ => SelectSlot(slotIdx)); // 내 팀 슬롯 클릭 = 그 칸 다시 고르기
@@ -111,7 +107,7 @@ public class UILobbyPopup : UIPopup
         }
         Get<GameObject>((int)Buttons.BtnCopyCode)?.SetActive(false);
         balanceText = transform.Find("BalanceText")?.GetComponent<Text>();
-        if (balanceText != null && !bakedUi)
+        if (balanceText != null)
         {
             // 프리팹 위치(우측 중앙 x650)는 1배 카드와 겹친다 — 슬롯 줄 왼쪽, 상대 칸(우측 x500)과 대칭 자리로 (2026-09-06)
             var brt = balanceText.rectTransform;
@@ -207,9 +203,9 @@ public class UILobbyPopup : UIPopup
                 img.sprite = btnSprite;
                 img.color = Color.white;
                 img.preserveAspect = false; // 키잉 후 비율이 바뀌어 프레임이 납작해지며 글씨가 삐져나왔다 (2026-09-05)
-                if (!bakedUi) img.rectTransform.sizeDelta = BottomButtonSize; // 프리팹 60은 너무 얇다 (2026-09-06 "세로로 뚱뚱하게")
+                img.rectTransform.sizeDelta = BottomButtonSize; // 프리팹 60은 너무 얇다 (2026-09-06 "세로로 뚱뚱하게")
                 var bl = Get<GameObject>((int)b).GetComponentInChildren<Text>();
-                if (bl != null && !bakedUi) { bl.fontSize = BottomButtonFont; bl.alignment = TextAnchor.MiddleCenter; } // 프레임 금속 밴드 안에 여유 있게
+                if (bl != null) { bl.fontSize = BottomButtonFont; bl.alignment = TextAnchor.MiddleCenter; } // 프레임 금속 밴드 안에 여유 있게
             }
     }
 
@@ -261,31 +257,9 @@ public class UILobbyPopup : UIPopup
     /// 상대팀 첫 빈 봇 슬롯으로 이동을 요청한다. 상대팀이 인간으로 가득이면 안내만.</summary>
     Image oppBox; Text oppText; // 상대 지휘관 칸 (2026-09-06)
 
-    /// <summary>깊은 이름 탐색 — 베이크된 노드가 어느 부모 밑에 있어도 찾는다.</summary>
-    static Transform FindDeep(Transform t, string name)
-    {
-        if (t.name == name) return t;
-        for (int i = 0; i < t.childCount; i++)
-        {
-            var r = FindDeep(t.GetChild(i), name);
-            if (r != null) return r;
-        }
-        return null;
-    }
-
     /// <summary>내 팀 슬롯 줄 오른쪽에 상대 칸 하나. 상대 조합은 비공개라 존재와 준비 상태만 보인다.</summary>
     void CreateOpponentBox()
     {
-        // 베이크된 프리팹 노드 우선 — 배치는 프리팹, 문구·색만 여기서
-        var baked = FindDeep(transform, "OpponentBox");
-        if (baked != null)
-        {
-            oppBox = baked.GetComponent<Image>();
-            oppText = baked.Find("Text")?.GetComponent<Text>();
-            RefreshOpponentBox();
-            return;
-        }
-
         var parent = slotRoots[0] != null ? slotRoots[0].parent : transform;
         var go = new GameObject("OpponentBox", typeof(RectTransform), typeof(Image));
         go.transform.SetParent(parent, false);
@@ -399,20 +373,6 @@ public class UILobbyPopup : UIPopup
     /// 하단 버튼 줄 왼쪽 칸(폐지된 코드 복사 자리). 나가기 위에 쌓으면 1배 카드 밑단과 겹친다 (2026-09-06).</summary>
     void CreateCommanderToggle()
     {
-        // 베이크된 프리팹 노드 우선 — 배치·스킨은 프리팹, 라벨·클릭만 여기서
-        var baked = FindDeep(transform, "BtnCommander");
-        if (baked != null)
-        {
-            commanderLabel = baked.GetComponentInChildren<Text>();
-            BindEvent(baked.gameObject, _ =>
-            {
-                if (!NetBoot.IsHost) { if (statusText != null) statusText.text = "모드는 호스트가 정합니다"; return; }
-                NetLobby.HostSetCommander(!NetLobby.Commander);
-            });
-            RefreshCommanderLabel();
-            return;
-        }
-
         var template = Get<GameObject>((int)Buttons.BtnLeave);
         var go = Instantiate(template, template.transform.parent);
         go.name = "BtnCommander";

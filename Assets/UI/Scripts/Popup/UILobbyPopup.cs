@@ -1,5 +1,6 @@
 using System;
 using SeoYuGi.Battle;
+using SeoYuGi.BattleView; // GameFonts
 using SeoYuGi.Net;
 using UnityEngine;
 using UnityEngine.UI;
@@ -20,6 +21,16 @@ public class UILobbyPopup : UIPopup
     // UnitClass enum 순서와 동일 — Resources/UI의 클래스별 카드 아트
     static readonly string[] CardArt =
         { "Card_Tank", "Card_Balance", "Card_Assassin", "Card_Grenadier", "Card_Sniper" };
+
+    // 캐릭터 선택 팝업과 동일한 이름·역할·네온 색 (enum 순서)
+    static readonly (string name, string roleEn, Color color)[] Meta =
+    {
+        ("너구리",      "TANKER",    new Color(1f, 0.54f, 0.16f)),
+        ("고라니",      "RUNNER",    new Color(0.64f, 0.42f, 1f)),
+        ("검은 고양이", "ASSASSIN",  new Color(0.21f, 0.84f, 1f)),
+        ("비둘기",      "GRENADIER", new Color(0.29f, 0.87f, 0.37f)),
+        ("까치",        "MARKSMAN",  new Color(0.23f, 0.51f, 0.96f)),
+    };
 
     // 역할 콜 빠른채팅 — 왕자영요식 "내가 ~할게요" (탱/서폿/딜 느낌)
     static readonly string[] QuickLines =
@@ -45,6 +56,7 @@ public class UILobbyPopup : UIPopup
         Bind<GameObject>(typeof(Buttons));
 
         // 캐릭터 그리드 — 클릭 = 선택. 슬롯 클릭 이동은 없음 (칸 고정).
+        // 캐릭터 선택 팝업과 동일한 네온 카드 스타일(테두리·이름·역할)로 통일.
         for (int i = 0; i < 5; i++)
         {
             var cls = (UnitClass)i;
@@ -57,7 +69,12 @@ public class UILobbyPopup : UIPopup
             {
                 portrait.sprite = sprite;
                 portrait.color = Color.white;
+                portrait.preserveAspect = false;
             }
+            // 캐릭터 선택 팝업과 같은 카드 — 로비 픽 칸 크기에 맞춰 축소
+            var rt = (RectTransform)pick.transform;
+            float scale = Mathf.Clamp(rt.sizeDelta.y / SeoYuGi.UI.ClassCard.BaseH, 0.3f, 1f);
+            SeoYuGi.UI.ClassCard.Build(rt, i, scale);
         }
 
         for (int i = 0; i < 6; i++)
@@ -240,13 +257,11 @@ public class UILobbyPopup : UIPopup
             }
         }
 
-        // 철권식 커서 — 내 픽만 밝은 테두리 + 확대
+        // 철권식 커서 — 내 픽 카드에 선택 하이라이트 (캐릭터 선택 팝업과 동일)
         for (int i = 0; i < pickBackings.Length; i++)
         {
             if (pickBackings[i] == null) continue;
-            bool sel = i == myCls;
-            pickBackings[i].color = sel ? new Color(0.35f, 1f, 0.75f) : new Color(0.12f, 0.13f, 0.17f, 0.95f);
-            pickBackings[i].transform.localScale = sel ? Vector3.one * 1.08f : Vector3.one;
+            SeoYuGi.UI.ClassCard.SetSelected((RectTransform)pickBackings[i].transform, i == myCls, Meta[i].color);
         }
 
         RefreshBalance(slots, myTeam);

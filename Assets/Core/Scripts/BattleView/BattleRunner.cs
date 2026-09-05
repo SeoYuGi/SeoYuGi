@@ -524,6 +524,7 @@ namespace SeoYuGi.BattleView
                 initial[i] = roster[mineIdx[i]].cls;
             }
             popup.SetTeam(names, initial);
+            popup.SetTimer(30f); // 롤/오버워치식 캐릭터 선택 제한시간 — 종료 시 현재 선택으로 자동 출격
             popup.OnTeamPicked = classes =>
             {
                 for (int i = 0; i < mineIdx.Count; i++)
@@ -1613,10 +1614,22 @@ namespace SeoYuGi.BattleView
                 humanPrevPos[id] = Battle.GetUnit(id).pos;
         }
 
+        bool playerWasOnHighland;
+
         void SyncPresentation()
         {
             gridView.UpdateFog(playerVisibleFn); // 시야 밖 타일 어둡게 (세부기획 B)
             UpdateThreatWarning();
+
+            // 고지대 진입 공지 — 로컬(내 유닛)만. 올라간 순간 1회.
+            var me = Battle.GetUnit(playerUnitId);
+            if (me != null && me.alive)
+            {
+                bool onHigh = Battle.Grid.IsHighland(me.pos);
+                if (onHigh && !playerWasOnHighland)
+                    hud.ShowAnnounce("고지대 확보 — 시야 +2", teamColors[playerTeam], 2.2f);
+                playerWasOnHighland = onHigh;
+            }
 
             // 거점 점거 원형 게이지 — 점거 중인 팀 색으로 바닥에 차오름
             bool anyCapturing = false;

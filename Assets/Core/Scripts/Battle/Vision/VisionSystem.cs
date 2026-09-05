@@ -54,7 +54,7 @@ namespace SeoYuGi.Battle
 
         void AddUnitVision(UnitState unit, HashSet<Coord> set)
         {
-            int r = unit.sightRange + (State.Grid.IsHighland(unit.pos) ? 1 : 0); // 고지대 시야 보너스
+            int r = unit.sightRange + (State.Grid.IsHighland(unit.pos) ? 2 : 0); // 고지대 시야 보너스 +2
             for (int dy = -r; dy <= r; dy++)
             for (int dx = -r; dx <= r; dx++)
             {

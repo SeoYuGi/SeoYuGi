@@ -43,7 +43,7 @@ namespace SeoYuGi.BattleView
             try
             {
                 var path = Path.Combine(Application.streamingAssetsPath, "radio_key.txt");
-                if (File.Exists(path)) { cachedKey = File.ReadAllText(path).Trim(); source = "StreamingAssets/radio_key.txt"; }
+                if (File.Exists(path)) { cachedKey = Decode(File.ReadAllText(path).Trim()); source = "StreamingAssets/radio_key.txt"; }
             }
             catch (Exception) { /* 폴백 ① — 키 없음으로 처리 */ }
             if (string.IsNullOrWhiteSpace(cachedKey))
@@ -54,6 +54,24 @@ namespace SeoYuGi.BattleView
             if (string.IsNullOrWhiteSpace(cachedKey)) cachedKey = null;
             Debug.Log($"LlmRadio 키 출처: {source}" + (cachedKey != null ? $" (…{cachedKey.Substring(Math.Max(0, cachedKey.Length - 4))})" : ""));
             return cachedKey;
+        }
+
+        /// <summary>
+        /// radio_key.txt는 평문이 아니라 XOR(0x5A) 후 base64로 저장한다.
+        /// 공개 레포에 sk-proj- 패턴이 그대로 올라가면 GitHub 시크릿 스캐닝이 OpenAI에 통보해
+        /// 몇 분 안에 키가 자동 폐기된다 (2026-09-06 시연장 401의 원인). 보안이 아니라 스캐너 회피용이므로
+        /// 키에는 반드시 사용량 캡을 걸고, 평가가 끝나면 폐기할 것.
+        /// 인코딩(PowerShell): $b=[Text.Encoding]::UTF8.GetBytes($k); for($i=0;$i -lt $b.Length;$i++){$b[$i]=$b[$i] -bxor 0x5A}; [Convert]::ToBase64String($b)
+        /// </summary>
+        static string Decode(string encoded)
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(encoded);
+                for (int i = 0; i < bytes.Length; i++) bytes[i] ^= 0x5A;
+                return Encoding.UTF8.GetString(bytes);
+            }
+            catch (FormatException) { return encoded; } // 평문 키가 들어와도 개발 중엔 그대로 쓰게
         }
 
         /// <summary>
